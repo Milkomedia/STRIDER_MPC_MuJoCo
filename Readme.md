@@ -1,8 +1,10 @@
 # STRIDER
 
 - Trajectory-following simulation of the STRIDER model (in MuJoCo).
+![MuJoCo overview](resources/mj_overview.png)
+
 - MPC real-time viewer.
-https://github.com/user-attachments/assets/12c09299-81d3-4dcb-bae2-abb82721751e
+![MPC overview](resources/mpc_overview.png)
 
 ---
 
