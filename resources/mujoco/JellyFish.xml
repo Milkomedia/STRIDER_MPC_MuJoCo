@@ -160,7 +160,7 @@
 
     <body name="weight" pos="0.3 0.0 0.0">
       <joint name="rotor_joint" pos="-0.3 0 0.0" axis="0 0 1"/>
-      <inertial pos="0 0 0" mass="0.2" diaginertia="3.2e-05 3.2e-05 3.2e-05"/>
+      <inertial pos="0 0 0" mass="0.01" diaginertia="3.2e-05 3.2e-05 3.2e-05"/>
       <geom name="weight_geom" type="sphere" size="0.02" rgba="1 0 0 1" contype="0" conaffinity="0"/>
     </body>
 

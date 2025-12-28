@@ -34,7 +34,7 @@ if __package__ is None or __package__ == "":
   PARENT_DIR = THIS_DIR.parent
   if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
-  __package__ = THIS_DIR.name  # e.g., "mpc_py"
+  __package__ = THIS_DIR.name
 
 from .mmap_manager import MMapReader
 
@@ -57,9 +57,9 @@ def _make_legend_html(
   return (
     f"<span style='color:{_rgb_hex(c_ref)};'>■</span> ref traj<br/>"
     f"<span style='color:{_rgb_hex(c_cot)};'>■</span> cot traj(dot)<br/>"
-    f"<span style='color:{_rgb_hex(arm_colors[0])};'>■</span> a1<br/>"
+    f"<span style='color:{_rgb_hex(arm_colors[0])};'>■</span> a1\t"
     f"<span style='color:{_rgb_hex(arm_colors[1])};'>■</span> a2<br/>"
-    f"<span style='color:{_rgb_hex(arm_colors[2])};'>■</span> a3<br/>"
+    f"<span style='color:{_rgb_hex(arm_colors[2])};'>■</span> a3\t"
     f"<span style='color:{_rgb_hex(arm_colors[3])};'>■</span> a4"
   )
 
@@ -185,7 +185,7 @@ def compute_frame_from_pkt(pkt: Any) -> DebugFrame:
   wrench_xyz = np.full((T, 3), np.nan, dtype=np.float64)
   arm_tips = np.full((T, 4, 3), np.nan, dtype=np.float64)
 
-  # FK-based quantities (same as your matplotlib code)
+  # FK-based quantities
   for k in range(T):
     qk = q[k, :]
 
@@ -226,7 +226,7 @@ def compute_frame_from_pkt(pkt: Any) -> DebugFrame:
     if T == f_hist.size + 1:
       thrust_N[-1] = f_hist[-1]
 
-  # Costs (same as your code)
+  # Costs
   Wp = np.diag(np.asarray(COST_POS_ERR, dtype=np.float64))
   Wy = float(np.asarray(COST_ANG_ERR, dtype=np.float64).ravel()[0])
   Wf = float(np.asarray(COST_F_THRUST, dtype=np.float64).ravel()[0])

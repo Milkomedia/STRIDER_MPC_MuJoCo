@@ -62,6 +62,7 @@ int main() {
           g_mpc_input.has = false;
         }
       }
+      // std::printf(" [mpc]->get   ");
 
       strider_mpc::MPCOutput out_local;
       try { out_local = mpc.compute(in_local); }
@@ -151,6 +152,7 @@ int main() {
       ctrl.step(ctrl_input, ctrl_output);
 
       cotPc_hat = ctrl_output.bpc_hat; // Save estimated CoM in body frame
+      const double mean_tilt_rad = (ctrl_output.tilt_rad(0) + ctrl_output.tilt_rad(1) + ctrl_output.tilt_rad(2) + ctrl_output.tilt_rad(3))/44.0;
       
       { // MPC send
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
@@ -164,7 +166,7 @@ int main() {
 
                 g_mpc_input.pos_d = fig8_traj(elapsed_double);
                 g_mpc_input.yaw_d.setZero();
-                const Eigen::Vector3d rpy = ctrl_input.quat.toRotationMatrix().eulerAngles(0, 1, 2); // [roll, pitch, yaw]
+                const Eigen::Vector3d rpy = quat_to_RPY(ctrl_input.quat); // [roll, pitch, yaw]
                 int k = 0; int l = 0;
                 g_mpc_input.u_0(l++) = param::M * param::G;
                 g_mpc_input.x_0(k++) = s.qpos_xyz[0]; g_mpc_input.x_0(k++) = s.qpos_xyz[1]; g_mpc_input.x_0(k++) = s.qpos_xyz[2];
@@ -180,14 +182,15 @@ int main() {
                                   1.0, 0.0, 0.0,
                                   0.0, 1.0, 0.0,
                                   0.0, 0.0, 1.0,
-                                  0.0, param::L_DIST;
+                                  mean_tilt_rad, param::L_DIST;
                 g_mpc_input.debug = true;
                 g_mpc_input.t = now;
                 g_mpc_input.key = mpc_key;
                 g_mpc_input.has = true;
                 mpc_cv.notify_one();
       }}}}}
-      
+
+      Eigen::Vector3d bPcot_mpc;
       { // MPC get
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
         if (g_mpc_output.has) {
@@ -197,7 +200,8 @@ int main() {
                 // std::printf(" [ctrl]->got\n");
                 double q_mpc[20];
                 for (int i = 0; i < 20; ++i) q_mpc[i] = g_mpc_output.u(i + 1);
-                // FK(q_mpc, bPcot_des); // update bPcot_des
+                FK(q_mpc, bPcot_mpc); // update bPcot_des
+                bPcot_des = 0.1*bPcot_mpc + 0.9*bPcot_des; // some delay
                 g_mpc_output.has = false;
               }
               else { next_mpc_tick = now; } // timeout
@@ -239,10 +243,6 @@ int main() {
       // delay for real-time view
       const auto now_ = std::chrono::steady_clock::now();
       if (now_ < next_tick) {std::this_thread::sleep_until(next_tick);}
-      else {
-        const auto lag_us = std::chrono::duration_cast<std::chrono::microseconds>(now_ - next_tick).count();
-        std::printf("! sim delayed: [%lld]us.\n", static_cast<long long>(lag_us));
-      }
       next_tick += ctrl_period;
     }
   });

@@ -39,6 +39,23 @@ static inline Eigen::Vector3d fig8_point(double t_sec){
   return Eigen::Vector3d(param::TRAJ_AX * s, param::TRAJ_AY * s*c, param::TRAJ_Z);
 }
 
+static inline Eigen::Vector3d quat_to_RPY(const Eigen::Quaterniond q) {
+  // Quaternion to Euler angle map
+  double w = q.w(); double x = q.x(); double y = q.y(); double z = q.z();
+
+  const double xx = x*x, yy = y*y, zz = z*z;
+  const double xy = x*y, xz = x*z, yz = y*z;
+  const double wx = w*x, wy = w*y, wz = w*z;
+  
+  const double phi = std::atan2(2.0*(wx + yz), 1.0 - 2.0*(xx + yy));
+  double sinp = 2.0*(wy - xz);
+  sinp = std::max(-1.0, std::min(1.0, sinp));
+  const double th = std::asin(sinp);
+  const double psi = std::atan2(2.0*(wz + xy), 1.0 - 2.0*(yy + zz));
+
+  return Eigen::Vector3d(phi, th, psi);
+}
+
 static inline void onearm_IK(const Eigen::Vector3d& pos, const Eigen::Vector3d& heading, double out5[5]) {
   Eigen::Vector3d heading_in = heading;
   const double a2_sq = param::DH_ARM_A[1]*param::DH_ARM_A[1];

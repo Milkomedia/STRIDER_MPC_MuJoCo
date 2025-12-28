@@ -46,57 +46,97 @@ find_package(pybind11 CONFIG REQUIRED
 )
 
 # -------------------------
-# MuJoCo (from Python package)
+# MuJoCo
 # -------------------------
+
+# (A) Locate Python package dir (optional; used as fallback)
 execute_process(
   COMMAND "${Python3_EXECUTABLE}" -c "import mujoco, pathlib; print(pathlib.Path(mujoco.__file__).resolve().parent)"
   OUTPUT_VARIABLE MUJOCO_PY_DIR
   OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
 )
-if(NOT MUJOCO_PY_DIR)
-  message(FATAL_ERROR "Could not locate MuJoCo via: python -c 'import mujoco'")
-endif()
-message(STATUS "MuJoCo python dir: ${MUJOCO_PY_DIR}")
-
-# Find MuJoCo include dir (pick the first existing)
-set(_MUJOCO_INCLUDE_CANDIDATES
-  "${MUJOCO_PY_DIR}/include"
-  "${MUJOCO_PY_DIR}/../include"
-)
-set(MUJOCO_INCLUDE_DIR "")
-foreach(d ${_MUJOCO_INCLUDE_CANDIDATES})
-  if(EXISTS "${d}")
-    set(MUJOCO_INCLUDE_DIR "${d}")
-    break()
-  endif()
-endforeach()
-if(NOT MUJOCO_INCLUDE_DIR)
-  message(FATAL_ERROR "Could not find MuJoCo include dir under: ${MUJOCO_PY_DIR}")
-endif()
-message(STATUS "MuJoCo include dir: ${MUJOCO_INCLUDE_DIR}")
-
-# Find MuJoCo shared library (OS-specific)
-if(APPLE)
-  file(GLOB _MUJOCO_LIB_CANDIDATES
-    "${MUJOCO_PY_DIR}/libmujoco*.dylib"
-    "${MUJOCO_PY_DIR}/lib/libmujoco*.dylib"
-    "${MUJOCO_PY_DIR}/mujoco.libs/libmujoco*.dylib"
-    "${MUJOCO_PY_DIR}/_lib/libmujoco*.dylib"
-  )
+if(MUJOCO_PY_DIR)
+  message(STATUS "MuJoCo python dir: ${MUJOCO_PY_DIR}")
 else()
-  file(GLOB _MUJOCO_LIB_CANDIDATES
-    "${MUJOCO_PY_DIR}/libmujoco*.so*"
-    "${MUJOCO_PY_DIR}/lib/libmujoco*.so*"
-    "${MUJOCO_PY_DIR}/mujoco.libs/libmujoco*.so*"
-    "${MUJOCO_PY_DIR}/_lib/libmujoco*.so*"
+  message(STATUS "MuJoCo python dir: (not found via import mujoco) - will rely on conda/system")
+endif()
+
+# (B) Include dir: prefer conda, then python layouts
+set(_MUJOCO_INCLUDE_HINTS "")
+if(DEFINED ENV{CONDA_PREFIX})
+  list(APPEND _MUJOCO_INCLUDE_HINTS "$ENV{CONDA_PREFIX}/include")
+endif()
+if(MUJOCO_PY_DIR)
+  list(APPEND _MUJOCO_INCLUDE_HINTS
+    "${MUJOCO_PY_DIR}/include"
+    "${MUJOCO_PY_DIR}/../include"
+    "${MUJOCO_PY_DIR}/mujoco.framework/Headers"
   )
 endif()
 
-list(LENGTH _MUJOCO_LIB_CANDIDATES _MJ_N)
-if(_MJ_N LESS 1)
-  message(FATAL_ERROR "Could not find MuJoCo shared lib under: ${MUJOCO_PY_DIR}")
+find_path(MUJOCO_INCLUDE_DIR
+  NAMES mujoco/mujoco.h
+  HINTS ${_MUJOCO_INCLUDE_HINTS}
+)
+
+# (C) Shared lib: prefer conda, else python wheel layout (your original behavior)
+set(MUJOCO_LIB "")
+
+if(DEFINED ENV{CONDA_PREFIX})
+  find_library(_MUJOCO_LIB_CONDA
+    NAMES mujoco libmujoco
+    HINTS "$ENV{CONDA_PREFIX}/lib"
+    NO_DEFAULT_PATH
+  )
+  if(_MUJOCO_LIB_CONDA)
+    set(MUJOCO_LIB "${_MUJOCO_LIB_CONDA}")
+  endif()
 endif()
-list(GET _MUJOCO_LIB_CANDIDATES 0 MUJOCO_LIB)
+
+if(NOT MUJOCO_LIB AND MUJOCO_PY_DIR)
+  # Original-style fallback (python package directories)
+  if(APPLE)
+    file(GLOB _MUJOCO_LIB_CANDIDATES
+      "${MUJOCO_PY_DIR}/libmujoco*.dylib"
+      "${MUJOCO_PY_DIR}/lib/libmujoco*.dylib"
+      "${MUJOCO_PY_DIR}/mujoco.libs/libmujoco*.dylib"
+      "${MUJOCO_PY_DIR}/_lib/libmujoco*.dylib"
+      "${MUJOCO_PY_DIR}/mujoco.framework/Versions/*/libmujoco*.dylib"
+    )
+  else()
+    file(GLOB _MUJOCO_LIB_CANDIDATES
+      "${MUJOCO_PY_DIR}/libmujoco*.so*"
+      "${MUJOCO_PY_DIR}/lib/libmujoco*.so*"
+      "${MUJOCO_PY_DIR}/mujoco.libs/libmujoco*.so*"
+      "${MUJOCO_PY_DIR}/_lib/libmujoco*.so*"
+    )
+  endif()
+
+  list(LENGTH _MUJOCO_LIB_CANDIDATES _MJ_N)
+  if(_MJ_N GREATER 0)
+    list(GET _MUJOCO_LIB_CANDIDATES 0 MUJOCO_LIB)
+  endif()
+endif()
+
+# (D) Validate
+if(NOT MUJOCO_INCLUDE_DIR)
+  message(FATAL_ERROR
+    "Could not find MuJoCo header mujoco/mujoco.h. "
+    "Tried CONDA_PREFIX/include and Python package layouts. "
+    "CONDA_PREFIX=$ENV{CONDA_PREFIX}, MUJOCO_PY_DIR=${MUJOCO_PY_DIR}"
+  )
+endif()
+
+if(NOT MUJOCO_LIB)
+  message(FATAL_ERROR
+    "Could not find MuJoCo shared library (libmujoco). "
+    "Tried CONDA_PREFIX/lib and Python package layouts. "
+    "CONDA_PREFIX=$ENV{CONDA_PREFIX}, MUJOCO_PY_DIR=${MUJOCO_PY_DIR}"
+  )
+endif()
+
+message(STATUS "MuJoCo include dir: ${MUJOCO_INCLUDE_DIR}")
 message(STATUS "MuJoCo lib: ${MUJOCO_LIB}")
 
 add_library(mujoco SHARED IMPORTED GLOBAL)

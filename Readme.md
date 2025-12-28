@@ -1,10 +1,7 @@
 # STRIDER
 
 - Trajectory-following simulation of the STRIDER model (in MuJoCo).
-![MuJoCo overview](resources/mj_overview.png)
-
 - MPC real-time viewer.
-![MPC overview](resources/mpc_overview.png)
 
 ---
 
@@ -19,7 +16,7 @@
 
 ### Dependencies
 - C++ : MuJoCo / Eigen3 / GLFW3 / OpenGL
-- Python3 : acados_template / pybind11 / pyqt
+- Python3 : acados_template / pybind11 / pyqt / vispy
 - Tested: MacOS, Linux
 
 ### Build (CMake)

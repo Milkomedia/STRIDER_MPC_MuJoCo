@@ -84,7 +84,7 @@ def build_model():
             T = T @ dh_transform(a, alpha, 0.0, q_arm[i])
             T_list.append(T)
 
-        return T_list # [{b}->{1}, {b}->{2}, {b}->{35}, {b}->{4}, {b}->{5}]
+        return T_list # [{b}->{1}, {b}->{2}, {b}->{3}, {b}->{4}, {b}->{5}]
 
     # ---------- Rotation matrix ----------
     phi, th, psi = theta[0], theta[1], theta[2]
@@ -211,8 +211,8 @@ def build_ocp():
 
     # ---------- orientation&position constraint ----------
     nh = model.con_h_expr.size()[0]
-    eps_pos  = [0.1 * 1e-3]*4          # tolerance in [m]
-    eps_head = [0.2 * np.pi/180.0]*4   # tolerance in [rad]
+    eps_pos  = [2.0 * 1e-3]*4          # tolerance in [m]
+    eps_head = [4.0 * np.pi/180.0]*4   # tolerance in [rad]
     ocp.constraints.lh = np.zeros((nh,))
     ocp.constraints.uh = np.array(eps_pos + eps_head, dtype=float)
 

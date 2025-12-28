@@ -61,7 +61,7 @@ class StriderNMPC:
         if status == 0: u_opt0 = self.solver.get(0, "u").flatten()
         else: u_opt0 = u_0.copy()
 
-        if debug:
+        if debug and status==0:
             xs, us, ps = self._extract_all_xup()
             self._mmap_writer.write(
                 pos_d=pos_d.reshape(self.N, 3),
