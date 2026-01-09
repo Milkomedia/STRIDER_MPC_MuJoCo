@@ -28,7 +28,6 @@ static constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0};       // propelle
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-static constexpr bool use_decoupled_yaw = true;
 static constexpr double kX[3] = {25.0, 25.0, 15.0};  // Position gain [x, y, z]
 static constexpr double kV[3] = {17.0, 17.0, 15.0};  // Velocity gain [x, y, z]
 static constexpr double kR[3] = { 8.0,  8.0, 0.75};  // Rotational gain [roll, pitch, yaw]
@@ -67,7 +66,7 @@ static constexpr double COM_GAMMA = 0.0003;
 // ===== Trajectory (figure-8 on XY) =====
 static constexpr double TRAJ_Z     = 1.0;               // desired altitude [m]
 static constexpr double TRAJ_AX    = 2.0;               // lobe half-width in X [m]
-static constexpr double TRAJ_FREQ  = 0.05;              // [Hz]
+static constexpr double TRAJ_FREQ  = 0.15;              // [Hz]
 
 static constexpr double TRAJ_AY    = TRAJ_AX / 2.0;     // lobe half-height in Y [m]
 static constexpr double FREQ_RAD_S = 2.*M_PI*TRAJ_FREQ; // [rad/s]
@@ -82,24 +81,22 @@ static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 // desired inter-rotor distance
 static constexpr double L_DIST = 0.55; // [m]
 
-// ===== MPC parameters =====
-static constexpr double MPC_MODEL_DT_D = 0.04; // [sec], for trajectory generation
-static constexpr double MPC_COMPUTE_DT_D = 0.05; // [sec]
-static const std::chrono::steady_clock::duration MPC_MODEL_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(MPC_MODEL_DT_D));
-static const std::chrono::steady_clock::duration MPC_COMPUTE_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(MPC_COMPUTE_DT_D));
+// ===== MPC parameters (Must be the same as prams.py) =====
+static constexpr double MPC_COMPUTE_HZ = 100.0; // [Hz]
+static const std::chrono::steady_clock::duration MPC_COMPUTE_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / MPC_COMPUTE_HZ));
 
-constexpr std::size_t N_STEPS  = 50;
-constexpr std::size_t NX       = 32;
-constexpr std::size_t NU       = 21;
-constexpr std::size_t NP       = 14;
-
+constexpr std::size_t N_STEPS  = 30;
+constexpr std::size_t NX       = 13;
+constexpr std::size_t NU_AUG   = 5;
+constexpr std::size_t NU       = 5;
+constexpr std::size_t NP       = 11;
 
 // ===== MuJoCo viewer parameters =====
 static constexpr float SIZE_DOT  = 0.003f; // size(radious) of dot
 static constexpr float SIZE_PATH = 0.005f; // size(radious) of path
 
-static constexpr float RGBA_DOT[4]  = {1.00f, 0.00f, 0.00f, 0.95f}; // current pos color
-static constexpr float RGBA_PATH[4] = {0.20f, 0.80f, 0.90f, 0.60f}; // current path color
+static constexpr float RGBA_DOT[4]   = {1.00f, 0.00f, 0.00f, 0.95f}; // current pos color
+static constexpr float RGBA_PATH[4]  = {0.20f, 0.80f, 0.90f, 0.60f}; // current path color
 static constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired path color
 
 } // namespace param

@@ -12,11 +12,10 @@ namespace strider_mpc {
 
 // MPC Input data
 struct MPCInput {
-  Eigen::Matrix<double, 3 * param::N_STEPS, 1> pos_d;
-  Eigen::Matrix<double, param::N_STEPS, 1>     yaw_d;
-  Eigen::Matrix<double, param::NX, 1>          x_0;
-  Eigen::Matrix<double, param::NU, 1>          u_0;
-  Eigen::Matrix<double, param::NP, 1>          p;
+  Eigen::Matrix<double, param::NX, 1> x_0;
+  Eigen::Matrix<double, param::NU, 1> u_0;
+  Eigen::Matrix<double, param::NP, 1> p;
+  Eigen::Matrix<double, 10, 1> log;
   bool debug = false;
   std::chrono::steady_clock::time_point t;
   uint32_t key = 0;
@@ -25,7 +24,8 @@ struct MPCInput {
 
 // MPC Output data
 struct MPCOutput {
-  Eigen::Matrix<double, param::NU, 1> u;
+  Eigen::Matrix<double, param::NU,     1> u_opt;
+  Eigen::Matrix<double, param::NU_AUG, 1> u_rate;
   double solve_ms = 0.0;
   std::uint8_t state = 255;
   std::chrono::steady_clock::time_point t;

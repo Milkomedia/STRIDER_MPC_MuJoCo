@@ -1,229 +1,188 @@
+from . import params as p
+
 from acados_template import AcadosModel, AcadosOcp
 import casadi as ca
 import numpy as np
 
 def build_model():
-    from .params import MOTOR_LAMBDA, J_TENSOR, MASS, G_ACCEL, LINK_MASS, LINK_COM_DIST, DH_PARAMS_ARM, DH_PARAMS_BASE
-
     model = AcadosModel()
     model.name = "strider"
 
     # Model state
-    p_cot = ca.SX.sym('p_cot',  3) # cot pos
-    v_cot = ca.SX.sym('v_cot',  3) # cot vel
-    theta = ca.SX.sym('theta',  3) # global attitude
-    omega = ca.SX.sym('omega',  3) # cot angular vel
-    q     = ca.SX.sym('q',     20) # arm pos
-    x     = ca.vertcat(p_cot, v_cot, theta, omega, q)
+    theta           = ca.SX.sym('theta',  3) # [rad]
+    omega           = ca.SX.sym('omega',  3) # [rad/s]
+    r_cot           = ca.SX.sym('r_cot',  2) # [m]
+    delta_theta_cmd = ca.SX.sym('delta_theta_cmd',  3) # [rad], Augmented state(command input)
+    r_cot_cmd       = ca.SX.sym('r_cot_cmd',  2)       # [m], Augmented state(command input)
+    x     = ca.vertcat(theta, omega, r_cot, delta_theta_cmd, r_cot_cmd)
     x_dot = ca.SX.sym('x_dot', x.size1())
     model.x = x
     model.xdot = x_dot
 
-    # Model Control input
-    f_t   = ca.SX.sym('f_t')     # overall thrust
-    q_d   = ca.SX.sym('q_d', 20) # arm desired pos
-    u     = ca.vertcat(f_t, q_d)
-    model.u = u
+    # Model control input(u-rate)
+    u_rate = ca.SX.sym('u_rate', 5) # 3: delta_theta_cmd_rate [rad/s] / 2: r_cot_cmd_rate[m/s]
+    model.u = u_rate
 
     # Model parameter
-    delta    = ca.SX.sym('delta', 3)      # cot -> com [m] (estimated - nominal value)
-    cot_R_b  = ca.SX.sym('cot_R_b', 3, 3) # body tilt Rotation matrix command
-    th_tilt  = ca.SX.sym('th_tilt')       # tilt angle [rad](sequential control allocation)
-    l        = ca.SX.sym('l')             # distance between thruster [m]
-    model.p  = ca.vertcat(delta, ca.reshape(cot_R_b, 9, 1), th_tilt, l)
-
-    # DH parameter & link mass & link com position
-    dh_params_arm  = ca.DM(DH_PARAMS_ARM)
-    dh_params_base = ca.DM(DH_PARAMS_BASE)
-    m_link         = ca.DM(LINK_MASS)      # [m1, m2, m3, m4, m5]
-    d_link_com     = ca.DM(LINK_COM_DIST)  # [d1, d2, d3, d4, d5]
+    R_raw = ca.SX.sym('R_raw', 3, 3) # SO3 matrix
+    l     = ca.SX.sym('l')           # [m]
+    T_des = ca.SX.sym('T_des')       # [N]
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), l, T_des)
 
     # Constants
-    J = ca.DM(J_TENSOR)              # inertia tensor read in {cot}
-    Lambda_vec = ca.DM(MOTOR_LAMBDA) # motor constants
-    Jinv = ca.inv(J)
-    InvLambda = ca.diag(1.0 / Lambda_vec)
+    J = ca.DM(p.J_TENSOR)
+    J_inv = ca.inv(J)
+    tau_inv = 1.0 / p.TAU
+    zeta = p.ZETA
 
-    m = MASS                 # total mass
-    g = G_ACCEL              # gravitational acc
-    e3 = ca.SX([0., 0., 1.]) # unit z vector
+    # ---------- math utils ----------
+    def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
+        phi, th, psi = theta[0], theta[1], theta[2]
 
-    def dh_transform(a_link, alpha_joint, d_link, theta_joint):
-        cos_t, sin_t = ca.cos(theta_joint), ca.sin(theta_joint)
-        cos_a, sin_a = ca.cos(alpha_joint), ca.sin(alpha_joint)
+        cphi, sphi = ca.cos(phi), ca.sin(phi)
+        cth,  sth  = ca.cos(th),  ca.sin(th)
+        cpsi, spsi = ca.cos(psi), ca.sin(psi)
 
-        T = ca.SX(4, 4)
-        T[0, 0] = cos_t
-        T[0, 1] = -sin_t * cos_a
-        T[0, 2] = sin_t * sin_a
-        T[0, 3] = a_link * cos_t
-        T[1, 0] = sin_t
-        T[1, 1] = cos_t * cos_a
-        T[1, 2] = -cos_t * sin_a
-        T[1, 3] = a_link * sin_t
-        T[2, 0] = 0.0
-        T[2, 1] = sin_a
-        T[2, 2] = cos_a
-        T[2, 3] = d_link
-        T[3, 0] = 0.0
-        T[3, 1] = 0.0
-        T[3, 2] = 0.0
-        T[3, 3] = 1.0
-        return T
+        Rz = ca.vertcat(ca.horzcat(cpsi, -spsi, 0.0),
+                        ca.horzcat(spsi,  cpsi, 0.0),
+                        ca.horzcat(0.0,   0.0,  1.0),)
 
-    def FK(q_arm, arm_idx):
-        # Calculates transform matrix of thrust point wrt. {b}
-        a0     = dh_params_base[arm_idx, 0]
-        theta0 = dh_params_base[arm_idx, 1]
-        T = dh_transform(a0, 0.0, 0.0, theta0)  # {b}->{0}
+        Ry = ca.vertcat(ca.horzcat(cth,  0.0,  sth),
+                        ca.horzcat(0.0,  1.0,  0.0),
+                        ca.horzcat(-sth, 0.0,  cth),)
 
-        T_list = []
-        for i in range(dh_params_arm.shape[0]): # {b}->{5}
-            a = dh_params_arm[i, 0]
-            alpha = dh_params_arm[i, 1]
-            T = T @ dh_transform(a, alpha, 0.0, q_arm[i])
-            T_list.append(T)
+        Rx = ca.vertcat(ca.horzcat(1.0,  0.0,   0.0),
+                        ca.horzcat(0.0,  cphi, -sphi),
+                        ca.horzcat(0.0,  sphi,  cphi),)
 
-        return T_list # [{b}->{1}, {b}->{2}, {b}->{3}, {b}->{4}, {b}->{5}]
+        return Rz @ Ry @ Rx
 
-    # ---------- Rotation matrix ----------
-    phi, th, psi = theta[0], theta[1], theta[2]
-    cphi, sphi   = ca.cos(phi),  ca.sin(phi)
-    cth,  sth    = ca.cos(th),   ca.sin(th)
-    cpsi, spsi   = ca.cos(psi),  ca.sin(psi)
+    def euler_zyx_rate_map(theta: ca.SX) -> ca.SX:
+        phi, th = theta[0], theta[1]
 
-    Rz = ca.vertcat(ca.horzcat(cpsi, -spsi, 0.0), ca.horzcat(spsi,  cpsi, 0.0),  ca.horzcat(0.0,   0.0,  1.0),)
-    Ry = ca.vertcat(ca.horzcat(cth,  0.0,  sth),  ca.horzcat(0.0,  1.0,  0.0),   ca.horzcat(-sth, 0.0,  cth),)
-    Rx = ca.vertcat(ca.horzcat(1.0,  0.0,   0.0), ca.horzcat(0.0,  cphi, -sphi), ca.horzcat(0.0,  sphi,  cphi),)
-    R = Rz @ Ry @ Rx  # (cot->global)
+        cphi, sphi = ca.cos(phi), ca.sin(phi)
+        cth,  tth  = ca.cos(th), ca.tan(th)
 
-    # ---------- Euler-rate mapping ----------
-    L = ca.SX.zeros(3,3)
-    L[0,0] = 1.
-    L[0,1] = sphi*ca.tan(th)
-    L[0,2] = cphi*ca.tan(th)
-    L[1,0] = 0.
-    L[1,1] = cphi
-    L[1,2] = -sphi
-    L[2,0] = 0.
-    L[2,1] = sphi/cth
-    L[2,2] = cphi/cth
-    theta_dot = L @ omega # (cot->global)
+        return ca.vertcat(ca.horzcat(1.0, sphi*tth, cphi*tth),
+                          ca.horzcat(0.0,     cphi,    -sphi),
+                          ca.horzcat(0.0, sphi/cth, cphi/cth),)
+    
+    def hat(w: ca.SX) -> ca.SX:
+        return ca.vertcat(ca.horzcat(  0.0, -w[2],  w[1]),
+                          ca.horzcat( w[2],   0.0, -w[0]),
+                          ca.horzcat(-w[1],  w[0],  0.0))
 
-    # ---------- motor 1st-order dynamics ----------
-    q_dot = InvLambda @ (q_d - q)
+    def expm_hat(w: ca.SX) -> ca.SX:
+        th2 = ca.dot(w, w)          # theta^2
+        th  = ca.sqrt(th2 + 1e-12)  # theta
 
-    # ---------- get b_p_cot via FK ----------
-    BT1 = FK(q[0:5],   0)
-    BT2 = FK(q[5:10],  1)
-    BT3 = FK(q[10:15], 2)
-    BT4 = FK(q[15:20], 3)
-    b_p_15, b_e1_15 = BT1[-1][0:3, 3], BT1[-1][0:3, 0]
-    b_p_25, b_e1_25 = BT2[-1][0:3, 3], BT2[-1][0:3, 0]
-    b_p_35, b_e1_35 = BT3[-1][0:3, 3], BT3[-1][0:3, 0]
-    b_p_45, b_e1_45 = BT4[-1][0:3, 3], BT4[-1][0:3, 0]
-    b_p_cot = (b_p_15 + b_p_25 + b_p_35 + b_p_45) / 4.0
+        A = ca.sin(th) / th
+        B = (1.0 - ca.cos(th)) / (th2 + 1e-12)
 
-    # ---------- get cot_p_c ----------
-    bpc_acc = ca.SX.zeros(3)
-    for j in range(5):
-        bpc_acc += m_link[j] * (BT1[j][0:3, 3] - d_link_com[j] * BT1[j][0:3, 0])
-        bpc_acc += m_link[j] * (BT2[j][0:3, 3] - d_link_com[j] * BT2[j][0:3, 0])
-        bpc_acc += m_link[j] * (BT3[j][0:3, 3] - d_link_com[j] * BT3[j][0:3, 0])
-        bpc_acc += m_link[j] * (BT4[j][0:3, 3] - d_link_com[j] * BT4[j][0:3, 0])
+        K = hat(w)
+        I = ca.SX.eye(3)
+        return I + A*K + B*(K @ K)
+    
+    def vee(R: ca.SX) -> ca.SX:
+        return ca.vertcat(R[2, 1], R[0, 2], R[1, 0])
+    
+    # ---------- Dynamics ----------
+    # attitude (theta)
+    theta_dot = euler_zyx_rate_map(theta) @ omega # (body->global)
 
-    bpc_nom = bpc_acc / m
-    cot_p_c = delta + cot_R_b @ (bpc_nom - b_p_cot)
+    # angular rate (omega)
+    R = euler_zyx_to_R(theta)  # (body->global)
+    R_d = R_raw @ expm_hat(delta_theta_cmd)
+    e_R = 0.5 * vee(R_d.T @ R - R.T @ R_d)
+    tau_d = -p.KR * e_R - p.KW * omega
+    omega_dot = J_inv @ (tau_d - ca.cross(omega, J @ omega))
 
-    # ---------- cot rotational dynamics ----------
-    f_g       = -m * g * e3
-    wrench    = ca.cross(cot_p_c, R.T @ f_g)
-    Jomega    = J @ omega
-    cori      = ca.cross(omega, Jomega)
-    omega_dot = Jinv @ (wrench - cori)
+    # CoT (r_cot, 1st-order)
+    r_cot_dot = tau_inv * (r_cot_cmd - r_cot)
 
-    # ---------- cot position dynamics ----------
-    # a_cot   = (f_t / m) * R @ e3 - g * e3
-    a_cot   = (f_t / m) * R @ e3 - g * e3 - (ca.cross(omega_dot, cot_p_c) + ca.cross(omega, ca.cross(omega, cot_p_c)))
+    # Augmented dynamics
+    u_cmd_dot = u_rate
 
-    f_expl = ca.vertcat(v_cot, a_cot, theta_dot, omega_dot, q_dot)
+    f_expl = ca.vertcat(theta_dot, omega_dot, r_cot_dot, u_cmd_dot)
     model.f_expl_expr = f_expl
     model.f_impl_expr = x_dot - f_expl
 
-    # ---------- constraint expression ----------
-    sin_t, cos_t = ca.sin(th_tilt), ca.cos(th_tilt)
-    sqrt2 = ca.sqrt(2.0)
-    heading_err1 = ca.acos(ca.dot(cot_R_b @ b_e1_15, ca.vertcat( sin_t/sqrt2, -sin_t/sqrt2,  cos_t)))
-    heading_err2 = ca.acos(ca.dot(cot_R_b @ b_e1_25, ca.vertcat( sin_t/sqrt2,  sin_t/sqrt2,  cos_t)))
-    heading_err3 = ca.acos(ca.dot(cot_R_b @ b_e1_35, ca.vertcat(-sin_t/sqrt2,  sin_t/sqrt2,  cos_t)))
-    heading_err4 = ca.acos(ca.dot(cot_R_b @ b_e1_45, ca.vertcat(-sin_t/sqrt2, -sin_t/sqrt2,  cos_t)))
-    heading_errs = ca.vertcat(ca.norm_2(heading_err1), ca.norm_2(heading_err2), ca.norm_2(heading_err3), ca.norm_2(heading_err4))
+    # ---------- Propeller thrust expression ----------
+    dx, dy = r_cot[0], r_cot[1]
+    A = ca.vertcat(ca.horzcat( l+dy,  l+dy, -l+dy, -l+dy),
+                   ca.horzcat(-l-dx,  l-dx,  l-dx, -l-dx),
+                   ca.horzcat( zeta, -zeta,  zeta, -zeta),
+                   ca.horzcat(  1.0,   1.0,   1.0,   1.0))
 
-    b_R_cot = cot_R_b.T
-    pos_err1 = (b_p_15 - b_p_cot) - 0.5*l*( b_R_cot[:, 0] + b_R_cot[:, 1])
-    pos_err2 = (b_p_25 - b_p_cot) - 0.5*l*(-b_R_cot[:, 0] + b_R_cot[:, 1])
-    pos_err3 = (b_p_35 - b_p_cot) - 0.5*l*(-b_R_cot[:, 0] - b_R_cot[:, 1])
-    pos_err4 = (b_p_45 - b_p_cot) - 0.5*l*( b_R_cot[:, 0] - b_R_cot[:, 1])
-    pos_errs = ca.vertcat(ca.norm_2(pos_err1), ca.norm_2(pos_err2), ca.norm_2(pos_err3), ca.norm_2(pos_err4))
-
-    model.con_h_expr = ca.vertcat(pos_errs, heading_errs)
+    w_d = ca.vertcat(tau_d, T_des)
+    F_expr = ca.solve(A, w_d)
+    model.con_h_expr   = F_expr
 
     return model
 
 def build_ocp():
-    from .params import N, DT, ARM_MIN, ARM_MAX, F_MIN, F_MAX, COST_POS_ERR, COST_ANG_ERR, COST_F_THRUST
-
     model = build_model()
 
     ocp = AcadosOcp()
     ocp.model = model
 
     # ---------- horizon ----------
-    ocp.solver_options.N_horizon = N
-    ocp.solver_options.tf        = N * DT
+    ocp.solver_options.N_horizon = p.N
+    ocp.solver_options.tf        = p.N * p.DT
 
     # ---------- costs ----------
-
-    # states & inputs
-    p_cot = model.x[0:3] # position
-    yaw   = model.x[8]   # yaw angle
-    f_t   = model.u[0]   # overall thrust
+    omega           = model.x[3:6]
+    delta_theta_cmd = model.x[8:11]
+    r_cot_cmd       = model.x[11:13]
+    delta_theta_cmd_rate = model.u[0:3]
+    r_cot_cmd_rate       = model.u[3:5]
     
-    model.cost_y_expr   = ca.vertcat(p_cot, yaw, f_t) # 1~k-1 ref = [p_d, theta_d, f_d]
-    model.cost_y_expr_e = ca.vertcat(p_cot, yaw)      # terminal ref = [p_d, theta_d]
-    
-    ocp.cost.W   = np.diag(np.concatenate([COST_POS_ERR, COST_ANG_ERR, COST_F_THRUST,]))
-    ocp.cost.W_e = np.diag(np.concatenate([COST_POS_ERR, COST_ANG_ERR,]))
+    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, r_cot_cmd, delta_theta_cmd_rate, r_cot_cmd_rate) # 1~k-1 ref
+    model.cost_y_expr_e = ca.vertcat(omega, delta_theta_cmd, r_cot_cmd) # terminal(k) ref
 
-    # reference default value
+    ocp.dims.ny   = 13
+    ocp.dims.ny_e = 8
+    
+    ocp.cost.W = np.diag(np.concatenate([p.Q_OMEGA, p.Q_THETA, p.Q_COT, p.R_THETA, p.R_COT]).astype(np.float64))
+    ocp.cost.W_e = np.diag(np.concatenate([p.Q_OMEGA, p.Q_THETA, p.Q_COT]).astype(np.float64))
+
+    ocp.cost.cost_type   = "NONLINEAR_LS"
+    ocp.cost.cost_type_e = "NONLINEAR_LS"
+
+    # cost reference default value
     ocp.cost.yref   = np.zeros((model.cost_y_expr.size()[0],))
     ocp.cost.yref_e = np.zeros((model.cost_y_expr_e.size()[0],))
     ocp.parameter_values = np.zeros((model.p.size()[0],))
     ocp.constraints.x0 = np.zeros(model.x.size()[0])
 
-    ocp.cost.cost_type   = "NONLINEAR_LS"
-    ocp.cost.cost_type_e = "NONLINEAR_LS"
+    # ---------- h_expr constraints ----------
+    ocp.constraints.lh   = p.F_MIN
+    ocp.constraints.uh   = p.F_MAX
+    ocp.dims.nh   = 4
 
-    # ---------- constraints ----------
-    ocp.constraints.lbu   = np.concatenate([[F_MIN], np.tile(ARM_MIN, 4)])
-    ocp.constraints.ubu   = np.concatenate([[F_MAX], np.tile(ARM_MAX, 4)])
-    ocp.constraints.idxbu = np.arange(model.u.size()[0])   # u[0]~u[20] all
+    # ---------- x(augmented-state) constraints ----------
+    idx_r_cot_cmd = np.array([11, 12], dtype=np.int64)
 
-    # ---------- orientation&position constraint ----------
-    nh = model.con_h_expr.size()[0]
-    eps_pos  = [2.0 * 1e-3]*4          # tolerance in [m]
-    eps_head = [4.0 * np.pi/180.0]*4   # tolerance in [rad]
-    ocp.constraints.lh = np.zeros((nh,))
-    ocp.constraints.uh = np.array(eps_pos + eps_head, dtype=float)
+    ocp.constraints.idxbx   = idx_r_cot_cmd
+    ocp.constraints.lbx     = p.COT_MIN
+    ocp.constraints.ubx     = p.COT_MAX
+    ocp.constraints.idxbx_e = idx_r_cot_cmd
+    ocp.constraints.lbx_e   = p.COT_MIN
+    ocp.constraints.ubx_e   = p.COT_MAX
+
+    ocp.dims.nbx            = idx_r_cot_cmd.size
+    ocp.dims.nbx_e          = idx_r_cot_cmd.size
 
     # ---------- solver options ----------
-    ocp.solver_options.qp_solver        = "PARTIAL_CONDENSING_HPIPM" # or "FULL_CONDENSING_HPIPM" "PARTIAL_CONDENSING_HPIPM" "FULL_CONDENSING_QPOASES"
+    ocp.solver_options.qp_solver        = "PARTIAL_CONDENSING_HPIPM" # or "FULL_CONDENSING_HPIPM(5ms)" "PARTIAL_CONDENSING_HPIPM"(3ms) "FULL_CONDENSING_QPOASES(6ms)"
     ocp.solver_options.hessian_approx   = "GAUSS_NEWTON"
     ocp.solver_options.integrator_type  = "ERK"
     ocp.solver_options.nlp_solver_type  = "SQP_RTI"
-    ocp.solver_options.qp_solver_cond_N = N
+    ocp.solver_options.qp_solver_cond_N = p.N
+    ocp.solver_options.qp_solver_iter_max = 100
     ocp.solver_options.sim_method_num_stages = 4
     ocp.solver_options.sim_method_num_steps  = 1
+    # ocp.solver_options.print_level = 4
 
     # codegen dir
     ocp.code_export_directory = "generated"

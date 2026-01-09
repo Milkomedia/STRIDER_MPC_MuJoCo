@@ -26,6 +26,7 @@ struct ControlInput {
 };
 struct ControlOutput {
   Eigen::Vector4d pwm;              // pwm for arm1~4 [0.0 ~ 1.0]
+  Eigen::Vector4d thrust;           // thrust for arm1~4 [N]
   Eigen::Vector4d tilt_rad;         // tilt cmd for arm 1~4 [rad]
   Eigen::Vector4d wrench;           // control wrench by controller [Mx My Mz Fz] in N, N.m
   Eigen::Vector3d d_hat;            // [N.m]
@@ -48,7 +49,8 @@ public:
   ControllerGeom();
   ~ControllerGeom();
 
-  void step(const ControlInput& in, ControlOutput& out);
+  Eigen::Matrix3d position_control(const ControlInput& in);
+  void attitude_control(const Eigen::Matrix3d& R_d, ControlOutput& out);
   void set_mode(const uint8_t mode);
 
 private:
@@ -153,6 +155,7 @@ private:
   
   const double inv_sqrt2 = 0.7071067811865474617150084668537601828575;  // 1/sqrt(2)
   const double sqrt2 = 1.4142135623730951454746218587388284504414;      // sqrt(2)
+  const Eigen::Matrix3d Rx_180 = (Eigen::Matrix3d() << 1, 0, 0, 0, -1, 0, 0, 0, -1).finished();
 };
 
 

@@ -87,9 +87,13 @@ int main() {
     ctrl.set_mode(0);  // 0->conventional / 1->dob / 2->com
 
     // --- parameters ---
-    Eigen::Vector3d bPcot_des(0.0, 0.0, 0.1); // [m]
-    Eigen::Matrix3d cotRb_des = Eigen::Matrix3d::Identity(); // SO3
-    Eigen::Vector3d cotPc_hat = Eigen::Vector3d::Zero(); // [m]
+    Eigen::Vector3d bPcot_des(0.0, 0.0, 0.2); // [m]
+    Eigen::Matrix3d cotRb_des        = Eigen::Matrix3d::Identity(); // SO3
+    Eigen::Vector3d bPc_hat          = Eigen::Vector3d::Zero(); // [m]
+    Eigen::Vector3d delta_theta_opt  = Eigen::Vector3d::Zero();
+    Eigen::Vector2d r_cot_opt        = Eigen::Vector2d::Zero();
+    Eigen::Vector3d delta_theta_rate = Eigen::Vector3d::Zero();
+    Eigen::Vector2d r_cot_rate       = Eigen::Vector2d::Zero();
     bool mpc_in_solving = false;
     uint32_t mpc_key = 1;
     
@@ -121,7 +125,7 @@ int main() {
       std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
       const double elapsed_double = std::chrono::duration<double>(now - t0).count();
 
-      SimStae s;
+      SimState s; // s: z-up
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
         s.qpos_xyz[0]  = d->qpos[0]; s.qpos_xyz[1]  = d->qpos[1]; s.qpos_xyz[2]  = d->qpos[2];
@@ -132,12 +136,13 @@ int main() {
         for (int i = 0; i < 20; ++i) s.arm_q[i] = d->qpos[7 + i];
       }
 
-      // --- calculate body -> cot relative pos/heading ---
+      // --- calculate current body -> cot relative pos ---
       Eigen::Vector3d cur_bPcot;
       FK(s.arm_q, cur_bPcot);
 
-      // --- Feed state to controller (z-up/z-down conversion) ---
-      Eigen::Vector3d cur_pos_des = fig8_point(elapsed_double);
+      // --- Feed state to controller (z-up to z-down conversion) ---
+      // Eigen::Vector3d cur_pos_des = fig8_point(elapsed_double);
+      Eigen::Vector3d cur_pos_des = square4_point(elapsed_double);
       ctrl_input.des_pos << cur_pos_des(0), -cur_pos_des(1), -cur_pos_des(2);
       ctrl_input.des_heading << 1.0, 0.0, 0.0;
       ctrl_input.lin_pos  << s.qpos_xyz[0], -s.qpos_xyz[1], -s.qpos_xyz[2];
@@ -145,14 +150,10 @@ int main() {
       ctrl_input.lin_acc  << s.qacc_lin[0], -s.qacc_lin[1], -s.qacc_lin[2];
       ctrl_input.ang_vel  << s.qvel_ang[0], -s.qvel_ang[1], -s.qvel_ang[2];
       ctrl_input.quat = Eigen::Quaterniond(s.quat_wxyz[0], s.quat_wxyz[1], s.quat_wxyz[2], s.quat_wxyz[3]);
-      for (int i = 0; i < 4; ++i)
-        for (int j = 0; j < 5; ++j)
-          ctrl_input.arm_pos(i, j) = s.arm_q[5*i + j];
+      for (int i=0; i<4; ++i){for (int j=0; j<5; ++j){ctrl_input.arm_pos(i, j) = s.arm_q[5*i + j];}}
 
-      ctrl.step(ctrl_input, ctrl_output);
-
-      cotPc_hat = ctrl_output.bpc_hat; // Save estimated CoM in body frame
-      const double mean_tilt_rad = (ctrl_output.tilt_rad(0) + ctrl_output.tilt_rad(1) + ctrl_output.tilt_rad(2) + ctrl_output.tilt_rad(3))/44.0;
+      // --- calculate geometry controller & MOCE2.0 ---
+      const Eigen::Matrix3d R_raw = ctrl.position_control(ctrl_input);
       
       { // MPC send
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
@@ -164,25 +165,28 @@ int main() {
                 next_mpc_tick += param::MPC_COMPUTE_DT;
                 mpc_key += 1;
 
-                g_mpc_input.pos_d = fig8_traj(elapsed_double);
-                g_mpc_input.yaw_d.setZero();
+                int k = 0; // fill initial state(x)
                 const Eigen::Vector3d rpy = quat_to_RPY(ctrl_input.quat); // [roll, pitch, yaw]
-                int k = 0; int l = 0;
-                g_mpc_input.u_0(l++) = param::M * param::G;
-                g_mpc_input.x_0(k++) = s.qpos_xyz[0]; g_mpc_input.x_0(k++) = s.qpos_xyz[1]; g_mpc_input.x_0(k++) = s.qpos_xyz[2];
-                g_mpc_input.x_0(k++) = s.qvel_lin[0]; g_mpc_input.x_0(k++) = s.qvel_lin[1]; g_mpc_input.x_0(k++) = s.qvel_lin[2];
-                g_mpc_input.x_0(k++) = rpy(0); g_mpc_input.x_0(k++) = rpy(1); g_mpc_input.x_0(k++) = rpy(2);
-                g_mpc_input.x_0(k++) = s.qvel_ang[0]; g_mpc_input.x_0(k++) = s.qvel_ang[1]; g_mpc_input.x_0(k++) = s.qvel_ang[2];
-                for (int i = 0; i < 4; ++i) {
-                  for (int j = 0; j < 5; ++j) {
-                    g_mpc_input.x_0(k++) = s.arm_q[5*i + j];
-                    g_mpc_input.u_0(l++) = s.arm_q[5*i + j];
-                }}
-                g_mpc_input.p << 0.0, 0.0, 0.0,
-                                  1.0, 0.0, 0.0,
-                                  0.0, 1.0, 0.0,
-                                  0.0, 0.0, 1.0,
-                                  mean_tilt_rad, param::L_DIST;
+                g_mpc_input.x_0(k++) = rpy(0); g_mpc_input.x_0(k++) = rpy(1); g_mpc_input.x_0(k++) = rpy(2); // theta(0,1,2)
+                g_mpc_input.x_0(k++) = s.qvel_ang[0]; g_mpc_input.x_0(k++) = s.qvel_ang[1]; g_mpc_input.x_0(k++) = s.qvel_ang[2]; // omega(3,4,5)
+                g_mpc_input.x_0(k++) = cur_bPcot(0); g_mpc_input.x_0(k++) = cur_bPcot(1); // r_cot(6,7)
+                g_mpc_input.x_0(k++) = delta_theta_opt(0); g_mpc_input.x_0(k++) = delta_theta_opt(1); g_mpc_input.x_0(k++) = delta_theta_opt(2); // delta_theta(8,9,10)
+                g_mpc_input.x_0(k++) = cur_bPcot(0); g_mpc_input.x_0(k++) = cur_bPcot(1); // r_cot_cmd(11,12)
+
+                int l = 0; // fill initial control input(u)
+                g_mpc_input.u_0(l++) = delta_theta_rate(0); g_mpc_input.u_0(l++) = delta_theta_rate(1); g_mpc_input.u_0(l++) = delta_theta_rate(2); // delta_theta_cmd_rate(0,1,2)
+                g_mpc_input.u_0(l++) = r_cot_rate(0); g_mpc_input.u_0(l++) = r_cot_rate(1); // r_cot_cmd_rate(3,4)
+
+                int m = 0; // fill initial parameter(p)
+                for (int i=0; i<3; ++i) {for (int j=0; j<3; ++j) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8)
+                g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(9)
+                g_mpc_input.p(m++) = ctrl_output.wrench(3); // F_des(10)
+
+                int n = 0;
+                g_mpc_input.log(n++) = s.qpos_xyz[0]; g_mpc_input.log(n++) = s.qpos_xyz[1]; g_mpc_input.log(n++) = s.qpos_xyz[2]; // pos_cur
+                g_mpc_input.log(n++) = cur_pos_des(0); g_mpc_input.log(n++) = cur_pos_des(1); g_mpc_input.log(n++) = cur_pos_des(2); // pos_des
+                g_mpc_input.log(n++) = ctrl_output.thrust(0); g_mpc_input.log(n++) = ctrl_output.thrust(1); g_mpc_input.log(n++) = ctrl_output.thrust(2); g_mpc_input.log(n++) = ctrl_output.thrust(3); // F1234
+
                 g_mpc_input.debug = true;
                 g_mpc_input.t = now;
                 g_mpc_input.key = mpc_key;
@@ -190,7 +194,6 @@ int main() {
                 mpc_cv.notify_one();
       }}}}}
 
-      Eigen::Vector3d bPcot_mpc;
       { // MPC get
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
         if (g_mpc_output.has) {
@@ -198,18 +201,25 @@ int main() {
             if (g_mpc_output.state == 0) {
               if (now >= g_mpc_output.t + param::MPC_COMPUTE_DT) {
                 // std::printf(" [ctrl]->got\n");
-                double q_mpc[20];
-                for (int i = 0; i < 20; ++i) q_mpc[i] = g_mpc_output.u(i + 1);
-                FK(q_mpc, bPcot_mpc); // update bPcot_des
-                bPcot_des = 0.1*bPcot_mpc + 0.9*bPcot_des; // some delay
+                delta_theta_opt  = g_mpc_output.u_opt.template head<3>();   // [0,1,2]
+                r_cot_opt        = g_mpc_output.u_opt.template tail<2>();   // [3,4]
+                delta_theta_rate = g_mpc_output.u_rate.template head<3>();  // [0,1,2]
+                r_cot_rate       = g_mpc_output.u_rate.template tail<2>();  // [3,4]
+                bPcot_des(0) = 0.95 * bPcot_des(0) + 0.05 * r_cot_opt(0);
+                bPcot_des(1) = 0.95 * bPcot_des(1) + 0.05 * r_cot_opt(1);
                 g_mpc_output.has = false;
               }
               else { next_mpc_tick = now; } // timeout
       }}}}
 
       // --- IK  ---
-      double q_d[20]; // resolve mpc output to q_d
+      double q_d[20]; // resolve r_cot_cmd to q_d
       IK(bPcot_des, cotRb_des, ctrl_output.tilt_rad, param::L_DIST, q_d);
+
+      // SO3 control      
+      const Eigen::Matrix3d R_d = R_raw * expm_hat(-delta_theta_opt);
+      ctrl.attitude_control(R_d, ctrl_output);
+      bPc_hat = ctrl_output.bpc_hat; // Save estimated CoM position @body frame
 
       // ------ (PLANT) ------------------------------------------------------------------------------------
       

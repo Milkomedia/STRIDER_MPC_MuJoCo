@@ -45,9 +45,8 @@ public:
   ~control(void);
   
   void load_config(void);
-  void attitude_control(void);
-  void attitude_control_decoupled_yaw(void);
   void position_control(void);
+  void attitude_control(const Eigen::Matrix3d& R_d);
   void output_fM(double &f, Vector3 &M);
   void output_debug(Vector3 &X);
   void integral_reset();
@@ -60,10 +59,6 @@ private:
 
   fdcl::state_t *state = nullptr; /**< Pointer to the current states */
   fdcl::command_t *command = nullptr; /**< Pointer to the desired states */
-    
-  bool use_decoupled_yaw = true; /**< Whether to use decoupled-yaw controller
-     * or to use regular non-decoupled control for attitude
-     */
 
   Vector3 e1; /**< Direction of the first axis of the fixed frame */
   Vector3 e2; /**< Direction of the second axis of the fixed frame */

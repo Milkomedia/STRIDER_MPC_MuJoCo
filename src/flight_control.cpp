@@ -18,7 +18,7 @@ ControllerGeom::ControllerGeom()
   command_->b1d_ddot.setZero();
 }
 
-void ControllerGeom::step(const ControlInput& in, ControlOutput& out) {
+Eigen::Matrix3d ControllerGeom::position_control(const ControlInput& in) {
   command_->xd = in.des_pos;
   command_->xd_dot.setZero();
   command_->xd_2dot.setZero();
@@ -38,9 +38,16 @@ void ControllerGeom::step(const ControlInput& in, ControlOutput& out) {
     for (int j = 0; j < 5; ++j)
       arm_pos_[i][j] = in.arm_pos(i, j);
 
-  // Flight controller (Geometry control in SE(3))
-  double Fz_geom; Eigen::Vector3d M_geom;
   fdcl_controller.position_control();
+
+  return Rx_180 * command_->Rd * Rx_180; // world z-down & body z-down => world z-up & body z-up
+}
+
+void ControllerGeom::attitude_control(const Eigen::Matrix3d& R_d, ControlOutput& out) {
+  // Flight controller (Geometry control in SE(3))
+  fdcl_controller.attitude_control(Rx_180 * R_d * Rx_180);
+
+  double Fz_geom; Eigen::Vector3d M_geom;
   fdcl_controller.output_fM(Fz_geom, M_geom);
 
   Eigen::Vector3d M_out;
@@ -76,12 +83,13 @@ void ControllerGeom::step(const ControlInput& in, ControlOutput& out) {
   Eigen::Vector4d pwm = Sequential_Allocation(Wrench, bPc);
 
   // copy out
-  out.pwm = pwm;
+  out.pwm      = pwm;
+  out.thrust   = C1_des_;
   out.tilt_rad = C2_des_;
-  out.wrench = Wrench;
-  out.d_hat = d_hat_;
-  out.bpc_hat = bPc;
-  out.tau_zt = tauz_bar_;
+  out.wrench   = Wrench;
+  out.d_hat    = d_hat_;
+  out.bpc_hat  = bPc;
+  out.tau_zt   = tauz_bar_;
 }
 
 Eigen::Vector3d ControllerGeom::DoB_update(const Eigen::Vector3d rpy, const Eigen::Vector3d tau_tilde_star) {

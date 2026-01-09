@@ -9,7 +9,7 @@
   #include <unistd.h>
 #endif
 
-struct SimStae { // use for copy snapshot in thread lock
+struct SimState { // use for copy snapshot in thread lock
   double qpos_xyz[3];
   double quat_wxyz[4];
   double qvel_lin[3];
@@ -18,25 +18,32 @@ struct SimStae { // use for copy snapshot in thread lock
   double arm_q[20];
 };
 
-static inline Eigen::Matrix<double, 3 * param::N_STEPS, 1> fig8_traj(double t0_sec){
-  // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
-  Eigen::Matrix<double, 3*param::N_STEPS, 1> out;
-  out.setZero();
-  
-  for (int k = 0; k < param::N_STEPS; ++k) {
-    const double t = t0_sec + static_cast<double>(k)*param::MPC_MODEL_DT_D;
-    const double s = std::sin(param::FREQ_RAD_S * t);
-    const double c = std::cos(param::FREQ_RAD_S * t);
-    out.template segment<3>(3 * k) << param::TRAJ_AX * s, param::TRAJ_AY * s*c, param::TRAJ_Z;
-  }
-  return out;
-}
-
 static inline Eigen::Vector3d fig8_point(double t_sec){
   // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
   const double s = std::sin(param::FREQ_RAD_S * t_sec);
   const double c = std::cos(param::FREQ_RAD_S * t_sec);
   return Eigen::Vector3d(param::TRAJ_AX * s, param::TRAJ_AY * s*c, param::TRAJ_Z);
+}
+
+static inline Eigen::Vector3d square4_point(double t_sec) {
+  const double T =5.0;
+
+  // Determine which 6-second slot we're in.
+  std::int64_t k = static_cast<std::int64_t>(std::floor(t_sec / T));
+
+  // Safe modulo for (potentially) negative time.
+  int phase = static_cast<int>(k % 4);
+  if (phase < 0) phase += 4;
+
+  double sx = -1.0, sy = -1.0;
+  switch (phase) {
+    case 0: sx = -1.0; sy = -1.0; break;
+    case 1: sx = -1.0; sy =  1.0; break;
+    case 2: sx =  1.0; sy =  1.0; break;
+    default:sx =  1.0; sy = -1.0; break;
+  }
+
+  return Eigen::Vector3d(sx, sy, param::TRAJ_Z);
 }
 
 static inline Eigen::Vector3d quat_to_RPY(const Eigen::Quaterniond q) {
@@ -54,6 +61,20 @@ static inline Eigen::Vector3d quat_to_RPY(const Eigen::Quaterniond q) {
   const double psi = std::atan2(2.0*(wz + xy), 1.0 - 2.0*(yy + zz));
 
   return Eigen::Vector3d(phi, th, psi);
+}
+
+static inline Eigen::Matrix3d expm_hat(const Eigen::Vector3d& w) {
+  constexpr double eps = 1e-12;
+
+  const double th2 = w.dot(w);                 // theta^2
+  const double th  = std::sqrt(th2 + eps);     // theta
+
+  const double A = std::sin(th) / th;
+  const double B = (1.0 - std::cos(th)) / (th2 + eps);
+
+  const Eigen::Matrix3d K = hat(w);
+  const Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
+  return I + A * K + B * (K * K);
 }
 
 static inline void onearm_IK(const Eigen::Vector3d& pos, const Eigen::Vector3d& heading, double out5[5]) {
