@@ -1,6 +1,6 @@
 #include "mj_viewer_helper.hpp"
 #include "mpc_wrapper.hpp"
-#include "flight_control.hpp"
+#include "fdcl_control.hpp"
 #include "utils.hpp"
 
 #include <thread>
@@ -81,18 +81,24 @@ int main() {
 
   // -------------- [ Control thread ] --------------
   std::thread th_ctrl([&]() {
-    FC::ControllerGeom ctrl;
-    FC::ControlInput ctrl_input{};
-    FC::ControlOutput ctrl_output{};
+    // geometry SO3 controller
+    fdcl::state_t   gac_state;
+    fdcl::command_t gac_cmd;
+    fdcl::state_t*   gac_state_ptr = &gac_state;
+    fdcl::command_t* gac_cmd_ptr   = &gac_cmd;
+    fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
     // --- parameters ---
     Eigen::Vector3d bPcot_des(0.0, 0.0, 0.2); // [m]
-    Eigen::Matrix3d cotRb_des        = Eigen::Matrix3d::Identity(); // SO3
-    Eigen::Vector3d bPc_hat          = Eigen::Vector3d::Zero(); // [m]
-    Eigen::Vector3d delta_theta_opt  = Eigen::Vector3d::Zero();
-    Eigen::Vector2d r_cot_opt        = Eigen::Vector2d::Zero();
-    Eigen::Vector3d delta_theta_rate = Eigen::Vector3d::Zero();
-    Eigen::Vector2d r_cot_rate       = Eigen::Vector2d::Zero();
+    Eigen::Matrix3d cotRb_des        = Eigen::Matrix3d::Identity(); // Body tilt
+
+    double tauz_bar = 0.0;
+    Eigen::Vector4d thrust_des_log = Eigen::Vector4d::Zero();
+
+    Eigen::Vector3d delta_theta_opt  = Eigen::Vector3d::Zero(); // MRG optimal state
+    Eigen::Vector2d r_cot_opt        = Eigen::Vector2d::Zero(); // MRG optimal state
+    Eigen::Vector3d delta_theta_rate = Eigen::Vector3d::Zero(); // MRG optimal input
+    Eigen::Vector2d r_cot_rate       = Eigen::Vector2d::Zero(); // MRG optimal input
     bool mpc_in_solving = false;
     uint32_t mpc_key = 1;
     
@@ -124,35 +130,31 @@ int main() {
       std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
       const double elapsed_double = std::chrono::duration<double>(now - t0).count();
 
-      SimState s; // s: z-up
+      // --- mujoco measurement ---
+      SimState s; // mujoco d: z-up -> s: z-down
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
-        s.qpos_xyz[0]  = d->qpos[0]; s.qpos_xyz[1]  = d->qpos[1]; s.qpos_xyz[2]  = d->qpos[2];
-        s.quat_wxyz[0] = d->qpos[3]; s.quat_wxyz[1] = d->qpos[4]; s.quat_wxyz[2] = d->qpos[5]; s.quat_wxyz[3] = d->qpos[6];
-        s.qvel_lin[0]  = d->qvel[0]; s.qvel_lin[1]  = d->qvel[1]; s.qvel_lin[2]  = d->qvel[2];
-        s.qvel_ang[0]  = d->qvel[3]; s.qvel_ang[1]  = d->qvel[4]; s.qvel_ang[2]  = d->qvel[5];
-        s.qacc_lin[0]  = d->qacc[0]; s.qacc_lin[1]  = d->qacc[1]; s.qacc_lin[2]  = d->qacc[2];
-        for (int i = 0; i < 20; ++i) s.arm_q[i] = d->qpos[7 + i];
+        s.pos << d->qpos[0], -d->qpos[1], -d->qpos[2];
+        s.vel << d->qvel[0], -d->qvel[1], -d->qvel[2];
+        s.acc << d->qacc[0], -d->qacc[1], -d->qacc[2];
+        const Eigen::Quaterniond q(d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]);
+        s.R << quat_to_R(q);
+        s.omega << d->qvel[3], -d->qvel[4], -d->qvel[5];
+        for (int i=0; i<4; ++i) { for(int j=0; j<5; ++j){s.arm_q[i][j] = d->qpos[7 + 5*i + j];}}
       }
 
-      // --- calculate current body -> cot relative pos ---
-      Eigen::Vector3d cur_bPcot;
-      FK(s.arm_q, cur_bPcot);
-
-      // --- Feed state to controller (z-up to z-down conversion) ---
-      // Eigen::Vector3d cur_pos_des = fig8_point(elapsed_double);
-      Eigen::Vector3d cur_pos_des = square4_point(elapsed_double);
-      ctrl_input.des_pos << cur_pos_des(0), -cur_pos_des(1), -cur_pos_des(2);
-      ctrl_input.des_heading << 1.0, 0.0, 0.0;
-      ctrl_input.lin_pos  << s.qpos_xyz[0], -s.qpos_xyz[1], -s.qpos_xyz[2];
-      ctrl_input.lin_vel  << s.qvel_lin[0], -s.qvel_lin[1], -s.qvel_lin[2];
-      ctrl_input.lin_acc  << s.qacc_lin[0], -s.qacc_lin[1], -s.qacc_lin[2];
-      ctrl_input.ang_vel  << s.qvel_ang[0], -s.qvel_ang[1], -s.qvel_ang[2];
-      ctrl_input.quat = Eigen::Quaterniond(s.quat_wxyz[0], s.quat_wxyz[1], s.quat_wxyz[2], s.quat_wxyz[3]);
-      for (int i=0; i<4; ++i){for (int j=0; j<5; ++j){ctrl_input.arm_pos(i, j) = s.arm_q[5*i + j];}}
-
-      // --- calculate geometry controller & MOCE2.0 ---
-      const Eigen::Matrix3d R_raw = ctrl.position_control(ctrl_input);
+      // --- position control ---
+      Eigen::Vector3d pos_des = square4_point(elapsed_double); // option: [fig8_point/elapsed_double]
+      gac_cmd.xd = pos_des;
+      gac_cmd.b1d = Eigen::Vector3d(1,0,0);
+      gac_state.x = s.pos;
+      gac_state.v = s.vel;
+      gac_state.a = s.acc;
+      gac_state.R = s.R;
+      gac_state.W = s.omega;
+      geometry_ctrl.position_control();
+      const Eigen::Matrix3d R_raw = Rx_180 * gac_cmd.Rd * Rx_180; // world z-down & body z-down => world z-up & body z-up
+      double T_des = geometry_ctrl.f_total;
       
       { // MPC send
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
@@ -164,10 +166,13 @@ int main() {
                 next_mpc_tick += param::MPC_COMPUTE_DT;
                 mpc_key += 1;
 
+                // --- calculate current body -> cot relative pos ---
+                const Eigen::Vector3d cur_bPcot = FK(s.arm_q);
+
                 int k = 0; // fill initial state(x)
-                const Eigen::Vector3d rpy = quat_to_RPY(ctrl_input.quat); // [roll, pitch, yaw]
+                const Eigen::Vector3d rpy = R_to_rpy(Rx_180 * s.R * Rx_180); // [roll, pitch, yaw]
                 g_mpc_input.x_0(k++) = rpy(0); g_mpc_input.x_0(k++) = rpy(1); g_mpc_input.x_0(k++) = rpy(2); // theta(0,1,2)
-                g_mpc_input.x_0(k++) = s.qvel_ang[0]; g_mpc_input.x_0(k++) = s.qvel_ang[1]; g_mpc_input.x_0(k++) = s.qvel_ang[2]; // omega(3,4,5)
+                g_mpc_input.x_0(k++) = s.omega(0); g_mpc_input.x_0(k++) = -s.omega(1); g_mpc_input.x_0(k++) = -s.omega(2); // omega(3,4,5)
                 g_mpc_input.x_0(k++) = cur_bPcot(0); g_mpc_input.x_0(k++) = cur_bPcot(1); // r_cot(6,7)
                 g_mpc_input.x_0(k++) = delta_theta_opt(0); g_mpc_input.x_0(k++) = delta_theta_opt(1); g_mpc_input.x_0(k++) = delta_theta_opt(2); // delta_theta(8,9,10)
                 g_mpc_input.x_0(k++) = cur_bPcot(0); g_mpc_input.x_0(k++) = cur_bPcot(1); // r_cot_cmd(11,12)
@@ -179,12 +184,12 @@ int main() {
                 int m = 0; // fill initial parameter(p)
                 for (int i=0; i<3; ++i) {for (int j=0; j<3; ++j) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8)
                 g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(9)
-                g_mpc_input.p(m++) = ctrl_output.wrench(3); // F_des(10)
+                g_mpc_input.p(m++) = T_des; // T_des(10)
 
                 int n = 0;
-                g_mpc_input.log(n++) = s.qpos_xyz[0]; g_mpc_input.log(n++) = s.qpos_xyz[1]; g_mpc_input.log(n++) = s.qpos_xyz[2]; // pos_cur
-                g_mpc_input.log(n++) = cur_pos_des(0); g_mpc_input.log(n++) = cur_pos_des(1); g_mpc_input.log(n++) = cur_pos_des(2); // pos_des
-                g_mpc_input.log(n++) = ctrl_output.thrust(0); g_mpc_input.log(n++) = ctrl_output.thrust(1); g_mpc_input.log(n++) = ctrl_output.thrust(2); g_mpc_input.log(n++) = ctrl_output.thrust(3); // F1234
+                g_mpc_input.log(n++) = s.pos(0); g_mpc_input.log(n++) = -s.pos(1); g_mpc_input.log(n++) = s.pos(2); // pos_cur
+                g_mpc_input.log(n++) = pos_des(0); g_mpc_input.log(n++) = -pos_des(1); g_mpc_input.log(n++) = -pos_des(2); // pos_des
+                g_mpc_input.log(n++) = thrust_des_log(0); g_mpc_input.log(n++) = thrust_des_log(1); g_mpc_input.log(n++) = thrust_des_log(2); g_mpc_input.log(n++) = thrust_des_log(3); // F1234
 
                 g_mpc_input.debug = true;
                 g_mpc_input.t = now;
@@ -211,18 +216,33 @@ int main() {
               else { next_mpc_tick = now; } // timeout
       }}}}
 
+      // --- attitude control ---
+      const Eigen::Matrix3d R_d = R_raw * expm_hat(-delta_theta_opt);
+      Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(gac_cmd.Rd); // world z-down & body z-down => world z-up & body z-up
+
+      // --- (Sequential) Control Allocation ---
+      Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero();
+      Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
+      Sequential_Allocation(T_des, tau_des, tauz_bar, s.arm_q, thrust_des, tilt_ang_des);
+      thrust_des_log = thrust_des;
+
+      // std::printf("x:%f, y:%f, z:%f, T:%f \t f1:%f, f2:%f, f3:%f, f4:%f\n", tau_des(0), tau_des(1), tau_des(2), T_des, thrust_des(0), thrust_des(1), thrust_des(2), thrust_des(3));
+
+      // --- thrust to pwm ---
+      Eigen::Vector4d pwm;
+      for (int i = 0; i < 4; ++i) {
+        const double val = std::max(0.0, (thrust_des(i) - param::PWM_B) / param::PWM_A);
+        pwm(i) = std::sqrt(val);
+        pwm(i) = std::clamp(pwm(i), 0.0, 1.0);
+      }
+
       // --- IK  ---
       double q_d[20]; // resolve r_cot_cmd to q_d
-      IK(bPcot_des, cotRb_des, ctrl_output.tilt_rad, param::L_DIST, q_d);
-
-      // SO3 control      
-      const Eigen::Matrix3d R_d = R_raw * expm_hat(-delta_theta_opt);
-      ctrl.attitude_control(R_d, ctrl_output);
+      IK(bPcot_des, cotRb_des, tilt_ang_des, param::L_DIST, q_d);
 
       // ------ (PLANT) ------------------------------------------------------------------------------------
-      
       // --- pwm -> thrust & torque ---
-      const Eigen::Vector4d F = param::PWM_A * ctrl_output.pwm.array().square() + param::PWM_B;
+      const Eigen::Vector4d F = param::PWM_A * pwm.array().square() + param::PWM_B;
       const Eigen::Map<const Eigen::Vector4d> ROTOR_DIR(param::rotor_dir);
       const Eigen::Vector4d Tau = (param::PWM_ZETA * F.array() * ROTOR_DIR.array()).matrix();
 
@@ -236,9 +256,9 @@ int main() {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
 
         // save desired/current positions for GUI
-        g_pos_cur[0]=d->qpos[0]; g_pos_des[0]=cur_pos_des(0);
-        g_pos_cur[1]=d->qpos[1]; g_pos_des[1]=cur_pos_des(1);
-        g_pos_cur[2]=d->qpos[2]; g_pos_des[2]=cur_pos_des(2);
+        g_pos_cur[0]=d->qpos[0]; g_pos_des[0]=pos_des(0);
+        g_pos_cur[1]=d->qpos[1]; g_pos_des[1]=-pos_des(1);
+        g_pos_cur[2]=d->qpos[2]; g_pos_des[2]=-pos_des(2);
 
         // Apply controls to MuJoCo
         Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl) = F.cast<mjtNum>();

@@ -46,11 +46,8 @@ public:
   
   void load_config(void);
   void position_control(void);
-  Eigen::Vector4d attitude_control(const Eigen::Matrix3d& R_d);
+  Vector3 attitude_control(const Eigen::Matrix3d& R_d);
   void integral_reset();
-
-  void copy_integrates(fdcl::integral_error_vec3& eIR_copy, fdcl::integral_error& eI1_copy, fdcl::integral_error& eI2_copy, fdcl::integral_error& eIy_copy, fdcl::integral_error_vec3& eIX_copy);
-  void paste_integrates(const fdcl::integral_error_vec3& eIR_target, const fdcl::integral_error& eI1_target, const fdcl::integral_error& eI2_target, const fdcl::integral_error& eIy_target, const fdcl::integral_error_vec3& eIX_target);
 
 private:
   const double eX_norm_max_ = 3.0; /**< Saturating term of position error */
@@ -68,7 +65,6 @@ private:
   // Attitude gains
   Matrix3 kR = Matrix3::Zero();  /**< Attitude gains */
   Matrix3 kW = Matrix3::Zero();  /**< Angular rate gains */
-  double kyw = 0.0; /**< Yaw angular rate gain for decoupled-yaw controller */
 
   // Position gains
   Matrix3 kX = Matrix3::Zero(); /**< Position gains */
@@ -76,13 +72,8 @@ private:
 
   // Integral gains
   double kIR = 0.0;  /**< Attitude integral gain */
-  double ki = 0.0;  /**< Position integral gain */
   double kI = 0.0;  /**< Attitude integral gain for roll and pitch */
-  double kyI = 0.0;  /**< Attitude integral gain for yaw */
   double kIX = 0.0;  /**< Position integral gains */
-  double c1 = 0.0;  /**< Parameters for decoupled-yaw integral control */
-  double c2 = 0.0;  /**< Parameters for decoupled-yaw integral control */
-  double c3 = 0.0;  /**< Parameters for decoupled-yaw integral control */
 };
 
 }

@@ -197,19 +197,16 @@ target_link_libraries(geometry_ctrl PUBLIC
 # strider core
 # ============================================================
 add_library(strider_core STATIC
-  src/flight_control.cpp
   src/mj_viewer_helper.cpp
   src/mpc_wrapper.cpp
 )
 
 target_include_directories(strider_core PUBLIC
   ${CMAKE_SOURCE_DIR}/include
-  ${CMAKE_SOURCE_DIR}/resources/geometry_ctrl/include
   ${MUJOCO_INCLUDE_DIR}
 )
 
 target_link_libraries(strider_core PUBLIC
-  geometry_ctrl
   mujoco
   ${STRIDER_GLFW_TARGET}
   Threads::Threads
@@ -228,7 +225,10 @@ endif()
 # ============================================================
 if(STRIDER_BUILD_APP)
   add_executable(strider apps/main.cpp)
-  target_link_libraries(strider PRIVATE strider_core)
+  target_link_libraries(strider PRIVATE
+    strider_core
+    geometry_ctrl
+  )
 
   # Runtime search paths
   if(APPLE)

@@ -16,6 +16,16 @@ fdcl::control::control(
 
   // load parameters from the config file
   fdcl::control::load_config();
+
+  command_->xd << 0.0, 0.0, 0.0;
+  command_->xd_dot.setZero();
+  command_->xd_2dot.setZero();
+  command_->xd_3dot.setZero();
+  command_->xd_4dot.setZero();
+
+  command_->b1d << 1.0, 0.0, 0.0;
+  command_->b1d_dot.setZero();
+  command_->b1d_ddot.setZero();
 };
 
 fdcl::control::control(void){
@@ -39,7 +49,7 @@ void fdcl::control::position_control(void){
   if(eX_norm > eX_norm_max_) {eX = eX * (eX_norm_max_ / eX_norm);}
 
   // position integral terms
-  eIX.integrate(c1 * eX + eV, dt); // eq (13)
+  eIX.integrate(eX + eV, dt); // eq (13)
   double sat_sigma = 20.0/kIX;
   saturate(eIX.error, -sat_sigma, sat_sigma);
   eIX.error(0)=0.0;
@@ -95,14 +105,14 @@ void fdcl::control::position_control(void){
   command->wc3_dot = (e3).dot(state->R.transpose()*command->Rd * command->Wd_dot) - e3.dot(hat(state->W)*state->R.transpose()*command->Rd*command->Wd);
 }
 
-Eigen::Vector4d fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
+Vector3 fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
   command->Rd = R_d; // use MRG calculated R_d
 
   Matrix3 RdtR = command->Rd.transpose() * state->R;
   eR = 0.5 * vee(RdtR - RdtR.transpose());
   eW = state->W - state->R.transpose() * command->Rd * command->Wd;
 
-  eIR.integrate(eW + c2 * eR, dt);
+  eIR.integrate(eW + eR, dt);
 
   M = - kR * eR \
       - kW * eW \
@@ -111,14 +121,12 @@ Eigen::Vector4d fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
             state->R.transpose() * command->Rd * command->Wd \
       + state->J * state->R.transpose() * command->Rd * command->Wd_dot;
 
-  Eigen::Vector4d W; // output as z-up convention
-  
-  W(0) = this->M(0);
-  W(1) = -this->M(1);
-  W(2) = -this->M(2);
-  W(3) = this->f_total;
+  Vector3 tau; // output as z-up convention
+  tau(0) =  this->M(0);
+  tau(1) = -this->M(1);
+  tau(2) = -this->M(2);
 
-  return W;
+  return tau;
 }
 
 void fdcl::control::integral_reset(){
@@ -127,22 +135,6 @@ void fdcl::control::integral_reset(){
   eI2.set_zero();
   eIy.set_zero();
   eIX.set_zero();
-}
-
-void fdcl::control::copy_integrates(fdcl::integral_error_vec3& eIR_copy, fdcl::integral_error& eI1_copy, fdcl::integral_error& eI2_copy, fdcl::integral_error& eIy_copy, fdcl::integral_error_vec3& eIX_copy) {
-  eIR_copy = eIR;
-  eI1_copy = eI1;
-  eI2_copy = eI2;
-  eIy_copy = eIy;
-  eIX_copy = eIX;
-}
-
-void fdcl::control::paste_integrates(const fdcl::integral_error_vec3& eIR_target, const fdcl::integral_error& eI1_target, const fdcl::integral_error& eI2_target, const fdcl::integral_error& eIy_target, const fdcl::integral_error_vec3& eIX_target) {
-  eIR = eIR_target;
-  eI1 = eI1_target;
-  eI2 = eI2_target;
-  eIy = eIy_target;
-  eIX = eIX_target;
 }
 
 void fdcl::control::load_config(void){
@@ -165,14 +157,9 @@ void fdcl::control::load_config(void){
   kW(2,2) = param::kW[2];
 
   kIX = param::kIX;
-  ki  = param::ki;
   kIR = param::kIR;
   kI  = param::kI;
-  kyI = param::kyI;
-  c1  = param::c1;
-  c2  = param::c2;
-  c3  = param::c3;
-  
+
   this->m = param::M;
   this->g = param::G;
 }

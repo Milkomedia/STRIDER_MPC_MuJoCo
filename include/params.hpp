@@ -22,9 +22,9 @@ static constexpr double SIM_DT    = 1.0 / SIM_HZ;
 
 // ===== Motor model =====
 static constexpr double PWM_A    = 45.0;  // propeller thrust[N] = A * pwm^2 + B
-static constexpr double PWM_B    = 8.0;
+static constexpr double PWM_B    = 8.0;   // propeller thrust[N] = A * pwm^2 + B
 static constexpr double PWM_ZETA = 0.02;  // propeller torque[Nm] = zeta * thrust
-static constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0};       // propeller torque direction
+static constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torque direction
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
@@ -35,19 +35,14 @@ static constexpr double kW[3] = { 5.0,  5.0,  2.0};  // angular Velocity gain [r
 
 // Integral Parameters
 static constexpr bool use_integral = true;
-static constexpr double kIX = 3.0;
-static constexpr double ki  = 0.0;
-static constexpr double kIR = 0.0;
-static constexpr double kI  = 0.0;
-static constexpr double kyI = 0.0;
-static constexpr double c1  = 1.0;
-static constexpr double c2  = 0.0;
-static constexpr double c3  = 0.0;
+static constexpr double kIR = 0.0;  /**< Attitude integral gain */
+static constexpr double kI  = 0.0;  /**< Attitude integral gain for roll and pitch */
+static constexpr double kIX = 3.0;  /**< Position integral gains */
 
 // ===== UAV Parameters =====
 static constexpr double J[9] = {0.271587936842000, 0.000146304434327, 0.000394623073964,
                                 0.000146304434327, 0.292342580590000, 0.001041120426640,
-                                0.000394623073964, 0.001041120426640, 0.525751256781000};  // Inertia tensor @ cot frame
+                                0.000394623073964, 0.001041120426640, 0.525751256781000};
 static constexpr double M  = 5.09495;
 static constexpr double G  = 9.80665;
 
@@ -56,21 +51,6 @@ static constexpr double SERVO_DELAY_ALPHA = 0.01;  // yaw trimming
 static constexpr double SERVO_DELAY_BETA  = 1.0 - SERVO_DELAY_ALPHA;
 static constexpr double TAUZ_MIN = -5.0; // saturation ref [Nm]
 static constexpr double TAUZ_MAX =  5.0;
-
-// CoM estimate parameters
-static constexpr double COM_CUTOFF_FREQ = 0.5; // [Hz] Butterworth cutoff
-static constexpr double COM_GAMMA = 0.0003;
-
-// yaw wrench conversion
-
-// ===== Trajectory (figure-8 on XY) =====
-static constexpr double TRAJ_Z     = 1.0;               // desired altitude [m]
-static constexpr double TRAJ_AX    = 2.0;               // lobe half-width in X [m]
-static constexpr double TRAJ_FREQ  = 0.15;              // [Hz]
-
-static constexpr double TRAJ_AY    = TRAJ_AX / 2.0;     // lobe half-height in Y [m]
-static constexpr double FREQ_RAD_S = 2.*M_PI*TRAJ_FREQ; // [rad/s]
-static constexpr double PATH_SEC   = 1.0 / TRAJ_FREQ;   // history length [sec]
 
 // ===== DH parameters =====
 static constexpr double B2BASE_THETA[4] = {0.25*M_PI, 0.75*M_PI, -0.75*M_PI, -0.25*M_PI};
@@ -81,17 +61,18 @@ static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 // desired inter-rotor distance
 static constexpr double L_DIST = 0.55; // [m]
 
-// ===== MPC parameters (Must be the same as prams.py) =====
+// ===== MPC parameters  =====
 static constexpr double MPC_COMPUTE_HZ = 100.0; // [Hz]
 static const std::chrono::steady_clock::duration MPC_COMPUTE_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / MPC_COMPUTE_HZ));
 
-constexpr std::size_t N_STEPS  = 30;
+constexpr std::size_t N_STEPS  = 30; // (Must be the same as prams.py)
 constexpr std::size_t NX       = 13;
 constexpr std::size_t NU_AUG   = 5;
 constexpr std::size_t NU       = 5;
 constexpr std::size_t NP       = 11;
 
 // ===== MuJoCo viewer parameters =====
+static constexpr double PATH_SEC = 10.0;   // history length [sec]
 static constexpr float SIZE_DOT  = 0.003f; // size(radious) of dot
 static constexpr float SIZE_PATH = 0.005f; // size(radious) of path
 

@@ -9,41 +9,46 @@
   #include <unistd.h>
 #endif
 
+static inline constexpr double inv_sqrt2 = 0.7071067811865474617150084668537601828575;  // 1/sqrt(2)
+static inline constexpr double sqrt2 = 1.4142135623730951454746218587388284504414;      // sqrt(2)
+static inline const Eigen::Matrix3d Rx_180 = (Eigen::Matrix3d() << 1, 0, 0, 0, -1, 0, 0, 0, -1).finished();
+
 struct SimState { // use for copy snapshot in thread lock
-  double qpos_xyz[3];
-  double quat_wxyz[4];
-  double qvel_lin[3];
-  double qvel_ang[3];
-  double qacc_lin[3];
-  double arm_q[20];
+  Eigen::Vector3d pos = Eigen::Vector3d::Zero();
+  Eigen::Vector3d vel = Eigen::Vector3d::Zero();
+  Eigen::Vector3d acc = Eigen::Vector3d::Zero();
+  Eigen::Matrix3d R   = Eigen::Matrix3d::Identity();
+  Eigen::Vector3d omega = Eigen::Vector3d::Zero();
+  double arm_q[4][5] = {0.0};
 };
 
 static inline Eigen::Vector3d fig8_point(double t_sec){
   // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
-  const double s = std::sin(param::FREQ_RAD_S * t_sec);
-  const double c = std::cos(param::FREQ_RAD_S * t_sec);
-  return Eigen::Vector3d(param::TRAJ_AX * s, param::TRAJ_AY * s*c, param::TRAJ_Z);
+  constexpr double x    = 2.0;               // lobe half-width in X [m]
+  constexpr double y    = x / 2.0;     // lobe half-height in Y [m]
+  constexpr double freq = 2.0 * M_PI * 0.15; // [rad/s]
+
+  const double s = std::sin(freq * t_sec);
+  const double c = std::cos(freq * t_sec);
+  return Eigen::Vector3d(x*s, y*s*c, -1.0);
 }
 
 static inline Eigen::Vector3d square4_point(double t_sec) {
-  const double T =5.0;
+  constexpr double T = 5.0;
 
-  // Determine which 6-second slot we're in.
   std::int64_t k = static_cast<std::int64_t>(std::floor(t_sec / T));
-
-  // Safe modulo for (potentially) negative time.
   int phase = static_cast<int>(k % 4);
   if (phase < 0) phase += 4;
 
-  double sx = -1.0, sy = -1.0;
+  double sx = -1.0, sy = 1.0;
   switch (phase) {
-    case 0: sx = -1.0; sy = -1.0; break;
-    case 1: sx = -1.0; sy =  1.0; break;
-    case 2: sx =  1.0; sy =  1.0; break;
-    default:sx =  1.0; sy = -1.0; break;
+    case 0: sx = -1.0; sy =  1.0; break;
+    case 1: sx = -1.0; sy = -1.0; break;
+    case 2: sx =  1.0; sy = -1.0; break;
+    default:sx =  1.0; sy =  1.0; break;
   }
 
-  return Eigen::Vector3d(sx, sy, param::TRAJ_Z);
+  return Eigen::Vector3d(sx, sy, -1.0);
 }
 
 static inline Eigen::Vector3d quat_to_RPY(const Eigen::Quaterniond q) {
@@ -61,6 +66,49 @@ static inline Eigen::Vector3d quat_to_RPY(const Eigen::Quaterniond q) {
   const double psi = std::atan2(2.0*(wz + xy), 1.0 - 2.0*(yy + zz));
 
   return Eigen::Vector3d(phi, th, psi);
+}
+
+static inline Eigen::Matrix3d quat_to_R(const Eigen::Quaterniond q) {
+  // Quaternion to SO3 map (z-up input → z-down output)
+  const double xx = q.x()*q.x(), yy = q.y()*q.y(), zz = q.z()*q.z();
+  const double xy = q.x()*q.y(), xz = q.x()*q.z(), yz = q.y()*q.z();
+  const double wx = q.w()*q.x(), wy = q.w()*q.y(), wz = q.w()*q.z();
+
+  Eigen::Matrix3d R;
+  R(0,0) =  1.0 - 2.0 * (yy + zz);
+  R(0,1) = -2.0 * (xy - wz);
+  R(0,2) = -2.0 * (xz + wy);
+  R(1,0) = -2.0 * (xy + wz);
+  R(1,1) =  1.0 - 2.0 * (xx + zz);
+  R(1,2) =  2.0 * (yz - wx);
+  R(2,0) = -2.0 * (xz - wy);
+  R(2,1) =  2.0 * (yz + wx);
+  R(2,2) =  1.0 - 2.0 * (xx + yy);
+  return R;
+}
+
+static inline Eigen::Vector3d R_to_rpy(const Eigen::Matrix3d& R) {
+  const double r11 = R(0,0), r21 = R(1,0);
+  const double r31 = R(2,0), r32 = R(2,1), r33 = R(2,2);
+  const double r12 = R(0,1), r22 = R(1,1);
+
+  // th = asin(-r31)
+  double sin_th = -r31;
+  sin_th = std::max(-1.0, std::min(1.0, sin_th));
+  const double th = std::asin(sin_th);
+
+  // If cos(th) is near zero => Choose phi=0
+  const double cth2 = 1.0 - sin_th*sin_th; // = cos(th)^2
+  if (cth2 > 1e-12) {
+    const double phi = std::atan2(r32, r33);
+    const double psi = std::atan2(r21, r11);
+    return Eigen::Vector3d(phi, th, psi);
+  }
+  else {
+    const double phi = 0.0;
+    const double psi = std::atan2(-r12, r22);
+    return Eigen::Vector3d(phi, th, psi);
+  }
 }
 
 static inline Eigen::Matrix3d expm_hat(const Eigen::Vector3d& w) {
@@ -192,18 +240,89 @@ static inline Eigen::Matrix4d compute_DH(double a, double alpha, double d, doubl
     return T;
   }
 
-static inline void FK(const double q[20], Eigen::Vector3d& bpcot) {
-  bpcot = Eigen::Vector3d::Zero();
+static inline Eigen::Vector3d FK(const double q[4][5]) {
+  Eigen::Vector3d bpcot = Eigen::Vector3d::Zero();
   // returns {b}->{cot} position and z-directional heading vector
   for (uint8_t i = 0; i < 4; ++i) {
     Eigen::Matrix4d T_i = Eigen::Matrix4d::Identity();
     T_i *= compute_DH(param::B2BASE_A[i], 0.0, 0.0, param::B2BASE_THETA[i]);
-    for (int j = 0; j < 5; ++j){
-      T_i *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, q[5*i + j]);
-    }
+    for (int j = 0; j < 5; ++j) {T_i *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, q[i][j]);}
     bpcot += T_i.block<3, 1>(0, 3);
   }
   bpcot *= 0.25;
+
+  return bpcot;
+}
+
+static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[4][5], Eigen::Vector4d& C1_des, Eigen::Vector4d& C2_des) {
+  // yaw wrench conversion
+  tauz_bar = param::SERVO_DELAY_ALPHA*tau_d(2) + param::SERVO_DELAY_BETA*tauz_bar;
+  double tauz_r = tau_d(2) - tauz_bar;
+  double tauz_r_sat = std::clamp(tauz_r, param::TAUZ_MIN, param::TAUZ_MAX);
+  double tauz_t = tauz_bar + tauz_r - tauz_r_sat;
+  tauz_t = 0;
+
+  // FK for each arm
+  Eigen::Matrix<double, 3, 4> r_mea;   // calculated position vect of each arm [m]
+  Eigen::Vector4d C2_mea;              // calculated tilted angle [rad]
+  for (uint i = 0; i < 4; ++i) {
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    T *= compute_DH(param::B2BASE_A[i], 0.0, 0.0, param::B2BASE_THETA[i]);
+    for (int j = 0; j < 5; ++j) {T *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, arm_q[i][j]);}
+    r_mea.col(i) = T.block<3,1>(0,3);
+    
+    const Eigen::Vector3d heading = T.block<3,3>(0,0).col(0);
+    C2_mea(i) = std::asin(std::clamp(heading.head<2>().cwiseAbs().sum() * inv_sqrt2, -0.5, 0.5));
+  }
+
+  double s1 = std::sin(C2_mea(0)); double s2 = std::sin(C2_mea(1)); double s3 = std::sin(C2_mea(2)); double s4 = std::sin(C2_mea(3));
+  double c1 = std::cos(C2_mea(0)); double c2 = std::cos(C2_mea(1)); double c3 = std::cos(C2_mea(2)); double c4 = std::cos(C2_mea(3));
+
+  // thrust allocation
+  Eigen::Matrix4d A1;
+  A1(0,0) = inv_sqrt2 * (param::PWM_ZETA + r_mea(2, 0)) * s1  + r_mea(1, 0) * c1;
+  A1(0,1) = inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1)) * s2 + r_mea(1, 1) * c2;
+  A1(0,2) = inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 2)) * s3 + r_mea(1, 2) * c3;
+  A1(0,3) = inv_sqrt2 * (param::PWM_ZETA + r_mea(2, 3)) * s4  + r_mea(1, 3) * c4;
+  A1(1,0) = inv_sqrt2 * (-param::PWM_ZETA + r_mea(2, 0)) * s1 - r_mea(0, 0) * c1;
+  A1(1,1) = inv_sqrt2 * (-param::PWM_ZETA + r_mea(2, 1)) * s2 - r_mea(0, 1) * c2;
+  A1(1,2) = inv_sqrt2 * (param::PWM_ZETA - r_mea(2, 2)) * s3  - r_mea(0, 2) * c3;
+  A1(1,3) = inv_sqrt2 * (param::PWM_ZETA - r_mea(2, 3)) * s4  - r_mea(0, 3) * c4;
+  A1(2,0) =  param::PWM_ZETA * c1;
+  A1(2,1) = -param::PWM_ZETA * c2;
+  A1(2,2) =  param::PWM_ZETA * c3;
+  A1(2,3) = -param::PWM_ZETA * c4;
+  A1(3,0) = c1;
+  A1(3,1) = c2;
+  A1(3,2) = c3;
+  A1(3,3) = c4;
+  Eigen::Vector4d B1(tau_d(0), tau_d(1), tauz_r_sat, thrust_d);
+  Eigen::FullPivLU<Eigen::Matrix4d> lu_1(A1);
+  if (lu_1.isInvertible()) {C1_des = lu_1.solve(B1);}
+  else {C1_des = (A1.transpose()*A1 + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A1.transpose()*B1);}
+
+  // tilt allocation
+  Eigen::Matrix4d A2;
+  A2(0,0) =  inv_sqrt2 * C1_des(0);
+  A2(0,1) =  inv_sqrt2 * C1_des(1);
+  A2(0,2) = -inv_sqrt2 * C1_des(2);
+  A2(0,3) = -inv_sqrt2 * C1_des(3);
+  A2(1,0) = -inv_sqrt2 * C1_des(0);
+  A2(1,1) =  inv_sqrt2 * C1_des(1);
+  A2(1,2) =  inv_sqrt2 * C1_des(2);
+  A2(1,3) = -inv_sqrt2 * C1_des(3);
+  A2(2,0) = inv_sqrt2 * (-r_mea(0, 0) - r_mea(1, 0)) * C1_des(0);
+  A2(2,1) = inv_sqrt2 * ( r_mea(0, 1) - r_mea(1, 1)) * C1_des(1);
+  A2(2,2) = inv_sqrt2 * ( r_mea(0, 2) + r_mea(1, 2)) * C1_des(2);
+  A2(2,3) = inv_sqrt2 * (-r_mea(0, 3) + r_mea(1, 3)) * C1_des(3);
+  A2(3,0) = inv_sqrt2 * (-r_mea(0, 0) - r_mea(1, 0)) * C1_des(0);
+  A2(3,1) = inv_sqrt2 * (-r_mea(0, 1) + r_mea(1, 1)) * C1_des(1);
+  A2(3,2) = inv_sqrt2 * ( r_mea(0, 2) + r_mea(1, 2)) * C1_des(2);
+  A2(3,3) = inv_sqrt2 * ( r_mea(0, 3) - r_mea(1, 3)) * C1_des(3);
+  Eigen::Vector4d B2(0.0, 0.0, tauz_t, 0.0);
+  Eigen::FullPivLU<Eigen::Matrix4d> lu_2(A2);
+  if (lu_2.isInvertible()) {C2_des = lu_2.solve(B2);}
+  else {C2_des = (A2.transpose()*A2 + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A2.transpose()*B2);}
 }
 
 inline std::filesystem::path get_executable_path() {
