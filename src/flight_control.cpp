@@ -45,98 +45,20 @@ Eigen::Matrix3d ControllerGeom::position_control(const ControlInput& in) {
 
 void ControllerGeom::attitude_control(const Eigen::Matrix3d& R_d, ControlOutput& out) {
   // Flight controller (Geometry control in SE(3))
-  fdcl_controller.attitude_control(Rx_180 * R_d * Rx_180);
-
-  double Fz_geom; Eigen::Vector3d M_geom;
-  fdcl_controller.output_fM(Fz_geom, M_geom);
-
-  Eigen::Vector3d M_out;
-  switch (estimator_state_) {
-    case DOB:
-      M_geom -= d_hat_;
-      M_out = M_geom;
-      break;
-
-    case COM_ESTIMATING: {
-      Eigen::Vector3d Pc_hat_dot = CoM_update();
-      Pc_hat_ += Pc_hat_dot * param::CTRL_DT;
-      M_geom -= d_hat_;
-      M_out = M_geom;
-      break;
-    }
-
-    default:
-      M_out = M_geom;
-      break;
-  }
-  
-  // DOB update
-  Eigen::Vector3d RPY = R_to_rpy(state_->R);
-  d_hat_ = DoB_update(RPY, M_geom);
-
-  // FC/DOB/Estimator: z-down | ControlAllocation: z-up
-  Eigen::Vector4d Wrench; Eigen::Vector3d bPc;
-  Wrench << M_out(0), -M_out(1), -M_out(2), Fz_geom;
-  bPc << Pc_hat_(0), -Pc_hat_(1), -Pc_hat_(2);
+  Eigen::Vector4d Wrench = fdcl_controller.attitude_control(Rx_180 * R_d * Rx_180);
 
   // Sequential Allocation: update thrust & tilt angle
-  Eigen::Vector4d pwm = Sequential_Allocation(Wrench, bPc);
+  Eigen::Vector4d pwm = Sequential_Allocation(Wrench);
 
   // copy out
   out.pwm      = pwm;
   out.thrust   = C1_des_;
   out.tilt_rad = C2_des_;
   out.wrench   = Wrench;
-  out.d_hat    = d_hat_;
-  out.bpc_hat  = bPc;
   out.tau_zt   = tauz_bar_;
 }
 
-Eigen::Vector3d ControllerGeom::DoB_update(const Eigen::Vector3d rpy, const Eigen::Vector3d tau_tilde_star) {
-  const double Jxx = state_->J(0,0), Jyy = state_->J(1,1), Jzz = state_->J(2,2);
-
-  // ---- Block A: Q*s^2*J*q  ----
-  step_third_order(dob_.xr, rpy(0), param::CTRL_DT, k1_, k2_, k3_);
-  step_third_order(dob_.xp, rpy(1), param::CTRL_DT, k1_, k2_, k3_);
-  step_third_order(dob_.xy, rpy(2), param::CTRL_DT, k1_, k2_, k3_);
-
-  // tau_hat = J(ii) * (w3_ * x1)
-  const double tau_hat_r = Jxx * (w3_ * dob_.xr.x1);
-  const double tau_hat_p = Jyy * (w3_ * dob_.xp.x1);
-  const double tau_hat_y = Jzz * (w3_ * dob_.xy.x1);
-
-  // ---- Block B: Q * tau_tilde  ----
-  step_third_order(dob_.yr, tau_tilde_star(0), param::CTRL_DT, k1_, k2_, k3_);
-  step_third_order(dob_.yp, tau_tilde_star(1), param::CTRL_DT, k1_, k2_, k3_);
-  step_third_order(dob_.yy, tau_tilde_star(2), param::CTRL_DT, k1_, k2_, k3_);
-
-  // Q*tau_tilde = w3_ * y3
-  const double Qtau_r = w3_ * dob_.yr.x3;
-  const double Qtau_p = w3_ * dob_.yp.x3;
-  const double Qtau_y = w3_ * dob_.yy.x3;
-
-  Eigen::Vector3d d_hat(tau_hat_r - Qtau_r, tau_hat_p - Qtau_p, tau_hat_y - Qtau_y);
-
-  d_hat = (d_hat.cwiseMax(Eigen::Vector3d::Constant(-5.0))).cwiseMin(Eigen::Vector3d::Constant(5.0)); // saturation
-  return d_hat;
-}
-
-Eigen::Vector3d ControllerGeom::CoM_update() {
-  Eigen::Vector3d acc = state_->a - param::G*state_->R.col(2);
-  const double k1 = 3.0 * wc_;
-  const double k2 = 3.0 * w2_;
-  const double k3 =       w3_;
-  
-  step_third_order(com_.ax, acc(0), param::CTRL_DT, k1_, k2_, k3_);
-  step_third_order(com_.ay, acc(1), param::CTRL_DT, k1_, k2_, k3_);
-  step_third_order(com_.az, acc(2), param::CTRL_DT, k1_, k2_, k3_);
-
-  const Eigen::Vector3d Q_acc(w3_*com_.ax.x3, w3_*com_.ay.x3, w3_*com_.az.x3);
-  const Eigen::Vector3d Pc_hat_dot = -param::COM_GAMMA * param::G * (Q_acc.cross(d_hat_));
-  return Pc_hat_dot;
-}
-
-Eigen::Vector4d ControllerGeom::Sequential_Allocation(const Eigen::Vector4d wrench, const Eigen::Vector3d bpc) {
+Eigen::Vector4d ControllerGeom::Sequential_Allocation(const Eigen::Vector4d wrench) {
   // yaw wrench conversion
   tauz_bar_ = param::SERVO_DELAY_ALPHA*wrench(2) + param::SERVO_DELAY_BETA*tauz_bar_;
   double tauz_r = wrench(2) - tauz_bar_;
@@ -161,14 +83,14 @@ Eigen::Vector4d ControllerGeom::Sequential_Allocation(const Eigen::Vector4d wren
 
   // thrust allocation
   Eigen::Matrix4d A1;
-  A1(0,0) = inv_sqrt2 * (param::PWM_ZETA + r_mea(2, 0) - bpc(2)) * s1  +  (r_mea(1, 0) - bpc(1)) * c1;
-  A1(0,1) = inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1) + bpc(2)) * s2 +  (r_mea(1, 1) - bpc(1)) * c2;
-  A1(0,2) = inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 2) + bpc(2)) * s3 +  (r_mea(1, 2) - bpc(1)) * c3;
-  A1(0,3) = inv_sqrt2 * (param::PWM_ZETA + r_mea(2, 3) - bpc(2)) * s4  +  (r_mea(1, 3) - bpc(1)) * c4;
-  A1(1,0) = inv_sqrt2 * (-param::PWM_ZETA + r_mea(2, 0) - bpc(2)) * s1 + (-r_mea(0, 0) + bpc(0)) * c1;
-  A1(1,1) = inv_sqrt2 * (-param::PWM_ZETA + r_mea(2, 1) - bpc(2)) * s2 + (-r_mea(0, 1) + bpc(0)) * c2;
-  A1(1,2) = inv_sqrt2 * (param::PWM_ZETA - r_mea(2, 2) + bpc(2)) * s3  + (-r_mea(0, 2) + bpc(0)) * c3;
-  A1(1,3) = inv_sqrt2 * (param::PWM_ZETA - r_mea(2, 3) + bpc(2)) * s4  + (-r_mea(0, 3) + bpc(0)) * c4;
+  A1(0,0) = inv_sqrt2 * (param::PWM_ZETA + r_mea(2, 0)) * s1  + r_mea(1, 0) * c1;
+  A1(0,1) = inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1)) * s2 + r_mea(1, 1) * c2;
+  A1(0,2) = inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 2)) * s3 + r_mea(1, 2) * c3;
+  A1(0,3) = inv_sqrt2 * (param::PWM_ZETA + r_mea(2, 3)) * s4  + r_mea(1, 3) * c4;
+  A1(1,0) = inv_sqrt2 * (-param::PWM_ZETA + r_mea(2, 0)) * s1 - r_mea(0, 0) * c1;
+  A1(1,1) = inv_sqrt2 * (-param::PWM_ZETA + r_mea(2, 1)) * s2 - r_mea(0, 1) * c2;
+  A1(1,2) = inv_sqrt2 * (param::PWM_ZETA - r_mea(2, 2)) * s3  - r_mea(0, 2) * c3;
+  A1(1,3) = inv_sqrt2 * (param::PWM_ZETA - r_mea(2, 3)) * s4  - r_mea(0, 3) * c4;
   A1(2,0) =  param::PWM_ZETA * c1;
   A1(2,1) = -param::PWM_ZETA * c2;
   A1(2,2) =  param::PWM_ZETA * c3;
@@ -192,10 +114,10 @@ Eigen::Vector4d ControllerGeom::Sequential_Allocation(const Eigen::Vector4d wren
   A2(1,1) =  inv_sqrt2 * C1_des_(1);
   A2(1,2) =  inv_sqrt2 * C1_des_(2);
   A2(1,3) = -inv_sqrt2 * C1_des_(3);
-  A2(2,0) = inv_sqrt2 * (bpc(0) + bpc(1)) * s1  + inv_sqrt2 * (-r_mea(0, 0) - r_mea(1, 0)) * C1_des_(0);
-  A2(2,1) = inv_sqrt2 * (-bpc(0) + bpc(1)) * s2 + inv_sqrt2 * ( r_mea(0, 1) - r_mea(1, 1)) * C1_des_(1);
-  A2(2,2) = inv_sqrt2 * (-bpc(0) -bpc(1)) * s3  + inv_sqrt2 * ( r_mea(0, 2) + r_mea(1, 2)) * C1_des_(2);
-  A2(2,3) = inv_sqrt2 * (bpc(0)  - bpc(1)) * s4 + inv_sqrt2 * (-r_mea(0, 3) + r_mea(1, 3)) * C1_des_(3);
+  A2(2,0) = inv_sqrt2 * (-r_mea(0, 0) - r_mea(1, 0)) * C1_des_(0);
+  A2(2,1) = inv_sqrt2 * ( r_mea(0, 1) - r_mea(1, 1)) * C1_des_(1);
+  A2(2,2) = inv_sqrt2 * ( r_mea(0, 2) + r_mea(1, 2)) * C1_des_(2);
+  A2(2,3) = inv_sqrt2 * (-r_mea(0, 3) + r_mea(1, 3)) * C1_des_(3);
   A2(3,0) = inv_sqrt2 * (-r_mea(0, 0) - r_mea(1, 0)) * C1_des_(0);
   A2(3,1) = inv_sqrt2 * (-r_mea(0, 1) + r_mea(1, 1)) * C1_des_(1);
   A2(3,2) = inv_sqrt2 * ( r_mea(0, 2) + r_mea(1, 2)) * C1_des_(2);
@@ -213,21 +135,6 @@ Eigen::Vector4d ControllerGeom::Sequential_Allocation(const Eigen::Vector4d wren
   }
 
   return pwm;
-}
-
-void ControllerGeom::set_mode(const uint8_t mode) {
-  if      (mode == 1){
-    estimator_state_ = 1;
-    std::cout << "[geometry controller] : DOB" << std::endl;
-  }
-  else if (mode == 2){
-    estimator_state_ = 2;
-    std::cout << "[geometry controller] : CoM" << std::endl;
-  }
-  else {
-    estimator_state_ = 0;
-    std::cout << "[geometry controller] : Conventional" << std::endl;
-  }
 }
 
 ControllerGeom::~ControllerGeom() {

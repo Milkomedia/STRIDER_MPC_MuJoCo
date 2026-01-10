@@ -46,9 +46,7 @@ public:
   
   void load_config(void);
   void position_control(void);
-  void attitude_control(const Eigen::Matrix3d& R_d);
-  void output_fM(double &f, Vector3 &M);
-  void output_debug(Vector3 &X);
+  Eigen::Vector4d attitude_control(const Eigen::Matrix3d& R_d);
   void integral_reset();
 
   void copy_integrates(fdcl::integral_error_vec3& eIR_copy, fdcl::integral_error& eI1_copy, fdcl::integral_error& eI2_copy, fdcl::integral_error& eIy_copy, fdcl::integral_error_vec3& eIX_copy);

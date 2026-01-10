@@ -84,7 +84,6 @@ int main() {
     FC::ControllerGeom ctrl;
     FC::ControlInput ctrl_input{};
     FC::ControlOutput ctrl_output{};
-    ctrl.set_mode(0);  // 0->conventional / 1->dob / 2->com
 
     // --- parameters ---
     Eigen::Vector3d bPcot_des(0.0, 0.0, 0.2); // [m]
@@ -219,7 +218,6 @@ int main() {
       // SO3 control      
       const Eigen::Matrix3d R_d = R_raw * expm_hat(-delta_theta_opt);
       ctrl.attitude_control(R_d, ctrl_output);
-      bPc_hat = ctrl_output.bpc_hat; // Save estimated CoM position @body frame
 
       // ------ (PLANT) ------------------------------------------------------------------------------------
       

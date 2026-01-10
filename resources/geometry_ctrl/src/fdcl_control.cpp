@@ -95,69 +95,7 @@ void fdcl::control::position_control(void){
   command->wc3_dot = (e3).dot(state->R.transpose()*command->Rd * command->Wd_dot) - e3.dot(hat(state->W)*state->R.transpose()*command->Rd*command->Wd);
 }
 
-// void fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
-//   // attitude_control_decoupled_yaw
-//   command->Rd = R_d;
-
-//   b1 = state->R * e1;
-//   b2 = state->R * e2;
-//   b3 = state->R * e3;
-
-//   double ky = kR(2, 2);
-//   double kwy = kW(2, 2);
-
-//   // roll/pitch angular velocity vector
-//   Vector3 W_12 = state->W(0) * b1 + state->W(1) * b2;
-//   b3_dot = hat(W_12) * b3; // eq (26)
-
-//   Vector3 W_12d = hat(command->b3d) * command->b3d_dot;
-//   Vector3 W_12d_dot = hat(command->b3d) * command->b3d_ddot;
-
-//   Vector3 eb = hat(command->b3d) * b3;           // eq (27)
-//   Vector3 ew = W_12 + hat(b3) * hat(b3) * W_12d; // eq (28)
-
-//   // yaw
-//   double ey = -b2.dot(command->b1c);
-//   double ewy = state->W(2) - command->wc3;
-
-//   // attitude integral terms
-//   Vector3 eI = ew + c2 * eb;
-
-//   eI1.integrate(eI.dot(b1), dt); // b1 axis - eq (29)
-//   eI2.integrate(eI.dot(b2), dt); // b2 axis - eq (30)
-//   eIy.integrate(ewy + c3 * ey, dt);
-
-//   // control moment for the roll/pitch dynamics - eq (31)
-//   Vector3 tau;
-//   tau = -kR(0, 0) * eb \
-//         - kW(0, 0) * ew \
-//         - state->J(0, 0) * b3.transpose() * W_12d * b3_dot \
-//         - state->J(0, 0) * hat(b3) * hat(b3) * W_12d_dot;
-
-//   tau += -kI * eI1.error * b1 - kI * eI2.error * b2;
-
-//   double M1, M2, M3;
-
-//   // control moment around b1 axis - roll - eq (24)
-//   M1 = b1.transpose() * tau + state->J(2, 2) * state->W(2) * state->W(1);
-
-//   // control moment around b2 axis - pitch - eq (24)
-//   M2 = b2.transpose() * tau - state->J(2, 2) * state->W(2) * state->W(0);
-
-//   // control moment around b3 axis - yaw - eq (52)
-//   M3 = -ky * ey - kwy * ewy + state->J(2, 2) * command->wc3_dot;
-//   M3 += -kyI * eIy.error;
-
-//   M << M1, M2, M3;
-
-//   // for saving:
-//   Matrix3 RdtR = command->Rd.transpose() * state->R;
-//   eR = 0.5 * vee(RdtR - RdtR.transpose());
-//   eIR.error << eI1.error, eI2.error, eIy.error;
-//   eW = state->W - state->R.transpose() * command->Rd * command->Wd;
-// }
-
-void fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
+Eigen::Vector4d fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
   command->Rd = R_d; // use MRG calculated R_d
 
   Matrix3 RdtR = command->Rd.transpose() * state->R;
@@ -172,16 +110,15 @@ void fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
       + hat(state->R.transpose() * command->Rd * command->Wd) * state->J * \
             state->R.transpose() * command->Rd * command->Wd \
       + state->J * state->R.transpose() * command->Rd * command->Wd_dot;
-}
 
-void fdcl::control::output_fM(double &f, Vector3 &M){
-  f = this->f_total;
-  M = this->M;
-}
+  Eigen::Vector4d W; // output as z-up convention
+  
+  W(0) = this->M(0);
+  W(1) = -this->M(1);
+  W(2) = -this->M(2);
+  W(3) = this->f_total;
 
-void fdcl::control::output_debug(Vector3 &X){
-  X = eIX.error;
-  // X = eV;
+  return W;
 }
 
 void fdcl::control::integral_reset(){
