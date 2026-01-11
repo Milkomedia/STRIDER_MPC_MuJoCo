@@ -184,26 +184,24 @@ static inline void onearm_IK(const Eigen::Vector3d& pos, const Eigen::Vector3d& 
   out5[4] = th5;
 }
 
-static inline void IK(const Eigen::Vector3d& bPcot, const Eigen::Matrix3d& cotRb, const Eigen::Vector4d& th_tvc, const double l, double q[20]) {
-  std::array<Eigen::Vector3d,4> bodyParm;
-  const Eigen::Vector3d e1 = cotRb.col(0);
-  const Eigen::Vector3d e2 = cotRb.col(1);
-  bodyParm[0] = bPcot + (0.5 * l) * ( e1 + e2);
-  bodyParm[1] = bPcot + (0.5 * l) * (-e1 + e2);
-  bodyParm[2] = bPcot + (0.5 * l) * (-e1 - e2);
-  bodyParm[3] = bPcot + (0.5 * l) * ( e1 - e2);
-
-  std::array<Eigen::Vector3d,4> bodyE3arm;
-  const Eigen::Matrix3d bRcot = cotRb.transpose();
+static inline void IK(const Eigen::Vector3d& bPcot, const Eigen::Matrix3d& bRcot, const Eigen::Vector4d& th_tvc, const double l, double q[20]) {
+  std::array<Eigen::Vector3d, 4> bodyParm;
+  const Eigen::Vector3d e1 = bRcot.col(0);
+  const Eigen::Vector3d e2 = bRcot.col(1);
+  bodyParm[0] = bPcot + (0.5 * l) * ( e1 - e2);
+  bodyParm[1] = bPcot + (0.5 * l) * (-e1 - e2);
+  bodyParm[2] = bPcot + (0.5 * l) * (-e1 + e2);
+  bodyParm[3] = bPcot + (0.5 * l) * ( e1 + e2);
+  std::array<Eigen::Vector3d, 4> bodyE3arm;
   const double s1 = std::sin(th_tvc(0)); const double c1 = std::cos(th_tvc(0));
   const double s2 = std::sin(th_tvc(1)); const double c2 = std::cos(th_tvc(1));
   const double s3 = std::sin(th_tvc(2)); const double c3 = std::cos(th_tvc(2));
   const double s4 = std::sin(th_tvc(3)); const double c4 = std::cos(th_tvc(3));
-  bodyE3arm[0] = bRcot * Eigen::Vector3d( s1*M_SQRT1_2, -s1*M_SQRT1_2,  c1);
-  bodyE3arm[1] = bRcot * Eigen::Vector3d( s2*M_SQRT1_2,  s2*M_SQRT1_2,  c2);
-  bodyE3arm[2] = bRcot * Eigen::Vector3d(-s3*M_SQRT1_2,  s3*M_SQRT1_2,  c3);
-  bodyE3arm[3] = bRcot * Eigen::Vector3d(-s4*M_SQRT1_2, -s4*M_SQRT1_2,  c4);
-
+  bodyE3arm[0] = bRcot * Eigen::Vector3d( s1*M_SQRT1_2,  s1*M_SQRT1_2, -c1);
+  bodyE3arm[1] = bRcot * Eigen::Vector3d( s2*M_SQRT1_2, -s2*M_SQRT1_2, -c2);
+  bodyE3arm[2] = bRcot * Eigen::Vector3d(-s3*M_SQRT1_2, -s3*M_SQRT1_2, -c3);
+  bodyE3arm[3] = bRcot * Eigen::Vector3d(-s4*M_SQRT1_2,  s4*M_SQRT1_2, -c4);
+  
   for (uint8_t i = 0; i < 4; ++i) {
     const double s = std::sin(param::B2BASE_THETA[i]);
     const double c = std::cos(param::B2BASE_THETA[i]);
@@ -214,13 +212,13 @@ static inline void IK(const Eigen::Vector3d& bPcot, const Eigen::Matrix3d& cotRb
     const double ezx = bodyE3arm[i].x();
     const double ezy = bodyE3arm[i].y();
 
-    const double x_base =  c * px + s * py - a;
-    const double y_base = -s * px + c * py;
-    const double ex_base =  c * ezx + s * ezy;
-    const double ey_base = -s * ezx + c * ezy;
+    const double x_base =  c * px  + s * py - a;
+    const double y_base =  s * px  - c * py;
+    const double ex_base = c * ezx + s * ezy;
+    const double ey_base = s * ezx - c * ezy;
 
-    Eigen::Vector3d baseParm (x_base,  y_base,  bodyParm[i].z());
-    Eigen::Vector3d baseE3arm(ex_base, ey_base, bodyE3arm[i].z());
+    Eigen::Vector3d baseParm(x_base, y_base, -bodyParm[i].z());
+    Eigen::Vector3d baseE3arm(ex_base, ey_base, -bodyE3arm[i].z());
 
     onearm_IK(baseParm, baseE3arm, &q[5 * i]);
   }
@@ -241,11 +239,11 @@ static inline Eigen::Matrix4d compute_DH(double a, double alpha, double d, doubl
   }
 
 static inline Eigen::Vector3d FK(const double q[4][5]) {
-  Eigen::Vector3d bpcot = Eigen::Vector3d::Zero();
   // returns {b}->{cot} position and z-directional heading vector
+  Eigen::Vector3d bpcot = Eigen::Vector3d::Zero();
   for (uint8_t i = 0; i < 4; ++i) {
     Eigen::Matrix4d T_i = Eigen::Matrix4d::Identity();
-    T_i *= compute_DH(param::B2BASE_A[i], 0.0, 0.0, param::B2BASE_THETA[i]);
+    T_i *= compute_DH(param::B2BASE_A[i], param::B2BASE_ALPHA[i], 0.0, param::B2BASE_THETA[i]);
     for (int j = 0; j < 5; ++j) {T_i *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, q[i][j]);}
     bpcot += T_i.block<3, 1>(0, 3);
   }
@@ -260,14 +258,13 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   double tauz_r = tau_d(2) - tauz_bar;
   double tauz_r_sat = std::clamp(tauz_r, param::TAUZ_MIN, param::TAUZ_MAX);
   double tauz_t = tauz_bar + tauz_r - tauz_r_sat;
-  tauz_t = 0;
 
   // FK for each arm
   Eigen::Matrix<double, 3, 4> r_mea;   // calculated position vect of each arm [m]
   Eigen::Vector4d C2_mea;              // calculated tilted angle [rad]
   for (uint i = 0; i < 4; ++i) {
     Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-    T *= compute_DH(param::B2BASE_A[i], 0.0, 0.0, param::B2BASE_THETA[i]);
+    T *= compute_DH(param::B2BASE_A[i], param::B2BASE_ALPHA[i], 0.0, param::B2BASE_THETA[i]);
     for (int j = 0; j < 5; ++j) {T *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, arm_q[i][j]);}
     r_mea.col(i) = T.block<3,1>(0,3);
     
@@ -280,22 +277,22 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
 
   // thrust allocation
   Eigen::Matrix4d A1;
-  A1(0,0) = inv_sqrt2 * (param::PWM_ZETA + r_mea(2, 0)) * s1  + r_mea(1, 0) * c1;
-  A1(0,1) = inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1)) * s2 + r_mea(1, 1) * c2;
-  A1(0,2) = inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 2)) * s3 + r_mea(1, 2) * c3;
-  A1(0,3) = inv_sqrt2 * (param::PWM_ZETA + r_mea(2, 3)) * s4  + r_mea(1, 3) * c4;
-  A1(1,0) = inv_sqrt2 * (-param::PWM_ZETA + r_mea(2, 0)) * s1 - r_mea(0, 0) * c1;
-  A1(1,1) = inv_sqrt2 * (-param::PWM_ZETA + r_mea(2, 1)) * s2 - r_mea(0, 1) * c2;
-  A1(1,2) = inv_sqrt2 * (param::PWM_ZETA - r_mea(2, 2)) * s3  - r_mea(0, 2) * c3;
-  A1(1,3) = inv_sqrt2 * (param::PWM_ZETA - r_mea(2, 3)) * s4  - r_mea(0, 3) * c4;
-  A1(2,0) =  param::PWM_ZETA * c1;
-  A1(2,1) = -param::PWM_ZETA * c2;
-  A1(2,2) =  param::PWM_ZETA * c3;
-  A1(2,3) = -param::PWM_ZETA * c4;
-  A1(3,0) = c1;
-  A1(3,1) = c2;
-  A1(3,2) = c3;
-  A1(3,3) = c4;
+  A1(0,0) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 0)) * s1 - r_mea(1, 0) * c1;
+  A1(0,1) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1)) * s2 - r_mea(1, 1) * c2;
+  A1(0,2) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 2)) * s3 - r_mea(1, 2) * c3;
+  A1(0,3) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 3)) * s4 - r_mea(1, 3) * c4;
+  A1(1,0) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 0)) * s1 + r_mea(0, 0) * c1;
+  A1(1,1) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1)) * s2 + r_mea(0, 1) * c2;
+  A1(1,2) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 2)) * s3 + r_mea(0, 2) * c3;
+  A1(1,3) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 3)) * s4 + r_mea(0, 3) * c4;
+  A1(2,0) = -param::PWM_ZETA * c1;
+  A1(2,1) =  param::PWM_ZETA * c2;
+  A1(2,2) = -param::PWM_ZETA * c3;
+  A1(2,3) =  param::PWM_ZETA * c4;
+  A1(3,0) = -c1;
+  A1(3,1) = -c2;
+  A1(3,2) = -c3;
+  A1(3,3) = -c4;
   Eigen::Vector4d B1(tau_d(0), tau_d(1), tauz_r_sat, thrust_d);
   Eigen::FullPivLU<Eigen::Matrix4d> lu_1(A1);
   if (lu_1.isInvertible()) {C1_des = lu_1.solve(B1);}
@@ -307,18 +304,18 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   A2(0,1) =  inv_sqrt2 * C1_des(1);
   A2(0,2) = -inv_sqrt2 * C1_des(2);
   A2(0,3) = -inv_sqrt2 * C1_des(3);
-  A2(1,0) = -inv_sqrt2 * C1_des(0);
-  A2(1,1) =  inv_sqrt2 * C1_des(1);
-  A2(1,2) =  inv_sqrt2 * C1_des(2);
-  A2(1,3) = -inv_sqrt2 * C1_des(3);
-  A2(2,0) = inv_sqrt2 * (-r_mea(0, 0) - r_mea(1, 0)) * C1_des(0);
-  A2(2,1) = inv_sqrt2 * ( r_mea(0, 1) - r_mea(1, 1)) * C1_des(1);
-  A2(2,2) = inv_sqrt2 * ( r_mea(0, 2) + r_mea(1, 2)) * C1_des(2);
-  A2(2,3) = inv_sqrt2 * (-r_mea(0, 3) + r_mea(1, 3)) * C1_des(3);
-  A2(3,0) = inv_sqrt2 * (-r_mea(0, 0) - r_mea(1, 0)) * C1_des(0);
-  A2(3,1) = inv_sqrt2 * (-r_mea(0, 1) + r_mea(1, 1)) * C1_des(1);
-  A2(3,2) = inv_sqrt2 * ( r_mea(0, 2) + r_mea(1, 2)) * C1_des(2);
-  A2(3,3) = inv_sqrt2 * ( r_mea(0, 3) - r_mea(1, 3)) * C1_des(3);
+  A2(1,0) =  inv_sqrt2 * C1_des(0);
+  A2(1,1) = -inv_sqrt2 * C1_des(1);
+  A2(1,2) = -inv_sqrt2 * C1_des(2);
+  A2(1,3) =  inv_sqrt2 * C1_des(3);
+  A2(2,0) = inv_sqrt2 * ( r_mea(0, 0) - r_mea(1, 0)) * C1_des(0);
+  A2(2,1) = inv_sqrt2 * (-r_mea(0, 1) - r_mea(1, 1)) * C1_des(1);
+  A2(2,2) = inv_sqrt2 * (-r_mea(0, 2) + r_mea(1, 2)) * C1_des(2);
+  A2(2,3) = inv_sqrt2 * ( r_mea(0, 3) + r_mea(1, 3)) * C1_des(3);
+  A2(3,0) = inv_sqrt2 * ( r_mea(0, 0) - r_mea(1, 0)) * C1_des(0);
+  A2(3,1) = inv_sqrt2 * ( r_mea(0, 1) + r_mea(1, 1)) * C1_des(1);
+  A2(3,2) = inv_sqrt2 * (-r_mea(0, 2) + r_mea(1, 2)) * C1_des(2);
+  A2(3,3) = inv_sqrt2 * (-r_mea(0, 3) - r_mea(1, 3)) * C1_des(3);
   Eigen::Vector4d B2(0.0, 0.0, tauz_t, 0.0);
   Eigen::FullPivLU<Eigen::Matrix4d> lu_2(A2);
   if (lu_2.isInvertible()) {C2_des = lu_2.solve(B2);}

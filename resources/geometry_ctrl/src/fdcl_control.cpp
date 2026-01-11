@@ -121,12 +121,7 @@ Vector3 fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
             state->R.transpose() * command->Rd * command->Wd \
       + state->J * state->R.transpose() * command->Rd * command->Wd_dot;
 
-  Vector3 tau; // output as z-up convention
-  tau(0) =  this->M(0);
-  tau(1) = -this->M(1);
-  tau(2) = -this->M(2);
-
-  return tau;
+  return this->M;
 }
 
 void fdcl::control::integral_reset(){

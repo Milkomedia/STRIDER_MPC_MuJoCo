@@ -47,7 +47,6 @@ def _get(frame: DebugFrame, key: str) -> Optional[np.ndarray]:
 # Math utils (NumPy)
 # ----------------------------
 def euler_zyx_to_R_np(theta: np.ndarray) -> np.ndarray:
-  # English comments only.
   phi, th, psi = float(theta[0]), float(theta[1]), float(theta[2])
 
   cphi, sphi = np.cos(phi), np.sin(phi)
@@ -67,7 +66,6 @@ def euler_zyx_to_R_np(theta: np.ndarray) -> np.ndarray:
   return Rz @ Ry @ Rx
 
 def R_to_euler_zyx_np(R: np.ndarray) -> np.ndarray:
-  # English comments only.
   R = np.asarray(R, dtype=np.float64).reshape(3, 3)
 
   s = -float(R[2, 0])
@@ -85,7 +83,6 @@ def R_to_euler_zyx_np(R: np.ndarray) -> np.ndarray:
   return np.array([roll, pitch, yaw], dtype=np.float64)
 
 def hat_np(w: np.ndarray) -> np.ndarray:
-  # English comments only.
   wx, wy, wz = float(w[0]), float(w[1]), float(w[2])
   return np.array([
     [0.0, -wz,  wy],
@@ -94,7 +91,6 @@ def hat_np(w: np.ndarray) -> np.ndarray:
   ], dtype=np.float64)
 
 def expm_hat_np(w: np.ndarray) -> np.ndarray:
-  # English comments only.
   w = np.asarray(w, dtype=np.float64).reshape(3,)
   th2 = float(w @ w)
   th = np.sqrt(th2 + 1e-12)
@@ -107,7 +103,6 @@ def expm_hat_np(w: np.ndarray) -> np.ndarray:
   return I + A * K + B * (K @ K)
 
 def vee_np(M: np.ndarray) -> np.ndarray:
-  # English comments only.
   return np.array([float(M[2, 1]), float(M[0, 2]), float(M[1, 0])], dtype=np.float64)
 
 # ----------------------------
@@ -222,9 +217,9 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
     tau_d = tau_d_all[k, :]
 
     A = np.array([
-      [ l + dy,  l + dy, -l + dy, -l + dy],
-      [-l - dx,  l - dx,  l - dx, -l - dx],
-      [   zeta,   -zeta,    zeta,   -zeta],
+      [ l - dy,  l - dy, -l - dy, -l - dy],
+      [ l + dx, -l + dx, -l + dx,  l + dx],
+      [  -zeta,    zeta,   -zeta,    zeta],
       [    1.0,     1.0,     1.0,     1.0],
     ], dtype=np.float64)
     w_d = np.array([tau_d[0], tau_d[1], tau_d[2], T_des], dtype=np.float64)
@@ -303,7 +298,7 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
   F0 = np.full((4,), np.nan, dtype=np.float64)
 
   if T >= 1:
-    rpy_act0[:] = -theta_plot[0, :]
+    rpy_act0[:] = theta_plot[0, :]
     rpy_raw0[:] = theta_ref_plot[0, :]
     rpy_des0[:] = theta_d_plot[0, :]
     cot0[:] = r_cot[0, :]
@@ -330,14 +325,14 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
   l0 = float(l_all[0]) if l_all.size >= 1 else float("nan")
   if np.isfinite(l0) and np.isfinite(zeta) and np.isfinite(F0).all():
     A_th = np.array([
-      [ l0,   l0,  -l0,  -l0],
-      [-l0,   l0,   l0,  -l0],
-      [ zeta, -zeta, zeta, -zeta],
+      [  l0,   l0,  -l0,  -l0],
+      [  l0,  -l0,  -l0,   l0],
+      [-zeta, zeta, -zeta, zeta],
       [ 1.0,  1.0,  1.0,  1.0],
     ], dtype=np.float64)
 
     w = A_th @ F0.reshape(4,)
-    tau_thrust0_xy[:] = -w[0:2]
+    tau_thrust0_xy[:] = w[0:2]
 
     Ttot = float(np.sum(F0))
     if np.isfinite(cot0).all() and np.isfinite(Ttot):
@@ -588,7 +583,6 @@ class DebugViewerMainWindow(QMainWindow):
       curve_specs: List[Tuple[Optional[str], Any]],
       y_range: Optional[Tuple[float, float]] = None,
     ):
-      # English comments only.
       w = pg.PlotWidget()
       w.setBackground("w")
       w.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -781,7 +775,6 @@ class DebugViewerMainWindow(QMainWindow):
     tau_cot_xy: np.ndarray,
     tau_total_xy: np.ndarray,
   ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    # English comments only.
     idx = self._tr_count % self._tr_hist_size
 
     t_now = time.perf_counter() - self._tr_t0
@@ -827,7 +820,6 @@ class DebugViewerMainWindow(QMainWindow):
     return tt, pc, pd, ra, rr, rd, FF, cc, tth, tco, tto
 
   def _update_3d_traj(self, cur_pts: np.ndarray, des_pts: np.ndarray) -> None:
-    # English comments only.
     cur_pts = np.asarray(cur_pts, dtype=np.float64).reshape(-1, 3)
     des_pts = np.asarray(des_pts, dtype=np.float64).reshape(-1, 3)
 

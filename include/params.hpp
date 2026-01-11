@@ -53,7 +53,8 @@ static constexpr double TAUZ_MIN = -5.0; // saturation ref [Nm]
 static constexpr double TAUZ_MAX =  5.0;
 
 // ===== DH parameters =====
-static constexpr double B2BASE_THETA[4] = {0.25*M_PI, 0.75*M_PI, -0.75*M_PI, -0.25*M_PI};
+static constexpr double B2BASE_THETA[4] = {-0.25*M_PI, -0.75*M_PI, 0.75*M_PI, 0.25*M_PI};
+static constexpr double B2BASE_ALPHA[4] = {M_PI, M_PI, M_PI, M_PI};
 static constexpr double B2BASE_A[4]     = {0.120, 0.120, 0.120, 0.120};
 static constexpr double DH_ARM_A[5]     = {0.1395, 0.115, 0.110, 0.024, 0.068};
 static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};

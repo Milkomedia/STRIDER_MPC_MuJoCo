@@ -42,7 +42,7 @@ Q_THETA = 1000. * np.array([1.0, 1.0, 1.0])
 Q_COT   = 0.001  * np.array([1.0, 1.0])
 
 # state cost
-Q_OMEGA = 10.  * np.array([1.0, 1.0, 1.0])
+Q_OMEGA = 1.  * np.array([1.0, 1.0, 1.0])
 
 # rate cost
 R_THETA = 1.   * np.array([1.0, 1.0, 1.0])

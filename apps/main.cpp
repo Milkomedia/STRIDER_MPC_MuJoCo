@@ -81,28 +81,26 @@ int main() {
 
   // -------------- [ Control thread ] --------------
   std::thread th_ctrl([&]() {
-    // geometry SO3 controller
+    // --- geometry SO3 controller definition ---
     fdcl::state_t   gac_state;
     fdcl::command_t gac_cmd;
     fdcl::state_t*   gac_state_ptr = &gac_state;
     fdcl::command_t* gac_cmd_ptr   = &gac_cmd;
     fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
-    // --- parameters ---
-    Eigen::Vector3d bPcot_des(0.0, 0.0, 0.2); // [m]
-    Eigen::Matrix3d cotRb_des        = Eigen::Matrix3d::Identity(); // Body tilt
-
-    double tauz_bar = 0.0;
-    Eigen::Vector4d thrust_des_log = Eigen::Vector4d::Zero();
-
+    // --- parameter definition ---
+    Eigen::Vector3d bPcot_des(0.0, 0.0, -0.2); // [m]
+    Eigen::Matrix3d bRcot_des        = Eigen::Matrix3d::Identity(); // Body tilt
+    double tauz_bar                  = 0.0;                     // Sequential control allocation
     Eigen::Vector3d delta_theta_opt  = Eigen::Vector3d::Zero(); // MRG optimal state
     Eigen::Vector2d r_cot_opt        = Eigen::Vector2d::Zero(); // MRG optimal state
     Eigen::Vector3d delta_theta_rate = Eigen::Vector3d::Zero(); // MRG optimal input
     Eigen::Vector2d r_cot_rate       = Eigen::Vector2d::Zero(); // MRG optimal input
     bool mpc_in_solving = false;
     uint32_t mpc_key = 1;
-    
-    // --- time scope ---
+    Eigen::Vector4d thrust_des_log = Eigen::Vector4d::Zero();
+
+    // --- time scope definition ---
     const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point next_tick = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point next_mpc_tick = std::chrono::steady_clock::now();
@@ -110,28 +108,13 @@ int main() {
     const double steps_per_ctrl = param::SIM_HZ / param::CTRL_HZ;
     double substep_accum = 0.0;
 
-    { // Model warm-up
-      double arm_angles[20]; // Initial arm joint angles
-      Eigen::Vector4d tvc_angle = Eigen::Vector4d::Zero();
-      IK(bPcot_des, cotRb_des, tvc_angle, param::L_DIST, arm_angles);
-      {
-        std::lock_guard<std::mutex> scene_lk(scene_mtx);
-        // spawn and 1 second do nothing
-        for (int k = 0; k < static_cast<int>(param::SIM_HZ); ++k) {
-          for (int i = 0; i < 8 && i < m->nu; ++i) {d->ctrl[i] = 0.0;}
-          for (int i = 0; i < 20 && (8 + i) < m->nu; ++i) {d->ctrl[8 + i] = arm_angles[i];}
-          mj_step(m, d);
-        }
-      }
-    }
-
     while (!g_stop.load()) {
       // --- time count ---
-      std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+      const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
       const double elapsed_double = std::chrono::duration<double>(now - t0).count();
 
       // --- mujoco measurement ---
-      SimState s; // mujoco d: z-up -> s: z-down
+      SimState s; // mujoco d: z-up -> SimState s: z-down
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
         s.pos << d->qpos[0], -d->qpos[1], -d->qpos[2];
@@ -153,8 +136,8 @@ int main() {
       gac_state.R = s.R;
       gac_state.W = s.omega;
       geometry_ctrl.position_control();
-      const Eigen::Matrix3d R_raw = Rx_180 * gac_cmd.Rd * Rx_180; // world z-down & body z-down => world z-up & body z-up
-      double T_des = geometry_ctrl.f_total;
+      const Eigen::Matrix3d R_raw = gac_cmd.Rd;
+      const double T_des = -geometry_ctrl.f_total; // (f_total > 0)
       
       { // MPC send
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
@@ -165,14 +148,12 @@ int main() {
                 // std::printf("[ctrl]->send   ");
                 next_mpc_tick += param::MPC_COMPUTE_DT;
                 mpc_key += 1;
-
-                // --- calculate current body -> cot relative pos ---
-                const Eigen::Vector3d cur_bPcot = FK(s.arm_q);
-
+                
                 int k = 0; // fill initial state(x)
-                const Eigen::Vector3d rpy = R_to_rpy(Rx_180 * s.R * Rx_180); // [roll, pitch, yaw]
+                const Eigen::Vector3d rpy = R_to_rpy(s.R); // [roll, pitch, yaw]
                 g_mpc_input.x_0(k++) = rpy(0); g_mpc_input.x_0(k++) = rpy(1); g_mpc_input.x_0(k++) = rpy(2); // theta(0,1,2)
-                g_mpc_input.x_0(k++) = s.omega(0); g_mpc_input.x_0(k++) = -s.omega(1); g_mpc_input.x_0(k++) = -s.omega(2); // omega(3,4,5)
+                g_mpc_input.x_0(k++) = s.omega(0); g_mpc_input.x_0(k++) = s.omega(1); g_mpc_input.x_0(k++) = s.omega(2); // omega(3,4,5)
+                const Eigen::Vector3d cur_bPcot = FK(s.arm_q);
                 g_mpc_input.x_0(k++) = cur_bPcot(0); g_mpc_input.x_0(k++) = cur_bPcot(1); // r_cot(6,7)
                 g_mpc_input.x_0(k++) = delta_theta_opt(0); g_mpc_input.x_0(k++) = delta_theta_opt(1); g_mpc_input.x_0(k++) = delta_theta_opt(2); // delta_theta(8,9,10)
                 g_mpc_input.x_0(k++) = cur_bPcot(0); g_mpc_input.x_0(k++) = cur_bPcot(1); // r_cot_cmd(11,12)
@@ -184,11 +165,11 @@ int main() {
                 int m = 0; // fill initial parameter(p)
                 for (int i=0; i<3; ++i) {for (int j=0; j<3; ++j) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8)
                 g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(9)
-                g_mpc_input.p(m++) = T_des; // T_des(10)
+                g_mpc_input.p(m++) = geometry_ctrl.f_total; // T_des(10)
 
                 int n = 0;
-                g_mpc_input.log(n++) = s.pos(0); g_mpc_input.log(n++) = -s.pos(1); g_mpc_input.log(n++) = s.pos(2); // pos_cur
-                g_mpc_input.log(n++) = pos_des(0); g_mpc_input.log(n++) = -pos_des(1); g_mpc_input.log(n++) = -pos_des(2); // pos_des
+                g_mpc_input.log(n++) = s.pos(0); g_mpc_input.log(n++) = s.pos(1); g_mpc_input.log(n++) = s.pos(2); // pos_cur
+                g_mpc_input.log(n++) = pos_des(0); g_mpc_input.log(n++) = pos_des(1); g_mpc_input.log(n++) = pos_des(2); // pos_des
                 g_mpc_input.log(n++) = thrust_des_log(0); g_mpc_input.log(n++) = thrust_des_log(1); g_mpc_input.log(n++) = thrust_des_log(2); g_mpc_input.log(n++) = thrust_des_log(3); // F1234
 
                 g_mpc_input.debug = true;
@@ -216,17 +197,17 @@ int main() {
               else { next_mpc_tick = now; } // timeout
       }}}}
 
+      // std::printf("%f\t%f\n", 1000.*bPcot_des(0), 1000.*bPcot_des(1));
+
       // --- attitude control ---
       const Eigen::Matrix3d R_d = R_raw * expm_hat(-delta_theta_opt);
-      Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(gac_cmd.Rd); // world z-down & body z-down => world z-up & body z-up
+      Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
 
       // --- (Sequential) Control Allocation ---
-      Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero();
+      Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
       Sequential_Allocation(T_des, tau_des, tauz_bar, s.arm_q, thrust_des, tilt_ang_des);
       thrust_des_log = thrust_des;
-
-      // std::printf("x:%f, y:%f, z:%f, T:%f \t f1:%f, f2:%f, f3:%f, f4:%f\n", tau_des(0), tau_des(1), tau_des(2), T_des, thrust_des(0), thrust_des(1), thrust_des(2), thrust_des(3));
 
       // --- thrust to pwm ---
       Eigen::Vector4d pwm;
@@ -236,9 +217,9 @@ int main() {
         pwm(i) = std::clamp(pwm(i), 0.0, 1.0);
       }
 
-      // --- IK  ---
-      double q_d[20]; // resolve r_cot_cmd to q_d
-      IK(bPcot_des, cotRb_des, tilt_ang_des, param::L_DIST, q_d);
+      // --- resolve r_cot_cmd to q_d  ---
+      double q_d[20] = {0};
+      IK(bPcot_des, bRcot_des, tilt_ang_des, param::L_DIST, q_d);
 
       // ------ (PLANT) ------------------------------------------------------------------------------------
       // --- pwm -> thrust & torque ---
@@ -246,16 +227,15 @@ int main() {
       const Eigen::Map<const Eigen::Vector4d> ROTOR_DIR(param::rotor_dir);
       const Eigen::Vector4d Tau = (param::PWM_ZETA * F.array() * ROTOR_DIR.array()).matrix();
 
-
-      // --- Step simulation at SIM_HZ using zero-order hold for control ---
+      // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;
-      int n_sub = static_cast<int>(substep_accum);
+      const int n_sub = static_cast<int>(substep_accum);
       substep_accum -= n_sub;
 
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
 
-        // save desired/current positions for GUI
+        // save desired/current positions for viewer
         g_pos_cur[0]=d->qpos[0]; g_pos_des[0]=pos_des(0);
         g_pos_cur[1]=d->qpos[1]; g_pos_des[1]=-pos_des(1);
         g_pos_cur[2]=d->qpos[2]; g_pos_des[2]=-pos_des(2);
@@ -268,7 +248,7 @@ int main() {
         for (int s = 0; s < n_sub; ++s) {mj_step(m, d);}
       }
 
-      // delay for real-time view
+      // delay for real-time calculation
       const auto now_ = std::chrono::steady_clock::now();
       if (now_ < next_tick) {std::this_thread::sleep_until(next_tick);}
       next_tick += ctrl_period;
