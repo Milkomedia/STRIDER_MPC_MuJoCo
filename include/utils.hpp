@@ -26,7 +26,7 @@ static inline Eigen::Vector3d fig8_point(double t_sec){
   // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
   constexpr double x    = 2.0;               // lobe half-width in X [m]
   constexpr double y    = x / 2.0;     // lobe half-height in Y [m]
-  constexpr double freq = 2.0 * M_PI * 0.15; // [rad/s]
+  constexpr double freq = 2.0 * M_PI * 0.12; // [rad/s]
 
   const double s = std::sin(freq * t_sec);
   const double c = std::cos(freq * t_sec);
@@ -34,7 +34,7 @@ static inline Eigen::Vector3d fig8_point(double t_sec){
 }
 
 static inline Eigen::Vector3d square4_point(double t_sec) {
-  constexpr double T = 5.0;
+  constexpr double T = 4.0;
 
   std::int64_t k = static_cast<std::int64_t>(std::floor(t_sec / T));
   int phase = static_cast<int>(k % 4);

@@ -114,7 +114,7 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
   nu = int(pkt.nu)
   np_ = int(pkt.np)
 
-  dt = float(getattr(p, "DT", 0.0005))
+  dt = float(getattr(p, "DT", 0.01))
   T = N + 1
 
   x_all = np.asarray(pkt.x_all, dtype=np.float64).reshape(T, nx)

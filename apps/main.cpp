@@ -127,7 +127,7 @@ int main() {
       }
 
       // --- position control ---
-      Eigen::Vector3d pos_des = square4_point(elapsed_double); // option: [fig8_point/elapsed_double]
+      Eigen::Vector3d pos_des = square4_point(elapsed_double); // option: [fig8_point/square4_point]
       gac_cmd.xd = pos_des;
       gac_cmd.b1d = Eigen::Vector3d(1,0,0);
       gac_state.x = s.pos;
@@ -163,7 +163,7 @@ int main() {
                 g_mpc_input.u_0(l++) = r_cot_rate(0); g_mpc_input.u_0(l++) = r_cot_rate(1); // r_cot_cmd_rate(3,4)
 
                 int m = 0; // fill initial parameter(p)
-                for (int i=0; i<3; ++i) {for (int j=0; j<3; ++j) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8)
+                for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
                 g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(9)
                 g_mpc_input.p(m++) = geometry_ctrl.f_total; // T_des(10)
 
@@ -190,17 +190,15 @@ int main() {
                 r_cot_opt        = g_mpc_output.u_opt.template tail<2>();   // [3,4]
                 delta_theta_rate = g_mpc_output.u_rate.template head<3>();  // [0,1,2]
                 r_cot_rate       = g_mpc_output.u_rate.template tail<2>();  // [3,4]
-                bPcot_des(0) = 0.95 * bPcot_des(0) + 0.05 * r_cot_opt(0);
-                bPcot_des(1) = 0.95 * bPcot_des(1) + 0.05 * r_cot_opt(1);
+                bPcot_des(0) = 0.99 * bPcot_des(0) + 0.01 * r_cot_opt(0);
+                bPcot_des(1) = 0.99 * bPcot_des(1) + 0.01 * r_cot_opt(1);
                 g_mpc_output.has = false;
               }
               else { next_mpc_tick = now; } // timeout
       }}}}
 
-      // std::printf("%f\t%f\n", 1000.*bPcot_des(0), 1000.*bPcot_des(1));
-
       // --- attitude control ---
-      const Eigen::Matrix3d R_d = R_raw * expm_hat(-delta_theta_opt);
+      const Eigen::Matrix3d R_d = R_raw * expm_hat(delta_theta_opt);
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
 
       // --- (Sequential) Control Allocation ---

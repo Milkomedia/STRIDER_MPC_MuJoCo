@@ -63,10 +63,10 @@ static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 static constexpr double L_DIST = 0.55; // [m]
 
 // ===== MPC parameters  =====
-static constexpr double MPC_COMPUTE_HZ = 100.0; // [Hz]
+static constexpr double MPC_COMPUTE_HZ = 200.0; // [Hz]
 static const std::chrono::steady_clock::duration MPC_COMPUTE_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / MPC_COMPUTE_HZ));
 
-constexpr std::size_t N_STEPS  = 30; // (Must be the same as prams.py)
+constexpr std::size_t N_STEPS  = 50; // (Must be the same as prams.py)
 constexpr std::size_t NX       = 13;
 constexpr std::size_t NU_AUG   = 5;
 constexpr std::size_t NU       = 5;
