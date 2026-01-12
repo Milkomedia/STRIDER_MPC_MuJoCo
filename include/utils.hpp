@@ -35,17 +35,18 @@ static inline Eigen::Vector3d fig8_point(double t_sec){
 
 static inline Eigen::Vector3d square4_point(double t_sec) {
   constexpr double T = 4.0;
+  constexpr double L = 1.0;
 
   std::int64_t k = static_cast<std::int64_t>(std::floor(t_sec / T));
   int phase = static_cast<int>(k % 4);
   if (phase < 0) phase += 4;
 
-  double sx = -1.0, sy = 1.0;
+  double sx = -L, sy = L;
   switch (phase) {
-    case 0: sx = -1.0; sy =  1.0; break;
-    case 1: sx = -1.0; sy = -1.0; break;
-    case 2: sx =  1.0; sy = -1.0; break;
-    default:sx =  1.0; sy =  1.0; break;
+    case 0: sx = -L; sy =  L; break;
+    case 1: sx = -L; sy = -L; break;
+    case 2: sx =  L; sy = -L; break;
+    default:sx =  L; sy =  L; break;
   }
 
   return Eigen::Vector3d(sx, sy, -1.0);

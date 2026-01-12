@@ -460,7 +460,7 @@ class DebugViewerMainWindow(QMainWindow):
     self.view = self.canvas.central_widget.add_view()
     self.view.camera = "turntable"
     self.view.camera.fov = 6
-    self.view.camera.center = (0, 0, 1)
+    self.view.camera.center = (0, 0, -1)
     self.view.camera.distance = 28.0
     self.view.camera.elevation = 40
     self.view.camera.azimuth = 15
@@ -635,7 +635,8 @@ class DebugViewerMainWindow(QMainWindow):
 
     self._plots["F_tr"] = make_plot(
       "F1234", "[N]",
-      [("F1", pens[0]), ("F2", pens[1]), ("F3", pens[2]), ("F4", pens[3])]
+      [("F1", pens[0]), ("F2", pens[1]), ("F3", pens[2]), ("F4", pens[3])],
+      y_range=(10.0, 15.0),
     )
 
     self._plots["tau_x_tr"] = make_plot(

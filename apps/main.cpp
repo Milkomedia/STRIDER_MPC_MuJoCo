@@ -108,6 +108,21 @@ int main() {
     const double steps_per_ctrl = param::SIM_HZ / param::CTRL_HZ;
     double substep_accum = 0.0;
 
+    { // Model warm-up
+      double arm_angles[20]; // Initial arm joint angles
+      Eigen::Vector4d tvc_angle = Eigen::Vector4d::Zero();
+      IK(bPcot_des, bRcot_des, tvc_angle, param::L_DIST, arm_angles);
+      {
+        std::lock_guard<std::mutex> scene_lk(scene_mtx);
+        // spawn and 3 second do nothing
+        for (int k = 0; k < 3*static_cast<int>(param::SIM_HZ); ++k) {
+          for (int i = 0; i < 8 && i < m->nu; ++i) {d->ctrl[i] = 0.0;}
+          for (int i = 0; i < 20 && (8 + i) < m->nu; ++i) {d->ctrl[8 + i] = arm_angles[i];}
+          mj_step(m, d);
+        }
+      }
+    }
+
     while (!g_stop.load()) {
       // --- time count ---
       const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
@@ -197,7 +212,7 @@ int main() {
               else { next_mpc_tick = now; } // timeout
       }}}}
 
-      // --- attitude control ---
+      // --- attitude control --- 
       const Eigen::Matrix3d R_d = R_raw * expm_hat(delta_theta_opt);
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
 

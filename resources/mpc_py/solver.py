@@ -24,7 +24,6 @@ class StriderNMPC:
         self.nlog = 10
         
         self.N = int(p.N)
-        self.f_ref = float(p.MASS*p.G_ACCEL)
 
         mmap_path = os.environ.get("STRIDER_MPC_MMAP", "/tmp/strider_mpc_debug.mmap")
         self._mmap_writer = MMapWriter(mmap_path, self.N, self.nx, self.nu, self.np, self.nlog)

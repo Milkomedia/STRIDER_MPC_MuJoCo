@@ -74,7 +74,7 @@ constexpr std::size_t NP       = 11;
 
 // ===== MuJoCo viewer parameters =====
 static constexpr double PATH_SEC = 10.0;   // history length [sec]
-static constexpr float SIZE_DOT  = 0.003f; // size(radious) of dot
+static constexpr float SIZE_DOT  = 0.03f; // size(radious) of dot
 static constexpr float SIZE_PATH = 0.005f; // size(radious) of path
 
 static constexpr float RGBA_DOT[4]   = {1.00f, 0.00f, 0.00f, 0.95f}; // current pos color
