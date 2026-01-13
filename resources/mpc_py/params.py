@@ -1,8 +1,8 @@
 import numpy as np
 
 # MPC horizon
-N  = 50     # number of steps
-DT = 0.01  # [s] (of each step)
+N  = 60     # number of steps
+DT = 0.005  # [s] (of each step)
 
 # ---------- model parameters ----------
 # CoT actuator time constant
@@ -34,8 +34,8 @@ F_MIN   = 6.0  * np.array([1.0, 1.0, 1.0, 1.0]) # thrust bound (F1,F2,F3,F4)
 F_MAX   = 13.0 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
 
 # input cost
-Q_THETA = 1000. * np.array([1.0, 1.0, 1.0])
-Q_COT   = 0.001  * np.array([1.0, 1.0])
+Q_THETA = 100. * np.array([1.0, 1.0, 1.0])
+Q_COT   = 0.01 * np.array([1.0, 1.0])
 
 # state cost
 Q_OMEGA = 0.1  * np.array([1.0, 1.0, 1.0])

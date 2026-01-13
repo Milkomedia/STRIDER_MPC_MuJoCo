@@ -28,22 +28,21 @@ static constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-static constexpr double kX[3] = {25.0, 25.0, 15.0};  // Position gain [x, y, z]
-static constexpr double kV[3] = {17.0, 17.0, 15.0};  // Velocity gain [x, y, z]
-static constexpr double kR[3] = { 8.0,  8.0, 0.75};  // Rotational gain [roll, pitch, yaw]
-static constexpr double kW[3] = { 5.0,  5.0,  2.0};  // angular Velocity gain [roll, pitch, yaw]
+static constexpr double kX[3] = {20.0, 20.0,  5.0}; // Position gain [x, y, z]
+static constexpr double kV[3] = {17.0, 17.0, 10.0}; // Velocity gain [x, y, z]
+static constexpr double kR[3] = {13.0, 13.0,  0.5}; // Rotational gain [roll, pitch, yaw]
+static constexpr double kW[3] = { 2.5,  2.5,  0.5}; // angular Velocity gain [roll, pitch, yaw]
 
 // Integral Parameters
-static constexpr bool use_integral = true;
-static constexpr double kIR = 0.0;  /**< Attitude integral gain */
 static constexpr double kI  = 0.0;  /**< Attitude integral gain for roll and pitch */
-static constexpr double kIX = 3.0;  /**< Position integral gains */
+static constexpr double kyI = 0.0;  /**< Attitude integral gain for yaw */
+static constexpr double kIX = 0.1;  /**< Position integral gains */
 
 // ===== UAV Parameters =====
 static constexpr double J[9] = {0.271587936842000, 0.000146304434327, 0.000394623073964,
                                 0.000146304434327, 0.292342580590000, 0.001041120426640,
                                 0.000394623073964, 0.001041120426640, 0.525751256781000};
-static constexpr double M  = 5.09495;
+static constexpr double M  = 4.8;
 static constexpr double G  = 9.80665;
 
 // Allocation parameters
@@ -66,7 +65,7 @@ static constexpr double L_DIST = 0.55; // [m]
 static constexpr double MPC_COMPUTE_HZ = 200.0; // [Hz]
 static const std::chrono::steady_clock::duration MPC_COMPUTE_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / MPC_COMPUTE_HZ));
 
-constexpr std::size_t N_STEPS  = 50; // (Must be the same as prams.py)
+constexpr std::size_t N_STEPS  = 60; // (Must be the same as prams.py)
 constexpr std::size_t NX       = 13;
 constexpr std::size_t NU_AUG   = 5;
 constexpr std::size_t NU       = 5;

@@ -1,4 +1,5 @@
 #include "mj_viewer_helper.hpp"
+#include "mmap_manager.hpp"
 #include "mpc_wrapper.hpp"
 #include "fdcl_control.hpp"
 #include "utils.hpp"
@@ -98,7 +99,15 @@ int main() {
     Eigen::Vector2d r_cot_rate       = Eigen::Vector2d::Zero(); // MRG optimal input
     bool mpc_in_solving = false;
     uint32_t mpc_key = 1;
+    Eigen::Vector3d bPcot_cur = Eigen::Vector3d::Zero();
+    Eigen::Vector3d euler_rpy = Eigen::Vector3d::Zero();
+
+    // --- logging ---
+    mmap_manager::MMapLogger logger("/tmp/strider_log.mmap", /*reset=*/true);
+    logger.open();
     Eigen::Vector4d thrust_des_log = Eigen::Vector4d::Zero();
+    float last_solve_ms = 0.0f;
+    int32_t last_solve_status = -1;
 
     // --- time scope definition ---
     const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
@@ -142,7 +151,11 @@ int main() {
       }
 
       // --- position control ---
-      Eigen::Vector3d pos_des = square4_point(elapsed_double); // option: [fig8_point/square4_point]
+      // Eigen::Vector3d pos_des = square4_point(elapsed_double); // option: [fig8_point/square4_point]
+      Eigen::Vector3d pos_des;
+      if (elapsed_double >= 4.0) {pos_des = square4_point(elapsed_double);} // option: [fig8_point/square4_point]
+      else {pos_des = Eigen::Vector3d(0.0, 0.0, -1.0);}
+
       gac_cmd.xd = pos_des;
       gac_cmd.b1d = Eigen::Vector3d(1,0,0);
       gac_state.x = s.pos;
@@ -154,6 +167,7 @@ int main() {
       const Eigen::Matrix3d R_raw = gac_cmd.Rd;
       const double T_des = -geometry_ctrl.f_total; // (f_total > 0)
       
+      euler_rpy = R_to_rpy(s.R);
       { // MPC send
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
         if (g_mpc_activated.load(std::memory_order_relaxed)) {
@@ -165,13 +179,12 @@ int main() {
                 mpc_key += 1;
                 
                 int k = 0; // fill initial state(x)
-                const Eigen::Vector3d rpy = R_to_rpy(s.R); // [roll, pitch, yaw]
-                g_mpc_input.x_0(k++) = rpy(0); g_mpc_input.x_0(k++) = rpy(1); g_mpc_input.x_0(k++) = rpy(2); // theta(0,1,2)
+                g_mpc_input.x_0(k++) = euler_rpy(0); g_mpc_input.x_0(k++) = euler_rpy(1); g_mpc_input.x_0(k++) = euler_rpy(2); // theta(0,1,2)
                 g_mpc_input.x_0(k++) = s.omega(0); g_mpc_input.x_0(k++) = s.omega(1); g_mpc_input.x_0(k++) = s.omega(2); // omega(3,4,5)
-                const Eigen::Vector3d cur_bPcot = FK(s.arm_q);
-                g_mpc_input.x_0(k++) = cur_bPcot(0); g_mpc_input.x_0(k++) = cur_bPcot(1); // r_cot(6,7)
+                bPcot_cur = FK(s.arm_q);
+                g_mpc_input.x_0(k++) = bPcot_cur(0); g_mpc_input.x_0(k++) = bPcot_cur(1); // r_cot(6,7)
                 g_mpc_input.x_0(k++) = delta_theta_opt(0); g_mpc_input.x_0(k++) = delta_theta_opt(1); g_mpc_input.x_0(k++) = delta_theta_opt(2); // delta_theta(8,9,10)
-                g_mpc_input.x_0(k++) = cur_bPcot(0); g_mpc_input.x_0(k++) = cur_bPcot(1); // r_cot_cmd(11,12)
+                g_mpc_input.x_0(k++) = r_cot_opt(0); g_mpc_input.x_0(k++) = r_cot_opt(1); // r_cot_cmd(11,12)
 
                 int l = 0; // fill initial control input(u)
                 g_mpc_input.u_0(l++) = delta_theta_rate(0); g_mpc_input.u_0(l++) = delta_theta_rate(1); g_mpc_input.u_0(l++) = delta_theta_rate(2); // delta_theta_cmd_rate(0,1,2)
@@ -208,6 +221,8 @@ int main() {
                 bPcot_des(0) = 0.99 * bPcot_des(0) + 0.01 * r_cot_opt(0);
                 bPcot_des(1) = 0.99 * bPcot_des(1) + 0.01 * r_cot_opt(1);
                 g_mpc_output.has = false;
+                last_solve_ms = static_cast<float>(g_mpc_output.solve_ms);
+                last_solve_status = static_cast<int32_t>(g_mpc_output.state);
               }
               else { next_mpc_tick = now; } // timeout
       }}}}
@@ -215,7 +230,7 @@ int main() {
       // --- attitude control --- 
       const Eigen::Matrix3d R_d = R_raw * expm_hat(delta_theta_opt);
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
-
+      
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
@@ -225,8 +240,7 @@ int main() {
       // --- thrust to pwm ---
       Eigen::Vector4d pwm;
       for (int i = 0; i < 4; ++i) {
-        const double val = std::max(0.0, (thrust_des(i) - param::PWM_B) / param::PWM_A);
-        pwm(i) = std::sqrt(val);
+        pwm(i) = std::sqrt(std::max(0.0, (thrust_des(i) - param::PWM_B) / param::PWM_A));
         pwm(i) = std::clamp(pwm(i), 0.0, 1.0);
       }
 
@@ -245,20 +259,82 @@ int main() {
       const int n_sub = static_cast<int>(substep_accum);
       substep_accum -= n_sub;
 
-      {
+      { // Apply controls to MuJoCo
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
 
         // save desired/current positions for viewer
         g_pos_cur[0]=d->qpos[0]; g_pos_des[0]=pos_des(0);
         g_pos_cur[1]=d->qpos[1]; g_pos_des[1]=-pos_des(1);
         g_pos_cur[2]=d->qpos[2]; g_pos_des[2]=-pos_des(2);
-
-        // Apply controls to MuJoCo
         Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl) = F.cast<mjtNum>();
         Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl + 4) = Tau.cast<mjtNum>();
         for (int i = 0; i < 20; ++i) d->ctrl[8 + i] = q_d[i];
 
         for (int s = 0; s < n_sub; ++s) {mj_step(m, d);}
+      }
+
+      // ------ (Data logging) -----------------------------------------------------------------------------
+      {
+        mmap_manager::LogData ld;
+
+        ld.t = static_cast<float>(elapsed_double);
+
+        ld.pos_d[0] = static_cast<float>(pos_des(0));
+        ld.pos_d[1] = static_cast<float>(pos_des(1));
+        ld.pos_d[2] = static_cast<float>(pos_des(2));
+
+        ld.pos[0] = static_cast<float>(s.pos(0));
+        ld.pos[1] = static_cast<float>(s.pos(1));
+        ld.pos[2] = static_cast<float>(s.pos(2));
+
+        ld.rpy[0] = static_cast<float>(euler_rpy(0));
+        ld.rpy[1] = static_cast<float>(euler_rpy(1));
+        ld.rpy[2] = static_cast<float>(euler_rpy(2));
+
+        {
+          const Eigen::Vector3d rpy_raw = R_to_rpy(R_raw);
+          ld.rpy_raw[0] = static_cast<float>(rpy_raw(0));
+          ld.rpy_raw[1] = static_cast<float>(rpy_raw(1));
+          ld.rpy_raw[2] = static_cast<float>(rpy_raw(2));
+        }
+        {
+          const Eigen::Vector3d rpy_d = R_to_rpy(R_d);
+          ld.rpy_d[0] = static_cast<float>(rpy_d(0));
+          ld.rpy_d[1] = static_cast<float>(rpy_d(1));
+          ld.rpy_d[2] = static_cast<float>(rpy_d(2));
+        }
+
+        ld.tau_d[0] = static_cast<float>(tau_des(0));
+        ld.tau_d[1] = static_cast<float>(tau_des(1));
+        ld.tau_d[2] = static_cast<float>(tau_des(2));
+
+        // CoT-offset torque around x,y
+        const double f_total = geometry_ctrl.f_total;
+        const Eigen::Vector2d tau_off(-f_total * bPcot_cur(1), f_total * bPcot_cur(0));
+        ld.tau_off[0] = static_cast<float>(tau_off(0));
+        ld.tau_off[1] = static_cast<float>(tau_off(1));
+
+        // Thrust-diff torque = total tau_xy - cot-offset tau_xy
+        ld.tau_thrust[0] = static_cast<float>(tau_des(0) - tau_off(0));
+        ld.tau_thrust[1] = static_cast<float>(tau_des(1) - tau_off(1));
+
+        for (int i = 0; i < 4; ++i) {
+          ld.tilt_rad[i] = static_cast<float>(tilt_ang_des(i));
+          ld.f_thrust[i] = static_cast<float>(thrust_des(i));
+        }
+
+        ld.f_total = static_cast<float>(geometry_ctrl.f_total);
+
+        ld.r_cot[0] = static_cast<float>(bPcot_cur(0));
+        ld.r_cot[1] = static_cast<float>(bPcot_cur(1));
+
+        ld.r_cot_cmd[0] = static_cast<float>(r_cot_opt(0));
+        ld.r_cot_cmd[1] = static_cast<float>(r_cot_opt(1));
+
+        ld.solve_ms = last_solve_ms;
+        ld.solve_status = last_solve_status;
+
+        logger.push(ld);
       }
 
       // delay for real-time calculation

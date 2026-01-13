@@ -47,6 +47,7 @@ public:
   void load_config(void);
   void position_control(void);
   Vector3 attitude_control(const Eigen::Matrix3d& R_d);
+  Vector3 attitude_control_decoupled_yaw(const Eigen::Matrix3d& R_d);
   void integral_reset();
 
 private:
@@ -71,8 +72,8 @@ private:
   Matrix3 kV = Matrix3::Zero(); /**< Velocity gains */
 
   // Integral gains
-  double kIR = 0.0;  /**< Attitude integral gain */
   double kI = 0.0;  /**< Attitude integral gain for roll and pitch */
+  double kyI = 0.0;  /**< Attitude integral gain for yaw */
   double kIX = 0.0;  /**< Position integral gains */
 };
 

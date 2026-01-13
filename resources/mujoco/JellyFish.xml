@@ -158,12 +158,6 @@
       </body>
     </body>
 
-    <body name="weight" pos="0.3 0.0 0.0">
-      <joint name="rotor_joint" pos="-0.3 0 0.0" axis="0 0 1"/>
-      <inertial pos="0 0 0" mass="0.01" diaginertia="3.2e-05 3.2e-05 3.2e-05"/>
-      <geom name="weight_geom" type="sphere" size="0.02" rgba="1 0 0 1" contype="0" conaffinity="0"/>
-    </body>
-
   </body>
   </worldbody>
   
@@ -202,7 +196,6 @@
     <position name="servo_Arm4_joint4" joint="Arm4_joint4" kp="35" kv="0.1" ctrlrange="-1.13446 -3.14159"/>
     <position name="servo_Arm4_joint5" joint="Arm4_joint5" kp="35" kv="0.1" ctrlrange="-1.74533 1.74533"/>
 
-    <position name="servo_weight" joint="rotor_joint" kp="10.0" kv="0.5" ctrlrange="-3.14159 3.14159"/>
   </actuator>
 
     <sensor>
