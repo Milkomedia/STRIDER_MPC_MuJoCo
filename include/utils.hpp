@@ -11,7 +11,6 @@
 
 static inline constexpr double inv_sqrt2 = 0.7071067811865474617150084668537601828575;  // 1/sqrt(2)
 static inline constexpr double sqrt2 = 1.4142135623730951454746218587388284504414;      // sqrt(2)
-static inline const Eigen::Matrix3d Rx_180 = (Eigen::Matrix3d() << 1, 0, 0, 0, -1, 0, 0, 0, -1).finished();
 
 struct SimState { // use for copy snapshot in thread lock
   Eigen::Vector3d pos = Eigen::Vector3d::Zero();
@@ -322,6 +321,139 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   if (lu_2.isInvertible()) {C2_des = lu_2.solve(B2);}
   else {C2_des = (A2.transpose()*A2 + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A2.transpose()*B2);}
 }
+
+namespace mpc_noise {
+
+// Fast RNG: xorshift64*
+struct Rng {
+  std::uint64_t s = 88172645463325252ull; // non-zero
+
+  inline std::uint64_t next_u64() {
+    // xorshift64*
+    std::uint64_t x = s;
+    x ^= x >> 12;
+    x ^= x << 25;
+    x ^= x >> 27;
+    s = x;
+    return x * 2685821657736338717ull;
+  }
+
+  inline double uni01() {
+    // Convert top 53 bits to [0,1)
+    const std::uint64_t r = next_u64();
+    const std::uint64_t u = (r >> 11);
+    return static_cast<double>(u) * (1.0 / 9007199254740992.0); // 2^53
+  }
+
+  inline double randn_fast() {
+    // Approx N(0,1) using sum of 12 uniforms - 6 (CLT), no trig/log
+    double s12 = 0.0;
+    for (int i = 0; i < 12; ++i) s12 += uni01();
+    return s12 - 6.0;
+  }
+};
+
+struct State {
+  bool inited = false;
+  std::chrono::steady_clock::time_point last_t;
+
+  Rng rng;
+
+  // Bias states (random-walk)
+  Eigen::Vector3d rpy_bias   = Eigen::Vector3d::Zero();
+  Eigen::Vector3d omega_bias = Eigen::Vector3d::Zero();
+  Eigen::Vector3d rraw_bias  = Eigen::Vector3d::Zero();
+
+  double T_scale_bias = 0.0; // multiplicative
+  double T_add_bias   = 0.0; // additive
+};
+
+static inline double wrap_pi(double a) {
+  while (a >  M_PI) a -= 2.0*M_PI;
+  while (a < -M_PI) a += 2.0*M_PI;
+  return a;
+}
+
+// Reset/init the noise state
+static inline void reset(State& st, std::uint64_t seed, const std::chrono::steady_clock::time_point& now) {
+  st.inited = true;
+  st.last_t = now;
+
+  st.rng.s = (seed == 0) ? 1ull : seed;
+
+  st.rpy_bias.setZero();
+  st.omega_bias.setZero();
+  st.rraw_bias.setZero();
+
+  st.T_scale_bias = 0.0;
+  st.T_add_bias   = 0.0;
+}
+
+// Apply noise/bias to MPC inputs (in-place)
+static inline void apply(State& st,
+                         const std::chrono::steady_clock::time_point& now,
+                         Eigen::Vector3d& rpy,
+                         Eigen::Vector3d& omega,
+                         Eigen::Matrix3d& R_raw,
+                         double& T_des) {
+  if (!param::MPC_NOISE_ON) return;
+
+  if (!st.inited) reset(st, param::MPC_NOISE_SEED, now);
+
+  double dt = std::chrono::duration<double>(now - st.last_t).count();
+  st.last_t = now;
+  // Robust dt clamp (avoid huge jumps after pauses)
+  if (dt <= 0.0) dt = 1.0 / param::MPC_COMPUTE_HZ;
+  if (dt > 0.05) dt = 0.05;
+
+  const double sdt = std::sqrt(dt);
+
+  // --- Bias random-walk update ---
+  // rpy bias
+  st.rpy_bias.x() += param::MPC_RPY_BIAS_RW_RP  * sdt * st.rng.randn_fast();
+  st.rpy_bias.y() += param::MPC_RPY_BIAS_RW_RP  * sdt * st.rng.randn_fast();
+  st.rpy_bias.z() += param::MPC_RPY_BIAS_RW_YAW * sdt * st.rng.randn_fast();
+
+  // omega bias
+  st.omega_bias.x() += param::MPC_OMEGA_BIAS_RW * sdt * st.rng.randn_fast();
+  st.omega_bias.y() += param::MPC_OMEGA_BIAS_RW * sdt * st.rng.randn_fast();
+  st.omega_bias.z() += param::MPC_OMEGA_BIAS_RW * sdt * st.rng.randn_fast();
+
+  // R_raw command bias (axis-angle)
+  st.rraw_bias.x() += param::MPC_RRAW_BIAS_RW_RP  * sdt * st.rng.randn_fast();
+  st.rraw_bias.y() += param::MPC_RRAW_BIAS_RW_RP  * sdt * st.rng.randn_fast();
+  st.rraw_bias.z() += param::MPC_RRAW_BIAS_RW_YAW * sdt * st.rng.randn_fast();
+
+  // Thrust biases
+  st.T_scale_bias += param::MPC_T_SCALE_RW * sdt * st.rng.randn_fast();
+  st.T_add_bias   += param::MPC_T_ADD_RW   * sdt * st.rng.randn_fast();
+
+  // --- White measurement noise injection ---
+  // x_0: rpy
+  rpy.x() += st.rpy_bias.x() + param::MPC_RPY_SIGMA_RP  * st.rng.randn_fast();
+  rpy.y() += st.rpy_bias.y() + param::MPC_RPY_SIGMA_RP  * st.rng.randn_fast();
+  rpy.z() += st.rpy_bias.z() + param::MPC_RPY_SIGMA_YAW * st.rng.randn_fast();
+  rpy.z() = wrap_pi(rpy.z());
+
+  // x_0: omega
+  omega.x() += st.omega_bias.x() + param::MPC_OMEGA_SIGMA * st.rng.randn_fast();
+  omega.y() += st.omega_bias.y() + param::MPC_OMEGA_SIGMA * st.rng.randn_fast();
+  omega.z() += st.omega_bias.z() + param::MPC_OMEGA_SIGMA * st.rng.randn_fast();
+
+  // p: R_raw (SO(3) perturbation)
+  Eigen::Vector3d dtheta;
+  dtheta.x() = st.rraw_bias.x() + param::MPC_RRAW_SIGMA_RP  * st.rng.randn_fast();
+  dtheta.y() = st.rraw_bias.y() + param::MPC_RRAW_SIGMA_RP  * st.rng.randn_fast();
+  dtheta.z() = st.rraw_bias.z() + param::MPC_RRAW_SIGMA_YAW * st.rng.randn_fast();
+  R_raw = R_raw * expm_hat(dtheta); // keep orthonormal
+
+  // p: T_des (scale + add + white)
+  const double nT = std::max(param::MPC_T_NOISE_ABS, param::MPC_T_NOISE_REL * std::abs(T_des));
+  T_des = (1.0 + st.T_scale_bias) * T_des + st.T_add_bias + nT * st.rng.randn_fast();
+  if (T_des < 0.0) T_des = 0.0;
+}
+
+} // namespace mpc_noise
 
 inline std::filesystem::path get_executable_path() {
 #if defined(__APPLE__)

@@ -175,9 +175,9 @@ def build_ocp():
 
     # ---------- solver options ----------
     ocp.solver_options.qp_solver        = "PARTIAL_CONDENSING_HPIPM" # or "FULL_CONDENSING_HPIPM(5ms)" "PARTIAL_CONDENSING_HPIPM"(3ms) "FULL_CONDENSING_QPOASES(6ms)"
-    ocp.solver_options.hessian_approx   = "GAUSS_NEWTON"
+    ocp.solver_options.hessian_approx   = "GAUSS_NEWTON" # "GAUSS_NEWTON" or "EXACT"
     ocp.solver_options.integrator_type  = "ERK"
-    ocp.solver_options.nlp_solver_type  = "SQP_RTI"
+    ocp.solver_options.nlp_solver_type  = "SQP_RTI" # "SQP" or "SQP_RTI" or "DDP" or "SQP_WITH_FEASIBLE_QP"
     ocp.solver_options.qp_solver_cond_N = p.N
     ocp.solver_options.qp_solver_iter_max = 100
     ocp.solver_options.sim_method_num_stages = 4

@@ -28,8 +28,8 @@ static constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-static constexpr double kX[3] = {20.0, 20.0,  5.0}; // Position gain [x, y, z]
-static constexpr double kV[3] = {17.0, 17.0, 10.0}; // Velocity gain [x, y, z]
+static constexpr double kX[3] = { 8.0,  8.0,  5.0}; // Position gain [x, y, z]
+static constexpr double kV[3] = {12.0, 12.0, 10.0}; // Velocity gain [x, y, z]
 static constexpr double kR[3] = {13.0, 13.0,  0.5}; // Rotational gain [roll, pitch, yaw]
 static constexpr double kW[3] = { 2.5,  2.5,  0.5}; // angular Velocity gain [roll, pitch, yaw]
 
@@ -39,9 +39,9 @@ static constexpr double kyI = 0.0;  /**< Attitude integral gain for yaw */
 static constexpr double kIX = 0.1;  /**< Position integral gains */
 
 // ===== UAV Parameters =====
-static constexpr double J[9] = {0.271587936842000, 0.000146304434327, 0.000394623073964,
-                                0.000146304434327, 0.292342580590000, 0.001041120426640,
-                                0.000394623073964, 0.001041120426640, 0.525751256781000};
+static constexpr double J[9] = {0.27, 0.00, 0.00,
+                                0.00, 0.27, 0.00,
+                                0.00, 0.00, 0.53};
 static constexpr double M  = 4.8;
 static constexpr double G  = 9.80665;
 
@@ -79,6 +79,34 @@ static constexpr float SIZE_PATH = 0.005f; // size(radious) of path
 static constexpr float RGBA_DOT[4]   = {1.00f, 0.00f, 0.00f, 0.95f}; // current pos color
 static constexpr float RGBA_PATH[4]  = {0.20f, 0.80f, 0.90f, 0.60f}; // current path color
 static constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired path color
+
+// ===== MPC input noise (sim->real validation) =====
+static constexpr bool MPC_NOISE_ON = true;
+static constexpr std::uint64_t MPC_NOISE_SEED = 42;
+
+static constexpr double DEG2RAD = M_PI / 180.0;
+
+// 1. rpy noise/bias
+static constexpr double MPC_RPY_SIGMA_RP  = 0.2 * DEG2RAD;   // [rad] white noise std (roll/pitch)
+static constexpr double MPC_RPY_SIGMA_YAW = 1.0 * DEG2RAD;   // [rad] white noise std (yaw)
+static constexpr double MPC_RPY_BIAS_RW_RP  = 0.01 * DEG2RAD; // [rad/sqrt(s)] bias random-walk
+static constexpr double MPC_RPY_BIAS_RW_YAW = 0.03 * DEG2RAD; // [rad/sqrt(s)]
+
+// 2. omega noise/bias
+static constexpr double MPC_OMEGA_SIGMA   = 0.0012;  // [rad/s] white noise std
+static constexpr double MPC_OMEGA_BIAS_RW = 0.00005; // [rad/s/sqrt(s)] bias random-walk
+
+// 3. R_raw perturbation noise
+static constexpr double MPC_RRAW_SIGMA_RP  = 0.2 * DEG2RAD;  // [rad] white noise std (roll/pitch)
+static constexpr double MPC_RRAW_SIGMA_YAW = 0.5 * DEG2RAD;  // [rad] white noise std (yaw)
+static constexpr double MPC_RRAW_BIAS_RW_RP  = 0.005 * DEG2RAD; // [rad/sqrt(s)]
+static constexpr double MPC_RRAW_BIAS_RW_YAW = 0.015 * DEG2RAD; // [rad/sqrt(s)]
+
+// 4. T_des bias/noise
+static constexpr double MPC_T_SCALE_RW = 0.001;  // [1/sqrt(s)] scale random-walk (e.g., ~0.1% per sqrt(s))
+static constexpr double MPC_T_ADD_RW   = 0.03;   // [N/sqrt(s)] additive random-walk
+static constexpr double MPC_T_NOISE_REL = 0.005; // [-] relative white noise (0.5%)
+static constexpr double MPC_T_NOISE_ABS = 0.2;   // [N] minimum abs noise
 
 } // namespace param
 

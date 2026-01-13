@@ -39,7 +39,7 @@ struct LogData {
   float r_cot[2]       = {0.0f}; // current CoT position [m] (x,y)
   float r_cot_cmd[2]   = {0.0f}; // optimal CoT command [m] (x,y)
   float solve_ms       =  0.0f;  // acados solve time [ms]
-  int32_t solve_status = -1;     // solver status
+  int32_t solve_status = -1;     // solver status (https://docs.acados.org/python_interface/index.html#acados_template.acados_ocp_options.AcadosOcpOptions.qp_solver)
 };
 #pragma pack(pop)
 

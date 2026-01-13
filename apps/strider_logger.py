@@ -366,7 +366,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._curves["f_total"] = p4c3.plot(pen=pen_act, name="act")
 
     # ========== Row 5: r_cot / solve_ms / solve_status ==========
-    p5c1 = _mk_plot(4, 0, "r_cot [mm]", y_range=(-200., 200.))
+    p5c1 = _mk_plot(4, 0, "r_cot [mm]", y_range=(-50., 50.))
     p5c2 = _mk_plot(4, 1, "solve_ms [ms]", y_range=(0., 5.))
     p5c3 = _mk_plot(4, 2, "solve_status", add_legend=True)
 
@@ -429,9 +429,8 @@ class LoggerWindow(QtWidgets.QMainWindow):
       tilt_deg = _deg(ch["tilt"])
       f_total  = ch["f_total"]
 
-      # Follow your spec verbatim (swapped meaning)
-      r_cot_cmd_mm = _mm(ch["r_cot"])       # plotted as "MRG cmd"
-      r_cot_act_mm = _mm(ch["r_cot_cmd"])   # plotted as "act"
+      r_cot_cmd_mm = _mm(ch["r_cot_cmd"])
+      r_cot_act_mm = _mm(ch["r_cot"])
 
       solve_ms = ch["solve_ms"]
       solve_status = ch["solve_status"].astype(np.int32)

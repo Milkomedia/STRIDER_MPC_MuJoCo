@@ -58,7 +58,7 @@ class StriderNMPC:
             u_rate1 = u_0.copy()
             u_opt1  = x_0[8:13].copy()
 
-        if debug and status==0:
+        if debug:
             xs, us, ps = self._extract_all_xup()
             self._mmap_writer.write(
                 x_all=xs,
