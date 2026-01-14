@@ -47,11 +47,11 @@ public:
   void load_config(void);
   void position_control(void);
   Vector3 attitude_control(const Eigen::Matrix3d& R_d);
-  Vector3 attitude_control_decoupled_yaw(const Eigen::Matrix3d& R_d);
   void integral_reset();
 
 private:
   const double eX_norm_max_ = 2.0; /**< Saturating term of position error */
+  const double eR_norm_max_ = 50.0 * M_PI / 180.0; /**< Saturating term of attitude error */
 
   fdcl::state_t *state = nullptr; /**< Pointer to the current states */
   fdcl::command_t *command = nullptr; /**< Pointer to the desired states */

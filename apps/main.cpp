@@ -183,14 +183,15 @@ int main() {
 
                 Eigen::Vector3d rpy_mpc  = euler_rpy;
                 Eigen::Vector3d omg_mpc  = s.omega;
+                Eigen::Vector2d rcot_mpc(bPcot_cur(0), bPcot_cur(1));
                 Eigen::Matrix3d Rraw_mpc = R_raw;
-                double T_mpc             = geometry_ctrl.f_total;
-                mpc_noise::apply(g_mpc_noise, now, rpy_mpc, omg_mpc, Rraw_mpc, T_mpc);
+                double             T_mpc = geometry_ctrl.f_total;
+                mpc_noise::apply(g_mpc_noise, now, rpy_mpc, omg_mpc, rcot_mpc, Rraw_mpc, T_mpc);
                 
                 int k = 0; // fill initial state(x)
                 g_mpc_input.x_0(k++) = rpy_mpc(0); g_mpc_input.x_0(k++) = rpy_mpc(1); g_mpc_input.x_0(k++) = rpy_mpc(2); // theta(0,1,2)
                 g_mpc_input.x_0(k++) = omg_mpc(0); g_mpc_input.x_0(k++) = omg_mpc(1); g_mpc_input.x_0(k++) = omg_mpc(2); // omega(3,4,5)
-                g_mpc_input.x_0(k++) = bPcot_cur(0); g_mpc_input.x_0(k++) = bPcot_cur(1); // r_cot(6,7)
+                g_mpc_input.x_0(k++) = rcot_mpc(0); g_mpc_input.x_0(k++) = rcot_mpc(1); // r_cot(6,7)
                 g_mpc_input.x_0(k++) = delta_theta_opt(0); g_mpc_input.x_0(k++) = delta_theta_opt(1); g_mpc_input.x_0(k++) = delta_theta_opt(2); // delta_theta(8,9,10)
                 g_mpc_input.x_0(k++) = r_cot_opt(0); g_mpc_input.x_0(k++) = r_cot_opt(1); // r_cot_cmd(11,12)
 
@@ -224,8 +225,8 @@ int main() {
               r_cot_opt        = g_mpc_output.u_opt.template tail<2>();   // [3,4]
               delta_theta_rate = g_mpc_output.u_rate.template head<3>();  // [0,1,2]
               r_cot_rate       = g_mpc_output.u_rate.template tail<2>();  // [3,4]
-              bPcot_des(0) = 0.99 * bPcot_des(0) + 0.01 * r_cot_opt(0);
-              bPcot_des(1) = 0.99 * bPcot_des(1) + 0.01 * r_cot_opt(1);
+              bPcot_des(0) = 0.995 * bPcot_des(0) + 0.005 * r_cot_opt(0);
+              bPcot_des(1) = 0.995 * bPcot_des(1) + 0.005 * r_cot_opt(1);
             }
             else { // solve failed
               delta_theta_opt  *= 0.9;
@@ -242,7 +243,10 @@ int main() {
             // log
             last_solve_ms = static_cast<float>(g_mpc_output.solve_ms);
             last_solve_status = static_cast<int32_t>(g_mpc_output.state);
-      }}}
+          }
+          // else{std::printf("\n\n[MPC KEY WRONG ERROR. RESTART NOW]\n\n");}
+        }
+      }
 
       // --- attitude control --- 
       const Eigen::Matrix3d R_d = R_raw * expm_hat(delta_theta_opt);

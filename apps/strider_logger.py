@@ -317,9 +317,9 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._curves["pos_z_act"] = p1c3.plot(pen=pen_act, name="act")
 
     # ========== Row 2: RPY ==========
-    p2c1 = _mk_plot(1, 0, "roll [deg]", y_range=(-45., 45.))
-    p2c2 = _mk_plot(1, 1, "pitch [deg]", y_range=(-45., 45.))
-    p2c3 = _mk_plot(1, 2, "yaw [deg]", y_range=(-5., 5.))
+    p2c1 = _mk_plot(1, 0, "roll [deg]", y_range=(-30., 30.))
+    p2c2 = _mk_plot(1, 1, "pitch [deg]", y_range=(-30., 30.))
+    p2c3 = _mk_plot(1, 2, "yaw [deg]", y_range=(-20., 20.))
 
     self._curves["roll_raw"]  = p2c1.plot(pen=pen_raw, name="raw")
     self._curves["roll_mrg"]  = p2c1.plot(pen=pen_des, name="MRG ref")
@@ -493,7 +493,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
         y0 = -1.0
         heights = np.full(xs.shape, float(s + 1), dtype=np.float32)
-        width = dt if s == 0 else 3.0 * dt
+        width = dt if s == 0 else 6.0 * dt
 
         if s not in self._status_bars:
           bar = pg.BarGraphItem(
