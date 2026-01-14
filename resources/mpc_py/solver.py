@@ -1,5 +1,5 @@
 from . import params as p
-from acados_template import AcadosOcpSolver
+from acados_template.acados_ocp_solver import AcadosOcpSolver
 import numpy as np
 from typing import Dict, Any
 import time

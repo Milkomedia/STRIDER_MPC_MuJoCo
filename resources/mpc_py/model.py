@@ -1,6 +1,7 @@
 from . import params as p
 
-from acados_template import AcadosModel, AcadosOcp
+from acados_template.acados_model import AcadosModel
+from acados_template.acados_ocp import AcadosOcp
 import casadi as ca
 import numpy as np
 
