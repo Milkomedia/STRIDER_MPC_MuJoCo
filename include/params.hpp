@@ -81,35 +81,24 @@ static constexpr float RGBA_DOT[4]   = {1.00f, 0.00f, 0.00f, 0.95f}; // current 
 static constexpr float RGBA_PATH[4]  = {0.20f, 0.80f, 0.90f, 0.60f}; // current path color
 static constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired path color
 
-// ===== MPC input noise (sim->real validation) =====
-static constexpr bool MPC_NOISE_ON = false;
-static constexpr std::uint64_t MPC_NOISE_SEED = 42;
+// ===== state noise input (sim->real validation) =====
+static constexpr bool NOISE_ON = true;
+static constexpr std::uint64_t NOISE_SEED = 42;
 
-// 1. rpy noise/bias
-static constexpr double MPC_RPY_SIGMA_RP    = 0.50 * M_PI / 180.0; // white noise std (roll/pitch), [rad]
-static constexpr double MPC_RPY_SIGMA_YAW   = 0.80 * M_PI / 180.0; // white noise std (yaw), [rad]
-static constexpr double MPC_RPY_BIAS_RW_RP  = 0.06 * M_PI / 180.0; // bias random-walk, [rad/sqrt(s)]
-static constexpr double MPC_RPY_BIAS_RW_YAW = 0.10 * M_PI / 180.0; // [rad/sqrt(s)]
+static constexpr double POS_NOISE_SIGMA   = 0.006; // white noise std,  [m]
+static constexpr double POS_BIAS_RW       = 0.002; // bias random-walk, [m/sqrt(s)]
+static constexpr double VEL_NOISE_SIGMA   = 0.010; // white noise std, [m/s]
+static constexpr double ACC_NOISE_SIGMA   = 0.020; // white noise std, [m/s^2]
 
-// 2. omega noise/bias
-static constexpr double MPC_OMEGA_SIGMA   = 0.012;  // white noise std, [rad/s]
-static constexpr double MPC_OMEGA_BIAS_RW = 0.005; // bias random-walk, [rad/s/sqrt(s)]
+static constexpr double RP_NOISE_SIGMA    = 1.00 * M_PI / 180.0;  // white noise std (roll/pitch), [rad]
+static constexpr double YAW_NOISE_SIGMA   = 1.50 * M_PI / 180.0;  // white noise std (yaw), [rad]
+static constexpr double RP_NOISE_BIAS_RW  = 0.10 * M_PI / 180.0;  // [rad/sqrt(s)]
+static constexpr double YAW_NOISE_BIAS_RW = 0.40 * M_PI / 180.0;  // [rad/sqrt(s)]
 
-// 3. r_cot noise/bias
-static constexpr double MPC_RCOT_SIGMA   = 0.0010;  // white noise std, [m]
-static constexpr double MPC_RCOT_BIAS_RW = 0.0003; // bias random-walk, [m/sqrt(s)]
+static constexpr double OMEGA_NOISE_SIGMA = 4.0 * M_PI / 180.0;  // white noise std, [rad/s]
 
-// 4. R_raw perturbation noise/bias
-static constexpr double MPC_RRAW_SIGMA_RP    = 1.00 * M_PI / 180.0;  // white noise std (roll/pitch), [rad]
-static constexpr double MPC_RRAW_SIGMA_YAW   = 1.50 * M_PI / 180.0;  // white noise std (yaw), [rad]
-static constexpr double MPC_RRAW_BIAS_RW_RP  = 0.05 * M_PI / 180.0;  // [rad/sqrt(s)]
-static constexpr double MPC_RRAW_BIAS_RW_YAW = 0.10 * M_PI / 180.0;  // [rad/sqrt(s)]
-
-// 5. T_des bias/noise
-static constexpr double MPC_T_SCALE_RW  = 0.01;  // scale random-walk (1.0% per sqrt(s)) [1/sqrt(s)]
-static constexpr double MPC_T_ADD_RW    = 0.10;  // additive random-walk [N/sqrt(s)]
-static constexpr double MPC_T_NOISE_REL = 0.01;  // [-] relative white noise (1.0%)
-static constexpr double MPC_T_NOISE_ABS = 0.50;  // [N] minimum abs noise
+static constexpr double ARM_NOISE_SIGMA   = 0.4 * M_PI / 180.0;  // white noise std,  [rad/s]
+static constexpr double ARM_BIAS_RW       = 0.1 * M_PI / 180.0;  // bias random-walk, [rad/s/sqrt(s)]
 
 } // namespace param
 

@@ -102,9 +102,17 @@ int main() {
     Eigen::Vector3d bPcot_cur = Eigen::Vector3d::Zero();
     Eigen::Vector3d euler_rpy = Eigen::Vector3d::Zero();
 
-    // --- noise inject to MRG ---
-    static mpc_noise::State g_mpc_noise;
-    mpc_noise::reset(g_mpc_noise, param::MPC_NOISE_SEED, std::chrono::steady_clock::now());
+    // --- noise injection ---
+    static NOISE::State noise_state;
+    NOISE::reset(noise_state, param::NOISE_SEED, std::chrono::steady_clock::now());
+
+    // --- timedelay ---
+    SimState delayed_s;
+    double delayed_q_d[20] = {0};
+
+    // --- smoothing ---
+    Eigen::Vector4d smoothed_F   = Eigen::Vector4d::Zero();
+    Eigen::Vector4d smoothed_Tau = Eigen::Vector4d::Zero();
 
     // --- logging ---
     mmap_manager::MMapLogger logger("/tmp/strider_log.mmap", /*reset=*/true);
@@ -151,8 +159,11 @@ int main() {
         const Eigen::Quaterniond q(d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]);
         s.R << quat_to_R(q);
         s.omega << d->qvel[3], -d->qvel[4], -d->qvel[5];
-        for (int i=0; i<4; ++i) { for(int j=0; j<5; ++j){s.arm_q[i][j] = d->qpos[7 + 5*i + j];}}
+        for (int i=0; i<20; ++i) {s.arm_q[i] = d->qpos[7 + i];}
       }
+
+      // --- sensor noise injection ---
+      if (param::NOISE_ON) {NOISE::apply(noise_state, now, delayed_s);}
 
       // --- position control ---
       Eigen::Vector3d pos_des;
@@ -160,18 +171,18 @@ int main() {
       else {pos_des = Eigen::Vector3d(0.0, 0.0, -1.0);}
 
       gac_cmd.xd = pos_des;
-      gac_cmd.b1d = Eigen::Vector3d(1,0,0);
-      gac_state.x = s.pos;
-      gac_state.v = s.vel;
-      gac_state.a = s.acc;
-      gac_state.R = s.R;
-      gac_state.W = s.omega;
+      gac_cmd.b1d = Eigen::Vector3d(1.0, 0.0 ,0.0);
+      gac_state.x = delayed_s.pos;
+      gac_state.v = delayed_s.vel;
+      gac_state.a = delayed_s.acc;
+      gac_state.R = delayed_s.R;
+      gac_state.W = delayed_s.omega;
       geometry_ctrl.position_control();
       const Eigen::Matrix3d R_raw = gac_cmd.Rd;
       const double T_des = -geometry_ctrl.f_total; // (f_total > 0)
       
-      euler_rpy = R_to_rpy(s.R);
-      bPcot_cur = FK(s.arm_q);
+      euler_rpy = R_to_rpy(delayed_s.R);
+      bPcot_cur = FK(delayed_s.arm_q);
       { // MPC send
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
         if (g_mpc_activated.load(std::memory_order_relaxed)) {
@@ -180,32 +191,25 @@ int main() {
               if (!g_mpc_output.has) {
                 next_mpc_tick += param::MPC_COMPUTE_DT;
                 mpc_key += 1;
-
-                Eigen::Vector3d rpy_mpc  = euler_rpy;
-                Eigen::Vector3d omg_mpc  = s.omega;
-                Eigen::Vector2d rcot_mpc(bPcot_cur(0), bPcot_cur(1));
-                Eigen::Matrix3d Rraw_mpc = R_raw;
-                double             T_mpc = geometry_ctrl.f_total;
-                mpc_noise::apply(g_mpc_noise, now, rpy_mpc, omg_mpc, rcot_mpc, Rraw_mpc, T_mpc);
                 
                 int k = 0; // fill initial state(x)
-                g_mpc_input.x_0(k++) = rpy_mpc(0); g_mpc_input.x_0(k++) = rpy_mpc(1); g_mpc_input.x_0(k++) = rpy_mpc(2); // theta(0,1,2)
-                g_mpc_input.x_0(k++) = omg_mpc(0); g_mpc_input.x_0(k++) = omg_mpc(1); g_mpc_input.x_0(k++) = omg_mpc(2); // omega(3,4,5)
-                g_mpc_input.x_0(k++) = rcot_mpc(0); g_mpc_input.x_0(k++) = rcot_mpc(1); // r_cot(6,7)
+                g_mpc_input.x_0(k++) = euler_rpy(0); g_mpc_input.x_0(k++) = euler_rpy(1); g_mpc_input.x_0(k++) = euler_rpy(2); // theta(0,1,2)
+                g_mpc_input.x_0(k++) = delayed_s.omega(0); g_mpc_input.x_0(k++) = delayed_s.omega(1); g_mpc_input.x_0(k++) = delayed_s.omega(2); // omega(3,4,5)
+                g_mpc_input.x_0(k++) = bPcot_cur(0); g_mpc_input.x_0(k++) = bPcot_cur(1); // r_cot(6,7)
                 g_mpc_input.x_0(k++) = delta_theta_opt(0); g_mpc_input.x_0(k++) = delta_theta_opt(1); g_mpc_input.x_0(k++) = delta_theta_opt(2); // delta_theta(8,9,10)
-                g_mpc_input.x_0(k++) = r_cot_opt(0); g_mpc_input.x_0(k++) = r_cot_opt(1); // r_cot_cmd(11,12)
+                g_mpc_input.x_0(k++) = bPcot_des(0); g_mpc_input.x_0(k++) = bPcot_des(1); // r_cot_cmd(11,12)
 
                 int l = 0; // fill initial control input(u)
                 g_mpc_input.u_0(l++) = delta_theta_rate(0); g_mpc_input.u_0(l++) = delta_theta_rate(1); g_mpc_input.u_0(l++) = delta_theta_rate(2); // delta_theta_cmd_rate(0,1,2)
                 g_mpc_input.u_0(l++) = r_cot_rate(0); g_mpc_input.u_0(l++) = r_cot_rate(1); // r_cot_cmd_rate(3,4)
 
                 int m = 0; // fill initial parameter(p)
-                for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = Rraw_mpc(i, j);}} // Rraw_mpc(0~8), column-major order to match CasADi reshape
+                for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
                 g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(9)
-                g_mpc_input.p(m++) = T_mpc; // T_des(10)
+                g_mpc_input.p(m++) = geometry_ctrl.f_total; // T_des(10)
 
                 int n = 0;
-                g_mpc_input.log(n++) = s.pos(0); g_mpc_input.log(n++) = s.pos(1); g_mpc_input.log(n++) = s.pos(2); // pos_cur
+                g_mpc_input.log(n++) = delayed_s.pos(0); g_mpc_input.log(n++) = delayed_s.pos(1); g_mpc_input.log(n++) = delayed_s.pos(2); // pos_cur
                 g_mpc_input.log(n++) = pos_des(0); g_mpc_input.log(n++) = pos_des(1); g_mpc_input.log(n++) = pos_des(2); // pos_des
                 g_mpc_input.log(n++) = thrust_des_log(0); g_mpc_input.log(n++) = thrust_des_log(1); g_mpc_input.log(n++) = thrust_des_log(2); g_mpc_input.log(n++) = thrust_des_log(3); // F1234
 
@@ -255,7 +259,7 @@ int main() {
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
-      Sequential_Allocation(T_des, tau_des, tauz_bar, s.arm_q, thrust_des, tilt_ang_des);
+      Sequential_Allocation(T_des, tau_des, tauz_bar, delayed_s.arm_q, thrust_des, tilt_ang_des);
       thrust_des_log = thrust_des;
 
       // --- thrust to pwm ---
@@ -275,6 +279,10 @@ int main() {
       const Eigen::Map<const Eigen::Vector4d> ROTOR_DIR(param::rotor_dir);
       const Eigen::Vector4d Tau = (param::PWM_ZETA * F.array() * ROTOR_DIR.array()).matrix();
 
+      // --- thruster force&torque smoothing ---
+      smoothed_F   = 0.882 * smoothed_F   + 0.118 * F;
+      smoothed_Tau = 0.882 * smoothed_Tau + 0.118 * Tau;
+
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;
       const int n_sub = static_cast<int>(substep_accum);
@@ -287,12 +295,16 @@ int main() {
         g_pos_cur[0]=d->qpos[0]; g_pos_des[0]=pos_des(0);
         g_pos_cur[1]=d->qpos[1]; g_pos_des[1]=-pos_des(1);
         g_pos_cur[2]=d->qpos[2]; g_pos_des[2]=-pos_des(2);
-        Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl) = F.cast<mjtNum>();
-        Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl + 4) = Tau.cast<mjtNum>();
-        for (int i = 0; i < 20; ++i) d->ctrl[8 + i] = q_d[i];
+        Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl) = smoothed_F.cast<mjtNum>();
+        Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl + 4) = smoothed_Tau.cast<mjtNum>();
+        for (int i = 0; i < 20; ++i) d->ctrl[8 + i] = delayed_q_d[i];
 
         for (int s = 0; s < n_sub; ++s) {mj_step(m, d);}
       }
+
+      // time_delay store
+      delayed_s = s;
+      for (uint8_t i=0; i<20; ++i) {delayed_q_d[i] = q_d[i];}
 
       // ------ (Data logging) -----------------------------------------------------------------------------
       {

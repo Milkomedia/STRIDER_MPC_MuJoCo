@@ -11,14 +11,13 @@
 
 static inline constexpr double inv_sqrt2 = 0.7071067811865474617150084668537601828575;  // 1/sqrt(2)
 static inline constexpr double sqrt2 = 1.4142135623730951454746218587388284504414;      // sqrt(2)
-
 struct SimState { // use for copy snapshot in thread lock
   Eigen::Vector3d pos = Eigen::Vector3d::Zero();
   Eigen::Vector3d vel = Eigen::Vector3d::Zero();
   Eigen::Vector3d acc = Eigen::Vector3d::Zero();
   Eigen::Matrix3d R   = Eigen::Matrix3d::Identity();
   Eigen::Vector3d omega = Eigen::Vector3d::Zero();
-  double arm_q[4][5] = {0.0};
+  double arm_q[20] = {0.0};
 };
 
 static inline Eigen::Vector3d fig8_point(double t_sec){
@@ -238,13 +237,13 @@ static inline Eigen::Matrix4d compute_DH(double a, double alpha, double d, doubl
     return T;
   }
 
-static inline Eigen::Vector3d FK(const double q[4][5]) {
+static inline Eigen::Vector3d FK(const double q[20]) {
   // returns {b}->{cot} position and z-directional heading vector
   Eigen::Vector3d bpcot = Eigen::Vector3d::Zero();
   for (uint8_t i = 0; i < 4; ++i) {
     Eigen::Matrix4d T_i = Eigen::Matrix4d::Identity();
     T_i *= compute_DH(param::B2BASE_A[i], param::B2BASE_ALPHA[i], 0.0, param::B2BASE_THETA[i]);
-    for (int j = 0; j < 5; ++j) {T_i *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, q[i][j]);}
+    for (int j = 0; j < 5; ++j) {T_i *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, q[5*i+j]);}
     bpcot += T_i.block<3, 1>(0, 3);
   }
   bpcot *= 0.25;
@@ -252,7 +251,7 @@ static inline Eigen::Vector3d FK(const double q[4][5]) {
   return bpcot;
 }
 
-static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[4][5], Eigen::Vector4d& C1_des, Eigen::Vector4d& C2_des) {
+static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[20], Eigen::Vector4d& C1_des, Eigen::Vector4d& C2_des) {
   // yaw wrench conversion
   tauz_bar = param::SERVO_DELAY_ALPHA*tau_d(2) + param::SERVO_DELAY_BETA*tauz_bar;
   double tauz_r = tau_d(2) - tauz_bar;
@@ -265,7 +264,7 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   for (uint i = 0; i < 4; ++i) {
     Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
     T *= compute_DH(param::B2BASE_A[i], param::B2BASE_ALPHA[i], 0.0, param::B2BASE_THETA[i]);
-    for (int j = 0; j < 5; ++j) {T *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, arm_q[i][j]);}
+    for (int j = 0; j < 5; ++j) {T *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, arm_q[5*i+j]);}
     r_mea.col(i) = T.block<3,1>(0,3);
     
     const Eigen::Vector3d heading = T.block<3,3>(0,0).col(0);
@@ -322,9 +321,7 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   else {C2_des = (A2.transpose()*A2 + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A2.transpose()*B2);}
 }
 
-namespace mpc_noise {
-
-// Fast RNG: xorshift64*
+namespace NOISE {
 struct Rng {
   std::uint64_t s = 88172645463325252ull; // non-zero seed
 
@@ -354,26 +351,15 @@ struct Rng {
 };
 
 struct State {
-  bool inited = false;
   std::chrono::steady_clock::time_point last_t;
 
   Rng rng;
 
   // Bias states (random-walk)
-  Eigen::Vector3d rpy_bias   = Eigen::Vector3d::Zero();
-  Eigen::Vector3d omega_bias = Eigen::Vector3d::Zero();
-  Eigen::Vector2d rcot_bias  = Eigen::Vector2d::Zero();
-  Eigen::Vector3d rraw_bias  = Eigen::Vector3d::Zero();
-
-  double T_scale_bias = 0.0; // multiplicative
-  double T_add_bias   = 0.0; // additive
+  Eigen::Vector3d pos_bias   = Eigen::Vector3d::Zero();
+  Eigen::Vector3d theta_bias = Eigen::Vector3d::Zero();
+  double q_bias[20] = {0.0};
 };
-
-static inline double wrap_pi(double a) {
-  while (a >  M_PI) a -= 2.0*M_PI;
-  while (a < -M_PI) a += 2.0*M_PI;
-  return a;
-}
 
 // Reset/init the noise state
 static inline void reset(State& st, std::uint64_t seed, const std::chrono::steady_clock::time_point& now) {
@@ -381,72 +367,60 @@ static inline void reset(State& st, std::uint64_t seed, const std::chrono::stead
 
   st.rng.s = (seed == 0) ? 1ull : seed;
 
-  st.rpy_bias.setZero();
-  st.omega_bias.setZero();
-  st.rcot_bias.setZero();
-  st.rraw_bias.setZero();
-
-  st.T_scale_bias = 0.0;
-  st.T_add_bias   = 0.0;
+  st.pos_bias.setZero();
+  st.theta_bias.setZero();
+  for (uint8_t i=0; i<20; ++i) {st.q_bias[i] = 0.0;}
 }
 
-static inline void apply(State& st,
-                         const std::chrono::steady_clock::time_point& now,
-                         Eigen::Vector3d& rpy,
-                         Eigen::Vector3d& omega,
-                         Eigen::Vector2d& rcot,
-                         Eigen::Matrix3d& R_raw,
-                         double& T_des) {
-  if (!param::MPC_NOISE_ON) return;
+static inline void apply(State& st, const std::chrono::steady_clock::time_point& now, SimState& raw) {
 
   double dt = std::chrono::duration<double>(now - st.last_t).count();
-  dt = std::clamp(dt, param::MPC_COMPUTE_DT_DOUBLE, 0.05);
+  dt = std::clamp(dt, 0.002, 0.01);
   const double sdt = std::sqrt(dt);
   st.last_t = now;
 
   // bias update
-  st.rpy_bias.x() += param::MPC_RPY_BIAS_RW_RP  * sdt * st.rng.randn_fast();
-  st.rpy_bias.y() += param::MPC_RPY_BIAS_RW_RP  * sdt * st.rng.randn_fast();
-  st.rpy_bias.z() += param::MPC_RPY_BIAS_RW_YAW * sdt * st.rng.randn_fast();
+  st.pos_bias.x() += param::POS_BIAS_RW * sdt * st.rng.randn_fast();
+  st.pos_bias.y() += param::POS_BIAS_RW * sdt * st.rng.randn_fast();
+  st.pos_bias.z() += param::POS_BIAS_RW * sdt * st.rng.randn_fast();
   
-  st.omega_bias.x() += param::MPC_OMEGA_BIAS_RW * sdt * st.rng.randn_fast();
-  st.omega_bias.y() += param::MPC_OMEGA_BIAS_RW * sdt * st.rng.randn_fast();
-  st.omega_bias.z() += param::MPC_OMEGA_BIAS_RW * sdt * st.rng.randn_fast();
+  st.theta_bias.x() += param::RP_NOISE_BIAS_RW  * sdt * st.rng.randn_fast();
+  st.theta_bias.y() += param::RP_NOISE_BIAS_RW  * sdt * st.rng.randn_fast();
+  st.theta_bias.z() += param::YAW_NOISE_BIAS_RW * sdt * st.rng.randn_fast();
 
-  st.rcot_bias.x() += param::MPC_RCOT_BIAS_RW * sdt * st.rng.randn_fast();
-  st.rcot_bias.y() += param::MPC_RCOT_BIAS_RW * sdt * st.rng.randn_fast();
-  
-  st.rraw_bias.x() += param::MPC_RRAW_BIAS_RW_RP  * sdt * st.rng.randn_fast();
-  st.rraw_bias.y() += param::MPC_RRAW_BIAS_RW_RP  * sdt * st.rng.randn_fast();
-  st.rraw_bias.z() += param::MPC_RRAW_BIAS_RW_YAW * sdt * st.rng.randn_fast();
-  
-  st.T_scale_bias += param::MPC_T_SCALE_RW * sdt * st.rng.randn_fast();
-  st.T_add_bias   += param::MPC_T_ADD_RW   * sdt * st.rng.randn_fast();
+  for (uint8_t i=0; i<20; ++i) {st.q_bias[i] += param::ARM_BIAS_RW * sdt * st.rng.randn_fast();}
 
   // white noise & bias apply
-  rpy.x() += st.rpy_bias.x() + param::MPC_RPY_SIGMA_RP  * st.rng.randn_fast();
-  rpy.y() += st.rpy_bias.y() + param::MPC_RPY_SIGMA_RP  * st.rng.randn_fast();
-  rpy.z() += st.rpy_bias.z() + param::MPC_RPY_SIGMA_YAW * st.rng.randn_fast();
-  rpy.z() = wrap_pi(rpy.z());
+  raw.pos.x() += st.pos_bias.x() + param::POS_NOISE_SIGMA  * st.rng.randn_fast();
+  raw.pos.y() += st.pos_bias.y() + param::POS_NOISE_SIGMA  * st.rng.randn_fast();
+  raw.pos.z() += st.pos_bias.z() + param::POS_NOISE_SIGMA * st.rng.randn_fast();
 
-  omega.x() += st.omega_bias.x() + param::MPC_OMEGA_SIGMA * st.rng.randn_fast();
-  omega.y() += st.omega_bias.y() + param::MPC_OMEGA_SIGMA * st.rng.randn_fast();
-  omega.z() += st.omega_bias.z() + param::MPC_OMEGA_SIGMA * st.rng.randn_fast();
+  raw.vel.x() += param::VEL_NOISE_SIGMA * st.rng.randn_fast();
+  raw.vel.y() += param::VEL_NOISE_SIGMA * st.rng.randn_fast();
+  raw.vel.z() += param::VEL_NOISE_SIGMA * st.rng.randn_fast();
 
-  rcot.x() += st.rcot_bias.x() + param::MPC_RCOT_SIGMA * st.rng.randn_fast();
-  rcot.y() += st.rcot_bias.y() + param::MPC_RCOT_SIGMA * st.rng.randn_fast();
+  raw.acc.x() += param::ACC_NOISE_SIGMA * st.rng.randn_fast();
+  raw.acc.y() += param::ACC_NOISE_SIGMA * st.rng.randn_fast();
+  raw.acc.z() += param::ACC_NOISE_SIGMA * st.rng.randn_fast();
 
   Eigen::Vector3d dtheta;
-  dtheta.x() = st.rraw_bias.x() + param::MPC_RRAW_SIGMA_RP  * st.rng.randn_fast();
-  dtheta.y() = st.rraw_bias.y() + param::MPC_RRAW_SIGMA_RP  * st.rng.randn_fast();
-  dtheta.z() = st.rraw_bias.z() + param::MPC_RRAW_SIGMA_YAW * st.rng.randn_fast();
-  R_raw = R_raw * expm_hat(dtheta);
+  dtheta.x() = st.theta_bias.x() + param::RP_NOISE_SIGMA * st.rng.randn_fast();
+  dtheta.y() = st.theta_bias.y() + param::RP_NOISE_SIGMA * st.rng.randn_fast();
+  dtheta.z() = st.theta_bias.z() + param::YAW_NOISE_SIGMA * st.rng.randn_fast();
+  raw.R = raw.R * expm_hat(dtheta);
 
-  const double nT = std::max(param::MPC_T_NOISE_ABS, param::MPC_T_NOISE_REL * std::abs(T_des));
-  T_des = (1.0 + st.T_scale_bias) * T_des + st.T_add_bias + nT * st.rng.randn_fast();   // scale + add + white
+  raw.omega.x() += param::OMEGA_NOISE_SIGMA * st.rng.randn_fast();
+  raw.omega.y() += param::OMEGA_NOISE_SIGMA * st.rng.randn_fast();
+  raw.omega.z() += param::OMEGA_NOISE_SIGMA * st.rng.randn_fast();
+
+  for (uint8_t i=0; i<20; ++i) {raw.arm_q[i] += st.q_bias[i] + param::ARM_NOISE_SIGMA  * st.rng.randn_fast();}
 }
 
-} // namespace mpc_noise
+// static inline void apply_time_delay(State& st,
+
+// )
+
+} // namespace NOISE
 
 inline std::filesystem::path get_executable_path() {
 #if defined(__APPLE__)
