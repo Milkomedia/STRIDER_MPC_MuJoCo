@@ -7,7 +7,7 @@ import numpy as np
 
 def build_model():
     model = AcadosModel()
-    model.name = "strider"
+    model.name = "yes_cot_MRG"
 
     # Model state
     theta           = ca.SX.sym('theta',  3) # [rad]

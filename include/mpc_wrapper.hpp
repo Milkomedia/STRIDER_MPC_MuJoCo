@@ -16,7 +16,7 @@ struct MPCInput {
   Eigen::Matrix<double, param::NU, 1> u_0;
   Eigen::Matrix<double, param::NP, 1> p;
   Eigen::Matrix<double, 10, 1> log;
-  bool debug = false;
+  bool use_cot = false;
   std::chrono::steady_clock::time_point t;
   uint32_t key = 0;
   bool has = false;

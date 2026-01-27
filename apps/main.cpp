@@ -90,7 +90,8 @@ int main() {
     fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
     // --- parameter definition ---
-    Eigen::Vector3d bPcot_des(0.0, 0.0, -0.2); // [m]
+    const Eigen::Vector3d bPcot_init(0.0, 0.0, -0.2); // [m]
+    Eigen::Vector3d bPcot_des(0.0, 0.0, -0.2);        // [m]
     Eigen::Matrix3d bRcot_des        = Eigen::Matrix3d::Identity(); // Body tilt
     double tauz_bar                  = 0.0;                     // Sequential control allocation
     Eigen::Vector3d delta_theta_opt  = Eigen::Vector3d::Zero(); // MRG optimal state
@@ -101,6 +102,8 @@ int main() {
     uint32_t mpc_key = 1;
     Eigen::Vector3d bPcot_cur = Eigen::Vector3d::Zero();
     Eigen::Vector3d euler_rpy = Eigen::Vector3d::Zero();
+    bool prev_mpc_on = false;
+    uint8_t mpc_mod = COT_ACTIVATED;
 
     // --- noise injection ---
     static NOISE::State noise_state;
@@ -109,8 +112,6 @@ int main() {
     // --- timedelay ---
     SimState delayed_s;
     double delayed_q_d[20] = {0};
-
-    // --- smoothing ---
     Eigen::Vector4d smoothed_F   = Eigen::Vector4d::Zero();
     Eigen::Vector4d smoothed_Tau = Eigen::Vector4d::Zero();
 
@@ -171,7 +172,7 @@ int main() {
       else {pos_des = Eigen::Vector3d(0.0, 0.0, -1.0);}
 
       gac_cmd.xd = pos_des;
-      gac_cmd.b1d = Eigen::Vector3d(1.0, 0.0 ,0.0);
+      gac_cmd.b1d = Eigen::Vector3d(1.0/std::sqrt(2.0), 1.0/std::sqrt(2.0) ,0.0);
       gac_state.x = delayed_s.pos;
       gac_state.v = delayed_s.vel;
       gac_state.a = delayed_s.acc;
@@ -212,13 +213,41 @@ int main() {
                 g_mpc_input.log(n++) = delayed_s.pos(0); g_mpc_input.log(n++) = delayed_s.pos(1); g_mpc_input.log(n++) = delayed_s.pos(2); // pos_cur
                 g_mpc_input.log(n++) = pos_des(0); g_mpc_input.log(n++) = pos_des(1); g_mpc_input.log(n++) = pos_des(2); // pos_des
                 g_mpc_input.log(n++) = thrust_des_log(0); g_mpc_input.log(n++) = thrust_des_log(1); g_mpc_input.log(n++) = thrust_des_log(2); g_mpc_input.log(n++) = thrust_des_log(3); // F1234
+                
+                if (!prev_mpc_on) {
+                  if (mpc_mod==COT_ACTIVATED){
+                    std::printf("MPC->NO-COT\n");
+                    mpc_mod=COT_DISABLED;
+                  }
+                  else {
+                    std::printf("MPC->YES-COT\n");
+                    mpc_mod=COT_ACTIVATED;
+                  }
+                }
 
-                g_mpc_input.debug = true;
+                if (mpc_mod==COT_ACTIVATED) {g_mpc_input.use_cot = true;}
+                else {g_mpc_input.use_cot = false;}
                 g_mpc_input.t = now;
                 g_mpc_input.key = mpc_key;
                 g_mpc_input.has = true;
                 mpc_cv.notify_one();
-      }}}}}
+              }
+            }
+          }
+          prev_mpc_on = true;
+        }
+        else {
+          // MPC OFF -> bPcot_des goes to inital value.
+          bPcot_des = 0.005 * bPcot_init + 0.995 * bPcot_des;
+
+          // reset prev solve value
+          delta_theta_opt  = Eigen::Vector3d::Zero();
+          r_cot_opt        = Eigen::Vector2d::Zero();
+          delta_theta_rate = Eigen::Vector3d::Zero();
+          r_cot_rate       = Eigen::Vector2d::Zero();
+          prev_mpc_on = false;
+        }
+      }
 
       { // MPC get
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);

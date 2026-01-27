@@ -10,6 +10,9 @@
 #include <Eigen/Dense>
 #include <mujoco/mujoco.h>
 
+#define COT_ACTIVATED 2
+#define COT_DISABLED  3
+
 namespace param {
 
 // ===== Frequencies & timesteps =====
@@ -30,7 +33,7 @@ static constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 // Control Parameters
 static constexpr double kX[3] = { 8.0,  8.0,  5.0}; // Position gain [x, y, z]
 static constexpr double kV[3] = {12.0, 12.0, 10.0}; // Velocity gain [x, y, z]
-static constexpr double kR[3] = {13.0, 13.0,  0.5}; // Rotational gain [roll, pitch, yaw]
+static constexpr double kR[3] = {13.0, 13.0,  1.5}; // Rotational gain [roll, pitch, yaw]
 static constexpr double kW[3] = { 2.5,  2.5,  0.5}; // angular Velocity gain [roll, pitch, yaw]
 
 // Integral Parameters
@@ -82,18 +85,18 @@ static constexpr float RGBA_PATH[4]  = {0.20f, 0.80f, 0.90f, 0.60f}; // current 
 static constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired path color
 
 // ===== state noise input (sim->real validation) =====
-static constexpr bool NOISE_ON = true;
+static constexpr bool NOISE_ON = false;
 static constexpr std::uint64_t NOISE_SEED = 42;
 
 static constexpr double POS_NOISE_SIGMA   = 0.006; // white noise std,  [m]
-static constexpr double POS_BIAS_RW       = 0.002; // bias random-walk, [m/sqrt(s)]
+static constexpr double POS_BIAS_RW       = 0.00005; // bias random-walk, [m/sqrt(s)]
 static constexpr double VEL_NOISE_SIGMA   = 0.010; // white noise std, [m/s]
 static constexpr double ACC_NOISE_SIGMA   = 0.020; // white noise std, [m/s^2]
 
 static constexpr double RP_NOISE_SIGMA    = 1.00 * M_PI / 180.0;  // white noise std (roll/pitch), [rad]
 static constexpr double YAW_NOISE_SIGMA   = 1.50 * M_PI / 180.0;  // white noise std (yaw), [rad]
-static constexpr double RP_NOISE_BIAS_RW  = 0.10 * M_PI / 180.0;  // [rad/sqrt(s)]
-static constexpr double YAW_NOISE_BIAS_RW = 0.40 * M_PI / 180.0;  // [rad/sqrt(s)]
+static constexpr double RP_NOISE_BIAS_RW  = 0.002 * M_PI / 180.0;  // [rad/sqrt(s)]
+static constexpr double YAW_NOISE_BIAS_RW = 0.005 * M_PI / 180.0;  // [rad/sqrt(s)]
 
 static constexpr double OMEGA_NOISE_SIGMA = 4.0 * M_PI / 180.0;  // white noise std, [rad/s]
 

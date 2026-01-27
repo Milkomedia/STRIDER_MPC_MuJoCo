@@ -36,7 +36,13 @@ if __package__ is None or __package__ == "":
   __package__ = THIS_DIR.name  # e.g. "mpc_py"
 
 from .mmap_manager import MMapReader, MMapPacket
-from . import params as p
+
+try:
+  from .yes_cot import params as p_yes
+  from .no_cot import params as p_no
+except Exception:
+  from . import params as p_yes
+  p_no = p_yes
 
 DebugFrame = Dict[str, Optional[np.ndarray]]
 
@@ -114,14 +120,13 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
   nu = int(pkt.nu)
   np_ = int(pkt.np)
 
-  dt = float(p.DT)
   T = N + 1
 
   x_all = np.asarray(pkt.x_all, dtype=np.float64).reshape(T, nx)
   u_all = np.asarray(pkt.u_all, dtype=np.float64).reshape(N, nu) if N > 0 else np.zeros((0, nu), dtype=np.float64)
   p_all = np.asarray(pkt.p_all, dtype=np.float64).reshape(T, np_)
 
-  # log_param (10): [pos_cur(3), pos_des(3), F1..F4(4)]
+  # log_param: use_cot(1), pos_cur(3), pos_des(3), F1..F4(4)]
   log_param = None
   if hasattr(pkt, "log_param"):
     try:
@@ -129,13 +134,26 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
     except Exception:
       log_param = None
 
+  # Select params module (default: yes_cot).
+  # If log_param is extended and contains use_cot flag, switch for correct gains/weights display.
+  p = p_yes
+
   pos_cur = np.full((3,), np.nan, dtype=np.float64)
   pos_des = np.full((3,), np.nan, dtype=np.float64)
   thrust_log = np.full((4,), np.nan, dtype=np.float64)
-  if log_param is not None and log_param.size >= 10:
-    pos_cur[:] = log_param[0:3]
-    pos_des[:] = log_param[3:6]
-    thrust_log[:] = log_param[6:10]
+  if log_param is not None:
+    if log_param.size >= 11:
+      use_cot_flag = bool(int(round(float(log_param[0]))))
+      p = p_yes if use_cot_flag else p_no
+      pos_cur[:] = log_param[1:4]
+      pos_des[:] = log_param[4:7]
+      thrust_log[:] = log_param[7:11]
+    elif log_param.size >= 10:
+      pos_cur[:] = log_param[0:3]
+      pos_des[:] = log_param[3:6]
+      thrust_log[:] = log_param[6:10]
+
+  dt = float(getattr(p, "DT", 0.02))
 
   # Current convention (augmented):
   # x = [theta(3), omega(3), r_cot(2), delta_theta_cmd(3), r_cot_cmd(2)] => nx=13
@@ -1087,7 +1105,7 @@ def main() -> int:
   win = DebugViewerMainWindow()
   win.show()
 
-  path = os.environ.get("STRIDER_MPC_MMAP", "/tmp/strider_mpc_debug.mmap")
+  path = os.environ.get("MRG_MMAP", "/tmp/MRG_debug.mmap")
   reader: Optional[MMapReader] = None
   last_seq: Optional[int] = None
 
