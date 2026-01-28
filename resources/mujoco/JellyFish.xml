@@ -49,6 +49,12 @@
       <site name="imu" pos="0 0 0" quat="1 0 0 0"/>
       <geom class="collision" size="0.12 0.12 .02" pos="0 0 0" contype="1" conaffinity="2"/>
 
+      <body name="payload_bar" pos="0 0 -0.04">
+      <inertial pos="0 0 0" mass="1.5" diaginertia="0.0001 0.1250333333 0.1250333333"/>
+      <geom type="box" size="0.5 0.01 0.01" rgba="0.8 0.2 0.2 1" contype="1" conaffinity="2"/>
+    </body>
+
+
     <body name="Arm1_Link1" pos="0.0848528 0.0848528 0" quat="0.382683 0 0 -0.92388">
       <inertial pos="-0.0628864 -0.00030071 0.0115046" quat="0.432962 0.567439 0.525068 0.46353" mass="0.374106" diaginertia="0.00164276 0.00160619 0.000141896"/>
       <joint name="Arm1_joint1" pos="0 0 0" axis="0 0 1"/>

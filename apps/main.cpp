@@ -168,11 +168,11 @@ int main() {
 
       // --- position control ---
       Eigen::Vector3d pos_des;
-      if (elapsed_double >= 4.0) {pos_des = square4_point(elapsed_double);} // option: [fig8_point/square4_point]
+      if (elapsed_double >= 4.0) {pos_des = fig8_point(elapsed_double);} // option: [fig8_point/square4_point]
       else {pos_des = Eigen::Vector3d(0.0, 0.0, -1.0);}
 
       gac_cmd.xd = pos_des;
-      gac_cmd.b1d = Eigen::Vector3d(1.0/std::sqrt(2.0), 1.0/std::sqrt(2.0) ,0.0);
+      gac_cmd.b1d = Eigen::Vector3d(1.0, 0.0 ,0.0);
       gac_state.x = delayed_s.pos;
       gac_state.v = delayed_s.vel;
       gac_state.a = delayed_s.acc;
@@ -312,6 +312,11 @@ int main() {
       smoothed_F   = 0.882 * smoothed_F   + 0.118 * F;
       smoothed_Tau = 0.882 * smoothed_Tau + 0.118 * Tau;
 
+      // // --- HW thrust constraint ---
+      // for (uint8_t i=0; i<4; ++i) {
+      //   if (smoothed_F(i) > 15.9) {smoothed_F(i) = 15.9;}
+      // }
+
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;
       const int n_sub = static_cast<int>(substep_accum);
@@ -382,7 +387,7 @@ int main() {
 
         for (int i = 0; i < 4; ++i) {
           ld.tilt_rad[i] = static_cast<float>(tilt_ang_des(i));
-          ld.f_thrust[i] = static_cast<float>(thrust_des(i));
+          ld.f_thrust[i] = static_cast<float>(smoothed_F(i));
         }
 
         ld.f_total = static_cast<float>(geometry_ctrl.f_total);

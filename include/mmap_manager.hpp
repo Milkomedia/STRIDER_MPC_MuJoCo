@@ -75,7 +75,7 @@ struct alignas(8) Slot {
 static_assert(alignof(Slot) == 8, "Slot alignment must be 8.");
 static_assert(sizeof(Slot) == 160, "Slot size must be 160 bytes.");
 
-static constexpr uint32_t k_Sec = 10;
+static constexpr uint32_t k_Sec = 20;
 static constexpr uint32_t k_Cap = static_cast<uint32_t>(param::CTRL_HZ) * k_Sec;
 
 inline uint64_t atomic_load_u64(const uint64_t* p) {

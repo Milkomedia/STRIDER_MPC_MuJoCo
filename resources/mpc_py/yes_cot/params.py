@@ -29,11 +29,11 @@ COT_MAX =  0.05 * np.array([1.0, 1.0]) # [m]
 
 # h_expr constraint
 F_MIN   = 6.0  * np.array([1.0, 1.0, 1.0, 1.0]) # thrust bound (F1,F2,F3,F4)
-F_MAX   = 12.0 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
+F_MAX   = 16.0 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
 
 # input cost
-Q_THETA = 500. * np.array([1.0, 1.0, 1.0])
-Q_COT   = 0.001 * np.array([1.0, 1.0])
+Q_THETA = 500. * np.array([1.0, 1.0, 10.0])
+Q_COT   = 0.0001 * np.array([1.0, 1.0])
 
 # state cost
 Q_OMEGA = 10.0  * np.array([1.0, 1.0, 1.0])

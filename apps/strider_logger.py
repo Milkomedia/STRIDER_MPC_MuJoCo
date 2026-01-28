@@ -349,7 +349,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._curves["tau_z_total"]  = p3c3.plot(pen=pen_act, name="total")
 
     # ========== Row 4: f1234 / tilt / f_total ==========
-    p4c1 = _mk_plot(3, 0, "f_thrust [N]", y_range=(11., 13.))
+    p4c1 = _mk_plot(3, 0, "f_thrust [N]", y_range=(14. , 17.))
     p4c2 = _mk_plot(3, 1, "tilt [deg]", y_range=(-30., 30.))
     p4c3 = _mk_plot(3, 2, "f_total [N]", y_range=(0., 80.))
 

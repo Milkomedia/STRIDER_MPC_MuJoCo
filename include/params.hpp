@@ -32,7 +32,7 @@ static constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 // ===== SE3 controlelr gains ====
 // Control Parameters
 static constexpr double kX[3] = { 8.0,  8.0,  5.0}; // Position gain [x, y, z]
-static constexpr double kV[3] = {12.0, 12.0, 10.0}; // Velocity gain [x, y, z]
+static constexpr double kV[3] = {11.5, 11.5, 10.0}; // Velocity gain [x, y, z]
 static constexpr double kR[3] = {13.0, 13.0,  1.5}; // Rotational gain [roll, pitch, yaw]
 static constexpr double kW[3] = { 2.5,  2.5,  0.5}; // angular Velocity gain [roll, pitch, yaw]
 
@@ -43,9 +43,9 @@ static constexpr double kIX = 0.1;  /**< Position integral gains */
 
 // ===== UAV Parameters =====
 static constexpr double J[9] = {0.27, 0.00, 0.00,
-                                0.00, 0.27, 0.00,
-                                0.00, 0.00, 0.53};
-static constexpr double M  = 4.8;
+                                0.00, 0.40, 0.00,
+                                0.00, 0.00, 0.67};
+static constexpr double M  = 6.3;
 static constexpr double G  = 9.80665;
 
 // Allocation parameters
@@ -100,8 +100,8 @@ static constexpr double YAW_NOISE_BIAS_RW = 0.005 * M_PI / 180.0;  // [rad/sqrt(
 
 static constexpr double OMEGA_NOISE_SIGMA = 4.0 * M_PI / 180.0;  // white noise std, [rad/s]
 
-static constexpr double ARM_NOISE_SIGMA   = 0.4 * M_PI / 180.0;  // white noise std,  [rad/s]
-static constexpr double ARM_BIAS_RW       = 0.1 * M_PI / 180.0;  // bias random-walk, [rad/s/sqrt(s)]
+static constexpr double ARM_NOISE_SIGMA   = 0.40 * M_PI / 180.0;  // white noise std,  [rad/s]
+static constexpr double ARM_BIAS_RW       = 0.03 * M_PI / 180.0;  // bias random-walk, [rad/s/sqrt(s)]
 
 } // namespace param
 

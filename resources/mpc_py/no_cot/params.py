@@ -22,13 +22,13 @@ ZETA = 0.02 * 0.5
 # ---------- Constraints & Costs ----------
 # h_expr constraint
 F_MIN   = 6.0  * np.array([1.0, 1.0, 1.0, 1.0]) # thrust bound (F1,F2,F3,F4)
-F_MAX   = 12.0 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
+F_MAX   = 15.8 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
 
 # input cost
 Q_THETA = 500. * np.array([1.0, 1.0, 1.0])
 
 # state cost
-Q_OMEGA = 10.0  * np.array([1.0, 1.0, 1.0])
+Q_OMEGA = 10.0  * np.array([1.0, 1.0, 10.0])
 
 # rate cost
 R_THETA = 2.0   * np.array([1.0, 1.0, 1.0])
