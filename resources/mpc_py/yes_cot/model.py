@@ -110,10 +110,11 @@ def build_model():
 
     # ---------- Propeller thrust expression ----------
     dx, dy = r_cot[0], r_cot[1]
+    # dx, dy = 0.3482 * r_cot[0], 0.3569 * r_cot[1]
     A = ca.vertcat(ca.horzcat( l-dy,  l-dy, -l-dy, -l-dy),
                    ca.horzcat( l+dx, -l+dx, -l+dx,  l+dx),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
-                   ca.horzcat(  1.0,   1.0,   1.0,   1.0))
+                   ca.horzcat( -1.0,  -1.0,  -1.0,  -1.0))
 
     w_d = ca.vertcat(tau_d, T_des)
     F_expr = ca.solve(A, w_d)

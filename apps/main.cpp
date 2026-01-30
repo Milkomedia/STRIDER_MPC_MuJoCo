@@ -90,8 +90,9 @@ int main() {
     fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
     // --- parameter definition ---
-    const Eigen::Vector3d bPcot_init(0.0, 0.0, -0.2); // [m]
-    Eigen::Vector3d bPcot_des(0.0, 0.0, -0.2);        // [m]
+    const Eigen::Vector3d bPcot_init(0.0, 0.0, -0.2);    // [m]
+    Eigen::Vector3d bPcot_des = bPcot_init;              // [m]
+    Eigen::Vector3d bPc_hat   = Eigen::Vector3d::Zero(); // [m]
     Eigen::Matrix3d bRcot_des        = Eigen::Matrix3d::Identity(); // Body tilt
     double tauz_bar                  = 0.0;                     // Sequential control allocation
     Eigen::Vector3d delta_theta_opt  = Eigen::Vector3d::Zero(); // MRG optimal state
@@ -167,11 +168,19 @@ int main() {
       if (param::NOISE_ON) {NOISE::apply(noise_state, now, delayed_s);}
 
       // --- position control ---
+      // Eigen::Vector3d pos_des;
+      // if (elapsed_double >= 4.0) {pos_des = square4_point(elapsed_double);} // option: [fig8_point/square4_point]
+      // else {pos_des = Eigen::Vector3d(0.0, 0.0, -1.0);}
+      
       Eigen::Vector3d pos_des;
-      if (elapsed_double >= 4.0) {pos_des = fig8_point(elapsed_double);} // option: [fig8_point/square4_point]
-      else {pos_des = Eigen::Vector3d(0.0, 0.0, -1.0);}
+      Eigen::Vector3d vel_des = Eigen::Vector3d::Zero();
+      Eigen::Vector3d acc_des = Eigen::Vector3d::Zero();
+      if (elapsed_double >= 4.0) {fig8_point_pva(elapsed_double, pos_des, vel_des, acc_des);} // option: [fig8_point_pva/circle_pva]
+      else {pos_des = Eigen::Vector3d(0.0, 0.0, -3.0);}
 
       gac_cmd.xd = pos_des;
+      gac_cmd.xd_dot = vel_des;
+      gac_cmd.xd_2dot = acc_des;
       gac_cmd.b1d = Eigen::Vector3d(1.0, 0.0 ,0.0);
       gac_state.x = delayed_s.pos;
       gac_state.v = delayed_s.vel;
@@ -184,6 +193,8 @@ int main() {
       
       euler_rpy = R_to_rpy(delayed_s.R);
       bPcot_cur = FK(delayed_s.arm_q);
+      bPc_hat(0) = param::COT_2_COM_X * bPcot_cur(0);
+      bPc_hat(1) = param::COT_2_COM_Y * bPcot_cur(1);
       { // MPC send
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
         if (g_mpc_activated.load(std::memory_order_relaxed)) {
@@ -207,7 +218,7 @@ int main() {
                 int m = 0; // fill initial parameter(p)
                 for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
                 g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(9)
-                g_mpc_input.p(m++) = geometry_ctrl.f_total; // T_des(10)
+                g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(10)
 
                 int n = 0;
                 g_mpc_input.log(n++) = delayed_s.pos(0); g_mpc_input.log(n++) = delayed_s.pos(1); g_mpc_input.log(n++) = delayed_s.pos(2); // pos_cur
@@ -285,10 +296,16 @@ int main() {
       const Eigen::Matrix3d R_d = R_raw * expm_hat(delta_theta_opt);
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
       
-      // --- (Sequential) Control Allocation ---
+      // // --- (Sequential) Control Allocation ---
+      // Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
+      // Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
+      // Sequential_Allocation(T_des, tau_des, tauz_bar, delayed_s.arm_q, bPc_hat, thrust_des, tilt_ang_des);
+      // thrust_des_log = thrust_des;
+
+      // --- (Normal) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
+      Control_Allocation(T_des, tau_des, bPcot_cur, bPc_hat, thrust_des);
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
-      Sequential_Allocation(T_des, tau_des, tauz_bar, delayed_s.arm_q, thrust_des, tilt_ang_des);
       thrust_des_log = thrust_des;
 
       // --- thrust to pwm ---
@@ -314,7 +331,7 @@ int main() {
 
       // // --- HW thrust constraint ---
       // for (uint8_t i=0; i<4; ++i) {
-      //   if (smoothed_F(i) > 15.9) {smoothed_F(i) = 15.9;}
+      //   if (smoothed_F(i) > 20.0) {smoothed_F(i) = 20.0;}
       // }
 
       // --- Step simulation at SIM_HZ using ZOH ---

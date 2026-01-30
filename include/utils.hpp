@@ -23,12 +23,37 @@ struct SimState { // use for copy snapshot in thread lock
 static inline Eigen::Vector3d fig8_point(double t_sec){
   // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
   constexpr double x    = 2.0;               // lobe half-width in X [m]
-  constexpr double y    = x / 2.0;     // lobe half-height in Y [m]
+  constexpr double y    = x / 1.5;           // lobe half-height in Y [m]
   constexpr double freq = 2.0 * M_PI * 0.12; // [rad/s]
 
   const double s = std::sin(freq * t_sec);
   const double c = std::cos(freq * t_sec);
   return Eigen::Vector3d(x*s, y*s*c, -1.0);
+}
+
+static inline void fig8_point_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d){
+  constexpr double l = 2.0;               // lobe half-width in X [m]
+  constexpr double d = 0.0;               // lobe half-height in Y [m]
+  constexpr double f = 2.0 * M_PI * 0.3;  // [rad/s]
+
+  const double s = std::sin(f * t_sec);
+  const double c = std::cos(f * t_sec);
+
+  p_d = Eigen::Vector3d(l*s, d*s*c, -1.0);
+  v_d = Eigen::Vector3d(l*f*c, d*f*(1.0-2.0*s*s), 0.0);
+  a_d = Eigen::Vector3d(-l*f*f*s, -4.0*d*f*f*s*c, 0.0);
+}
+
+static inline void circle_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d){
+  constexpr double r = 1.5;              // circle radious [m]
+  constexpr double f = 2.0 * M_PI * 0.3; // [rad/s]
+
+  const double s = std::sin(f * t_sec);
+  const double c = std::cos(f * t_sec);
+
+  p_d = Eigen::Vector3d(r*s, r*c, -3.0);
+  v_d = Eigen::Vector3d(r*f*c, -r*f*s, 0.0);
+  a_d = Eigen::Vector3d(-r*f*f*s, -r*f*f*c, 0.0);
 }
 
 static inline Eigen::Vector3d square4_point(double t_sec) {
@@ -251,7 +276,7 @@ static inline Eigen::Vector3d FK(const double q[20]) {
   return bpcot;
 }
 
-static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[20], Eigen::Vector4d& C1_des, Eigen::Vector4d& C2_des) {
+static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[20], const Eigen::Vector3d& Pc, Eigen::Vector4d& C1_des, Eigen::Vector4d& C2_des) {
   // yaw wrench conversion
   tauz_bar = param::SERVO_DELAY_ALPHA*tau_d(2) + param::SERVO_DELAY_BETA*tauz_bar;
   double tauz_r = tau_d(2) - tauz_bar;
@@ -274,16 +299,18 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   double s1 = std::sin(C2_mea(0)); double s2 = std::sin(C2_mea(1)); double s3 = std::sin(C2_mea(2)); double s4 = std::sin(C2_mea(3));
   double c1 = std::cos(C2_mea(0)); double c2 = std::cos(C2_mea(1)); double c3 = std::cos(C2_mea(2)); double c4 = std::cos(C2_mea(3));
 
+  double pcx = Pc(0); double pcy = Pc(1); double pcz = Pc(2);
+
   // thrust allocation
   Eigen::Matrix4d A1;
-  A1(0,0) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 0)) * s1 - r_mea(1, 0) * c1;
-  A1(0,1) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1)) * s2 - r_mea(1, 1) * c2;
-  A1(0,2) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 2)) * s3 - r_mea(1, 2) * c3;
-  A1(0,3) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 3)) * s4 - r_mea(1, 3) * c4;
-  A1(1,0) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 0)) * s1 + r_mea(0, 0) * c1;
-  A1(1,1) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1)) * s2 + r_mea(0, 1) * c2;
-  A1(1,2) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 2)) * s3 + r_mea(0, 2) * c3;
-  A1(1,3) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 3)) * s4 + r_mea(0, 3) * c4;
+  A1(0,0) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 0) - pcz) * s1 + (pcy - r_mea(1, 0)) * c1;
+  A1(0,1) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1) + pcz) * s2 + (pcy - r_mea(1, 1)) * c2;
+  A1(0,2) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 2) + pcz) * s3 + (pcy - r_mea(1, 2)) * c3;
+  A1(0,3) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 3) - pcz) * s4 + (pcy - r_mea(1, 3)) * c4;
+  A1(1,0) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 0) + pcz) * s1 + (r_mea(0, 0) - pcx) * c1;
+  A1(1,1) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1) + pcz) * s2 + (r_mea(0, 1) - pcx) * c2;
+  A1(1,2) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 2) - pcz) * s3 + (r_mea(0, 2) - pcx) * c3;
+  A1(1,3) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 3) - pcz) * s4 + (r_mea(0, 3) - pcx) * c4;
   A1(2,0) = -param::PWM_ZETA * c1;
   A1(2,1) =  param::PWM_ZETA * c2;
   A1(2,2) = -param::PWM_ZETA * c3;
@@ -307,10 +334,10 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   A2(1,1) = -inv_sqrt2 * C1_des(1);
   A2(1,2) = -inv_sqrt2 * C1_des(2);
   A2(1,3) =  inv_sqrt2 * C1_des(3);
-  A2(2,0) = inv_sqrt2 * ( r_mea(0, 0) - r_mea(1, 0)) * C1_des(0);
-  A2(2,1) = inv_sqrt2 * (-r_mea(0, 1) - r_mea(1, 1)) * C1_des(1);
-  A2(2,2) = inv_sqrt2 * (-r_mea(0, 2) + r_mea(1, 2)) * C1_des(2);
-  A2(2,3) = inv_sqrt2 * ( r_mea(0, 3) + r_mea(1, 3)) * C1_des(3);
+  A2(2,0) = inv_sqrt2 * (-pcx + pcy + r_mea(0, 0) - r_mea(1, 0)) * C1_des(0);
+  A2(2,1) = inv_sqrt2 * ( pcx + pcy - r_mea(0, 1) - r_mea(1, 1)) * C1_des(1);
+  A2(2,2) = inv_sqrt2 * ( pcx - pcy - r_mea(0, 2) + r_mea(1, 2)) * C1_des(2);
+  A2(2,3) = inv_sqrt2 * (-pcx - pcy + r_mea(0, 3) + r_mea(1, 3)) * C1_des(3);
   A2(3,0) = inv_sqrt2 * ( r_mea(0, 0) - r_mea(1, 0)) * C1_des(0);
   A2(3,1) = inv_sqrt2 * ( r_mea(0, 1) + r_mea(1, 1)) * C1_des(1);
   A2(3,2) = inv_sqrt2 * (-r_mea(0, 2) + r_mea(1, 2)) * C1_des(2);
@@ -319,6 +346,36 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   Eigen::FullPivLU<Eigen::Matrix4d> lu_2(A2);
   if (lu_2.isInvertible()) {C2_des = lu_2.solve(B2);}
   else {C2_des = (A2.transpose()*A2 + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A2.transpose()*B2);}
+}
+
+static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& tau_d, const Eigen::Vector3d& r_cot, const Eigen::Vector3d& Pc, Eigen::Vector4d& F1234) {
+  constexpr double l = param::L_DIST / 2.0;
+
+  const double dx = r_cot(0) - Pc(0);
+  const double dy = r_cot(1) - Pc(1);
+
+  Eigen::Matrix4d A_d;
+  A_d(0,0) =  l - dy;
+  A_d(0,1) =  l - dy;
+  A_d(0,2) = -l - dy;
+  A_d(0,3) = -l - dy;
+  A_d(1,0) =  l + dx;
+  A_d(1,1) = -l + dx;
+  A_d(1,2) = -l + dx;
+  A_d(1,3) =  l + dx;
+  A_d(2,0) = -param::PWM_ZETA;
+  A_d(2,1) =  param::PWM_ZETA;
+  A_d(2,2) = -param::PWM_ZETA;
+  A_d(2,3) =  param::PWM_ZETA;
+  A_d(3,0) = -1.0;
+  A_d(3,1) = -1.0;
+  A_d(3,2) = -1.0;
+  A_d(3,3) = -1.0;
+
+  Eigen::Vector4d Wrench(tau_d(0), tau_d(1), tau_d(2), F_d);
+  Eigen::FullPivLU<Eigen::Matrix4d> lu(A_d);
+  if (lu.isInvertible()) {F1234 = lu.solve(Wrench);}
+  else {F1234 = (A_d.transpose()*A_d + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A_d.transpose()*Wrench);}
 }
 
 namespace NOISE {

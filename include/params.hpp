@@ -31,10 +31,10 @@ static constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-static constexpr double kX[3] = { 8.0,  8.0,  5.0}; // Position gain [x, y, z]
-static constexpr double kV[3] = {11.5, 11.5, 10.0}; // Velocity gain [x, y, z]
-static constexpr double kR[3] = {13.0, 13.0,  1.5}; // Rotational gain [roll, pitch, yaw]
-static constexpr double kW[3] = { 2.5,  2.5,  0.5}; // angular Velocity gain [roll, pitch, yaw]
+static constexpr double kX[3] = {60.0, 60.0,  5.0}; // Position gain [x, y, z]
+static constexpr double kV[3] = {25.0, 25.0, 10.0}; // Velocity gain [x, y, z]
+static constexpr double kR[3] = {50.0, 50.0,  5.5}; // Rotational gain [roll, pitch, yaw]
+static constexpr double kW[3] = { 10.,  10.,  2.5}; // angular Velocity gain [roll, pitch, yaw]
 
 // Integral Parameters
 static constexpr double kI  = 0.0;  /**< Attitude integral gain for roll and pitch */
@@ -63,6 +63,10 @@ static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 
 // desired inter-rotor distance
 static constexpr double L_DIST = 0.55; // [m]
+
+// CoM estimating gain
+static constexpr double COT_2_COM_X = 0.6518;
+static constexpr double COT_2_COM_Y = 0.6431;
 
 // ===== MPC parameters  =====
 static constexpr double MPC_COMPUTE_HZ = 200.0; // [Hz]

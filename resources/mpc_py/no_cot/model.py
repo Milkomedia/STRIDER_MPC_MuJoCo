@@ -106,7 +106,7 @@ def build_model():
     A = ca.vertcat(ca.horzcat(    l,     l,    -l,    -l),
                    ca.horzcat(    l,    -l,    -l,     l),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
-                   ca.horzcat(  1.0,   1.0,   1.0,   1.0))
+                   ca.horzcat( -1.0,  -1.0,  -1.0,  -1.0))
 
     w_d = ca.vertcat(tau_d, T_des)
     F_expr = ca.solve(A, w_d)
