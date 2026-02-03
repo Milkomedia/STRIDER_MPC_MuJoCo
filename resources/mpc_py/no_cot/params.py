@@ -25,13 +25,13 @@ COM_OFFSET = np.array([0.0464, 0.0])
 # ---------- Constraints & Costs ----------
 # h_expr constraint
 F_MIN   = 8.0  * np.array([1.0, 1.0, 1.0, 1.0]) # thrust bound (F1,F2,F3,F4)
-F_MAX   = 22.0 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
+F_MAX   = 23.0 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
 
 # input cost
-Q_THETA = 100. * np.array([1.0, 1.0, 1.0])
+Q_THETA = 1000. * np.array([1.0, 1.0, 1.0])
 
 # state cost
-Q_OMEGA = 10.0  * np.array([1.0, 1.0, 10.0])
+Q_OMEGA = 10.0  * np.array([1.0, 1.0, 1.0])
 
 # rate cost
 R_THETA = 0.01  * np.array([1.0, 1.0, 1.0])

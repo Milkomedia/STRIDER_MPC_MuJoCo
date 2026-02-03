@@ -331,7 +331,7 @@ int main() {
       smoothed_Tau = 0.882 * smoothed_Tau + 0.118 * Tau;
 
       // // --- HW thrust constraint ---
-      // if (elapsed_double >= 30.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > 20.6) {smoothed_F(i) = 20.6;}}}
+      // if (elapsed_double >= 30.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > 22.0) {smoothed_F(i) = 22.0;}}}
 
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;
