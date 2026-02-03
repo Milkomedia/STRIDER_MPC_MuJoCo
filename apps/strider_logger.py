@@ -305,9 +305,9 @@ class LoggerWindow(QtWidgets.QMainWindow):
       return p
 
     # ========== Row 1: Position (y, x, z) ==========
-    p1c1 = _mk_plot(0, 0, "pos_y [mm]", y_range=(-1200., 1200.))
-    p1c2 = _mk_plot(0, 1, "pos_x [mm]", y_range=(-1200., 1200.))
-    p1c3 = _mk_plot(0, 2, "pos_z [mm]", y_range=(-1200., 1200.))
+    p1c1 = _mk_plot(0, 0, "pos_y [m]", y_range=(-2.5, 2.5))
+    p1c2 = _mk_plot(0, 1, "pos_x [m]", y_range=(-2.5, 2.5))
+    p1c3 = _mk_plot(0, 2, "pos_z [m]", y_range=(-2.5, 0.5))
 
     self._curves["pos_y_des"] = p1c1.plot(pen=pen_des, name="des")
     self._curves["pos_y_act"] = p1c1.plot(pen=pen_act, name="act")
@@ -317,9 +317,9 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._curves["pos_z_act"] = p1c3.plot(pen=pen_act, name="act")
 
     # ========== Row 2: RPY ==========
-    p2c1 = _mk_plot(1, 0, "roll [deg]", y_range=(-30., 30.))
-    p2c2 = _mk_plot(1, 1, "pitch [deg]", y_range=(-30., 30.))
-    p2c3 = _mk_plot(1, 2, "yaw [deg]", y_range=(-20., 20.))
+    p2c1 = _mk_plot(1, 0, "roll [deg]", y_range=(-50., 50.))
+    p2c2 = _mk_plot(1, 1, "pitch [deg]", y_range=(-50., 50.))
+    p2c3 = _mk_plot(1, 2, "yaw [deg]", y_range=(-35., 35.))
 
     self._curves["roll_raw"]  = p2c1.plot(pen=pen_raw, name="raw")
     self._curves["roll_mrg"]  = p2c1.plot(pen=pen_des, name="MRG ref")
@@ -334,8 +334,8 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._curves["yaw_act"]   = p2c3.plot(pen=pen_act, name="act")
 
     # ========== Row 3: tau ==========
-    p3c1 = _mk_plot(2, 0, "tau_x [N·m]", y_range=(-3., 3.))
-    p3c2 = _mk_plot(2, 1, "tau_y [N·m]", y_range=(-3., 3.))
+    p3c1 = _mk_plot(2, 0, "tau_x [N·m]", y_range=(-1.5, 1.5))
+    p3c2 = _mk_plot(2, 1, "tau_y [N·m]", y_range=(-1.5, 1.5))
     p3c3 = _mk_plot(2, 2, "tau_z [N·m]", y_range=(-1., 1.))
 
     self._curves["tau_x_total"]  = p3c1.plot(pen=pen_total, name="total")
@@ -349,9 +349,9 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._curves["tau_z_total"]  = p3c3.plot(pen=pen_act, name="total")
 
     # ========== Row 4: f1234 / tilt / f_total ==========
-    p4c1 = _mk_plot(3, 0, "f_thrust [N]", y_range=(14. , 17.))
-    p4c2 = _mk_plot(3, 1, "tilt [deg]", y_range=(-30., 30.))
-    p4c3 = _mk_plot(3, 2, "f_total [N]", y_range=(0., 80.))
+    p4c1 = _mk_plot(3, 0, "f_thrust [N]", y_range=(10. , 30.))
+    p4c2 = _mk_plot(3, 1, "tilt [deg]", y_range=(-20., 20.))
+    p4c3 = _mk_plot(3, 2, "f_total [N]", y_range=(40., 100.))
 
     for i in range(4):
       self._curves[f"F{i+1}"] = p4c1.plot(
@@ -414,8 +414,8 @@ class LoggerWindow(QtWidgets.QMainWindow):
       tt = (t - t[0]).astype(np.float64)
 
       # conversions
-      pos_act_mm = _mm(ch["pos"])
-      pos_des_mm = _mm(ch["pos_d"])
+      pos_act = ch["pos"]
+      pos_des = ch["pos_d"]
 
       rpy_act_deg = _deg(ch["rpy"])
       rpy_raw_deg = _deg(ch["rpy_raw"])
@@ -437,12 +437,12 @@ class LoggerWindow(QtWidgets.QMainWindow):
       wc = int(ch["write_count"])
 
       # Row 1
-      self._curves["pos_y_act"].setData(tt, pos_act_mm[:, 1])
-      self._curves["pos_y_des"].setData(tt, pos_des_mm[:, 1])
-      self._curves["pos_x_act"].setData(tt, pos_act_mm[:, 0])
-      self._curves["pos_x_des"].setData(tt, pos_des_mm[:, 0])
-      self._curves["pos_z_act"].setData(tt, pos_act_mm[:, 2])
-      self._curves["pos_z_des"].setData(tt, pos_des_mm[:, 2])
+      self._curves["pos_y_act"].setData(tt, pos_act[:, 1])
+      self._curves["pos_y_des"].setData(tt, pos_des[:, 1])
+      self._curves["pos_x_act"].setData(tt, pos_act[:, 0])
+      self._curves["pos_x_des"].setData(tt, pos_des[:, 0])
+      self._curves["pos_z_act"].setData(tt, pos_act[:, 2])
+      self._curves["pos_z_des"].setData(tt, pos_des[:, 2])
 
       # Row 2
       self._curves["roll_raw"].setData(tt,  rpy_raw_deg[:, 0])

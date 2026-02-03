@@ -24,22 +24,22 @@ static inline Eigen::Vector3d fig8_point(double t_sec){
   // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
   constexpr double x    = 2.0;               // lobe half-width in X [m]
   constexpr double y    = x / 1.5;           // lobe half-height in Y [m]
-  constexpr double freq = 2.0 * M_PI * 0.12; // [rad/s]
+  constexpr double freq = 2.0 * M_PI * 0.16; // [rad/s]
 
   const double s = std::sin(freq * t_sec);
   const double c = std::cos(freq * t_sec);
-  return Eigen::Vector3d(x*s, y*s*c, -1.0);
+  return Eigen::Vector3d(x*s, y*s*c, -2.0);
 }
 
 static inline void fig8_point_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d){
   constexpr double l = 2.0;               // lobe half-width in X [m]
   constexpr double d = 0.0;               // lobe half-height in Y [m]
-  constexpr double f = 2.0 * M_PI * 0.3;  // [rad/s]
+  constexpr double f = 2.0 * M_PI / 3.5;  // [rad/s]
 
   const double s = std::sin(f * t_sec);
   const double c = std::cos(f * t_sec);
 
-  p_d = Eigen::Vector3d(l*s, d*s*c, -1.0);
+  p_d = Eigen::Vector3d(l*s, d*s*c, -2.0);
   v_d = Eigen::Vector3d(l*f*c, d*f*(1.0-2.0*s*s), 0.0);
   a_d = Eigen::Vector3d(-l*f*f*s, -4.0*d*f*f*s*c, 0.0);
 }
@@ -51,9 +51,27 @@ static inline void circle_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3
   const double s = std::sin(f * t_sec);
   const double c = std::cos(f * t_sec);
 
-  p_d = Eigen::Vector3d(r*s, r*c, -3.0);
+  p_d = Eigen::Vector3d(r*s, r*c, -2.0);
   v_d = Eigen::Vector3d(r*f*c, -r*f*s, 0.0);
   a_d = Eigen::Vector3d(-r*f*f*s, -r*f*f*c, 0.0);
+}
+
+static inline void l_traj_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d){
+  constexpr double lx_ = 1.5;                  // width in X [m]
+  constexpr double ly_ = 1.5;                  // width in Y [m]
+  constexpr double f = 2.0 * M_PI / 3.5;  // [rad/s]
+
+  const double s = std::sin(f * t_sec);
+  const double c = std::cos(f * t_sec);
+
+  p_d = Eigen::Vector3d(lx_*s, ly_*s, -2.0);
+  v_d = Eigen::Vector3d(lx_*f*c, ly_*f*c, 0.0);
+  a_d = Eigen::Vector3d(-lx_*f*f*s, -ly_*f*f*s, 0.0);
+}
+
+static inline Eigen::Vector3d goes_to(const Eigen::Vector3d& p_d, const double t, const double t_term){
+  Eigen::Vector3d out = p_d * t / t_term;
+  return out;
 }
 
 static inline Eigen::Vector3d square4_point(double t_sec) {
@@ -72,7 +90,7 @@ static inline Eigen::Vector3d square4_point(double t_sec) {
     default:sx =  L; sy =  L; break;
   }
 
-  return Eigen::Vector3d(sx, sy, -1.0);
+  return Eigen::Vector3d(sx, sy, -2.0);
 }
 
 static inline Eigen::Vector3d quat_to_RPY(const Eigen::Quaterniond q) {

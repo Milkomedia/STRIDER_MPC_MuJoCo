@@ -175,8 +175,9 @@ int main() {
       Eigen::Vector3d pos_des;
       Eigen::Vector3d vel_des = Eigen::Vector3d::Zero();
       Eigen::Vector3d acc_des = Eigen::Vector3d::Zero();
-      if (elapsed_double >= 4.0) {fig8_point_pva(elapsed_double, pos_des, vel_des, acc_des);} // option: [fig8_point_pva/circle_pva]
-      else {pos_des = Eigen::Vector3d(0.0, 0.0, -3.0);}
+      if (elapsed_double >= 6.0) {l_traj_pva(elapsed_double, pos_des, vel_des, acc_des);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      else if (elapsed_double <= 2.0) {pos_des = goes_to(Eigen::Vector3d(1.5,1.5,-2.0), elapsed_double, 2.0);}
+      else {pos_des = Eigen::Vector3d(1.5,1.5,-2.0);}
 
       gac_cmd.xd = pos_des;
       gac_cmd.xd_dot = vel_des;
@@ -269,12 +270,10 @@ int main() {
               r_cot_opt        = g_mpc_output.u_opt.template tail<2>();   // [3,4]
               delta_theta_rate = g_mpc_output.u_rate.template head<3>();  // [0,1,2]
               r_cot_rate       = g_mpc_output.u_rate.template tail<2>();  // [3,4]
-              bPcot_des(0) = 0.995 * bPcot_des(0) + 0.005 * r_cot_opt(0);
-              bPcot_des(1) = 0.995 * bPcot_des(1) + 0.005 * r_cot_opt(1);
             }
             else { // solve failed
-              delta_theta_opt  *= 0.9;
-              r_cot_opt        *= 0.9;
+              delta_theta_opt  *= 0.995;
+              r_cot_opt        *= 0.9995;
               delta_theta_rate  = Eigen::Vector3d::Zero();
               r_cot_rate        = Eigen::Vector2d::Zero();
             }
@@ -291,6 +290,8 @@ int main() {
           // else{std::printf("\n\n[MPC KEY WRONG ERROR. RESTART NOW]\n\n");}
         }
       }
+      bPcot_des(0) = param::COT_DELAY_ALPHA * bPcot_des(0) + param::COT_DELAY_BETA * r_cot_opt(0);
+      bPcot_des(1) = param::COT_DELAY_ALPHA * bPcot_des(1) + param::COT_DELAY_BETA * r_cot_opt(1);
 
       // --- attitude control --- 
       const Eigen::Matrix3d R_d = R_raw * expm_hat(delta_theta_opt);
@@ -330,9 +331,7 @@ int main() {
       smoothed_Tau = 0.882 * smoothed_Tau + 0.118 * Tau;
 
       // // --- HW thrust constraint ---
-      // for (uint8_t i=0; i<4; ++i) {
-      //   if (smoothed_F(i) > 20.0) {smoothed_F(i) = 20.0;}
-      // }
+      // if (elapsed_double >= 30.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > 20.6) {smoothed_F(i) = 20.6;}}}
 
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;

@@ -32,6 +32,8 @@ def build_model():
     J = ca.DM(p.J_TENSOR)
     J_inv = ca.inv(J)
     zeta = p.ZETA
+    KR = ca.DM(p.KR).reshape((3, 1))
+    KW = ca.DM(p.KW).reshape((3, 1))
 
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -92,7 +94,7 @@ def build_model():
     R = euler_zyx_to_R(theta)  # (body->global)
     R_d = R_raw @ expm_hat(delta_theta_cmd)
     e_R = 0.5 * vee(R_d.T @ R - R.T @ R_d)
-    tau_d = -p.KR * e_R - p.KW * omega
+    tau_d = - KR * e_R - KW * omega
     omega_dot = J_inv @ (tau_d - ca.cross(omega, J @ omega))
 
     # Augmented dynamics
