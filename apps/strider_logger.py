@@ -307,7 +307,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
     # ========== Row 1: Position (y, x, z) ==========
     p1c1 = _mk_plot(0, 0, "pos_y [m]", y_range=(-2.5, 2.5))
     p1c2 = _mk_plot(0, 1, "pos_x [m]", y_range=(-2.5, 2.5))
-    p1c3 = _mk_plot(0, 2, "pos_z [m]", y_range=(-2.5, 0.5))
+    p1c3 = _mk_plot(0, 2, "pos_z [m]", y_range=(-1.5, 0.5))
 
     self._curves["pos_y_des"] = p1c1.plot(pen=pen_des, name="des")
     self._curves["pos_y_act"] = p1c1.plot(pen=pen_act, name="act")
@@ -317,9 +317,9 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._curves["pos_z_act"] = p1c3.plot(pen=pen_act, name="act")
 
     # ========== Row 2: RPY ==========
-    p2c1 = _mk_plot(1, 0, "roll [deg]", y_range=(-50., 50.))
-    p2c2 = _mk_plot(1, 1, "pitch [deg]", y_range=(-50., 50.))
-    p2c3 = _mk_plot(1, 2, "yaw [deg]", y_range=(-35., 35.))
+    p2c1 = _mk_plot(1, 0, "roll [deg]", y_range=(-40., 40.))
+    p2c2 = _mk_plot(1, 1, "pitch [deg]", y_range=(-40., 40.))
+    p2c3 = _mk_plot(1, 2, "yaw [deg]", y_range=(-10., 10.))
 
     self._curves["roll_raw"]  = p2c1.plot(pen=pen_raw, name="raw")
     self._curves["roll_mrg"]  = p2c1.plot(pen=pen_des, name="MRG ref")
@@ -335,7 +335,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
     # ========== Row 3: tau ==========
     p3c1 = _mk_plot(2, 0, "tau_x [N·m]", y_range=(-1.5, 1.5))
-    p3c2 = _mk_plot(2, 1, "tau_y [N·m]", y_range=(-1.5, 1.5))
+    p3c2 = _mk_plot(2, 1, "tau_y [N·m]", y_range=(-6., 11.))
     p3c3 = _mk_plot(2, 2, "tau_z [N·m]", y_range=(-1., 1.))
 
     self._curves["tau_x_total"]  = p3c1.plot(pen=pen_total, name="total")

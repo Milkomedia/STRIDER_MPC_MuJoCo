@@ -11,16 +11,19 @@ TAU = 0.2
 # Inertia tensor
 J_TENSOR = np.array([
     [0.27, 0.00, 0.00],
-    [0.00, 0.40, 0.00],
-    [0.00, 0.00, 0.67]
+    [0.00, 0.27, 0.00],
+    [0.00, 0.00, 0.54]
 ], dtype=np.float64)
 
 # GAC controller gain
 KR = np.array([50., 50., 5.5])
-KW = np.array([10., 10., 2.5])
+KW = np.array([ 5.,  5., 2.5])
 
 # control allocation
 ZETA = 0.02
+
+# Center of mass offset (x,y)
+COM_OFFSET = np.array([0.0464, 0.0])
 
 # ---------- Constraints & Costs ----------
 # state constraint

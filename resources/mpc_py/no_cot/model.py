@@ -34,6 +34,7 @@ def build_model():
     zeta = p.ZETA
     KR = ca.DM(p.KR).reshape((3, 1))
     KW = ca.DM(p.KW).reshape((3, 1))
+    com_off = ca.DM(p.COM_OFFSET).reshape((2, 1))
 
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -105,8 +106,9 @@ def build_model():
     model.f_impl_expr = x_dot - f_expl
 
     # ---------- Propeller thrust expression ----------
-    A = ca.vertcat(ca.horzcat(    l,     l,    -l,    -l),
-                   ca.horzcat(    l,    -l,    -l,     l),
+    dx, dy = -com_off[0], -com_off[1]
+    A = ca.vertcat(ca.horzcat( l-dy,  l-dy, -l-dy, -l-dy),
+                   ca.horzcat( l+dx, -l+dx, -l+dx,  l+dx),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
                    ca.horzcat( -1.0,  -1.0,  -1.0,  -1.0))
 

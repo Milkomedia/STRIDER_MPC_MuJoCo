@@ -176,8 +176,8 @@ int main() {
       Eigen::Vector3d vel_des = Eigen::Vector3d::Zero();
       Eigen::Vector3d acc_des = Eigen::Vector3d::Zero();
       if (elapsed_double >= 6.0) {l_traj_pva(elapsed_double, pos_des, vel_des, acc_des);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      else if (elapsed_double <= 2.0) {pos_des = goes_to(Eigen::Vector3d(1.5,1.5,-2.0), elapsed_double, 2.0);}
-      else {pos_des = Eigen::Vector3d(1.5,1.5,-2.0);}
+      else if (elapsed_double <= 2.0) {pos_des = goes_to(Eigen::Vector3d(1.5,0.0,-1.0), elapsed_double, 2.0);}
+      else {pos_des = Eigen::Vector3d(1.5,0.0,-1.0);}
 
       gac_cmd.xd = pos_des;
       gac_cmd.xd_dot = vel_des;
