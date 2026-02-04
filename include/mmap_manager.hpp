@@ -31,7 +31,7 @@ struct LogData {
   float rpy_raw[3]     = {0.0f}; // desired attitude from position ctrl [rad]
   float rpy_d[3]       = {0.0f}; // desired attitude reconstructed (R_d) [rad]
   float tau_d[3]       = {0.0f}; // desired torque (att ctrl) [N.m]
-  float tau_off[2]     = {0.0f}; // cot-offset torque [N.m] (x,y)
+  float tau_off[2]     = {0.0f}; // cot&com-offset torque [N.m] (x,y)
   float tau_thrust[2]  = {0.0f}; // thrust-diff torque [N.m] (x,y)
   float tilt_rad[4]    = {0.0f}; // per-rotor tilt command [rad]
   float f_thrust[4]    = {0.0f}; // per-rotor thrust command [N]

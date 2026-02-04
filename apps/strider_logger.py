@@ -338,15 +338,15 @@ class LoggerWindow(QtWidgets.QMainWindow):
     p3c2 = _mk_plot(2, 1, "tau_y [N·m]", y_range=(-6., 11.))
     p3c3 = _mk_plot(2, 2, "tau_z [N·m]", y_range=(-1., 1.))
 
-    self._curves["tau_x_total"]  = p3c1.plot(pen=pen_total, name="total")
-    self._curves["tau_x_cot"]    = p3c1.plot(pen=pen_cot,   name="cot")
+    self._curves["tau_x_gac"]  = p3c1.plot(pen=pen_total, name="gac")
+    self._curves["tau_x_off"]    = p3c1.plot(pen=pen_cot,   name="off-d")
     self._curves["tau_x_thrust"] = p3c1.plot(pen=pen_thr,   name="thrust")
 
-    self._curves["tau_y_total"]  = p3c2.plot(pen=pen_total, name="total")
-    self._curves["tau_y_cot"]    = p3c2.plot(pen=pen_cot,   name="cot")
+    self._curves["tau_y_gac"]  = p3c2.plot(pen=pen_total, name="gac")
+    self._curves["tau_y_off"]    = p3c2.plot(pen=pen_cot,   name="off-d")
     self._curves["tau_y_thrust"] = p3c2.plot(pen=pen_thr,   name="thrust")
 
-    self._curves["tau_z_total"]  = p3c3.plot(pen=pen_act, name="total")
+    self._curves["tau_z_gac"]  = p3c3.plot(pen=pen_act, name="gac")
 
     # ========== Row 4: f1234 / tilt / f_total ==========
     p4c1 = _mk_plot(3, 0, "f_thrust [N]", y_range=(10. , 30.))
@@ -458,15 +458,15 @@ class LoggerWindow(QtWidgets.QMainWindow):
       self._curves["yaw_act"].setData(tt,   rpy_act_deg[:, 2])
 
       # Row 3
-      self._curves["tau_x_total"].setData(tt,  tau_d[:, 0])
-      self._curves["tau_x_cot"].setData(tt,    tau_off[:, 0])
+      self._curves["tau_x_gac"].setData(tt,  tau_d[:, 0])
+      self._curves["tau_x_off"].setData(tt,    tau_off[:, 0])
       self._curves["tau_x_thrust"].setData(tt, tau_thrust[:, 0])
 
-      self._curves["tau_y_total"].setData(tt,  tau_d[:, 1])
-      self._curves["tau_y_cot"].setData(tt,    tau_off[:, 1])
+      self._curves["tau_y_gac"].setData(tt,  tau_d[:, 1])
+      self._curves["tau_y_off"].setData(tt,    tau_off[:, 1])
       self._curves["tau_y_thrust"].setData(tt, tau_thrust[:, 1])
 
-      self._curves["tau_z_total"].setData(tt,  tau_d[:, 2])
+      self._curves["tau_z_gac"].setData(tt,  tau_d[:, 2])
 
       # Row 4
       for i in range(4):

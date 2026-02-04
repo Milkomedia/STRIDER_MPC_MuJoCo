@@ -195,8 +195,8 @@ int main() {
       
       euler_rpy = R_to_rpy(delayed_s.R);
       bPcot_cur = FK(delayed_s.arm_q);
-      bPc_hat(0) = param::COT_2_COM_X * bPcot_cur(0);
-      bPc_hat(1) = param::COT_2_COM_Y * bPcot_cur(1);
+      bPc_hat(0) = param::COM_OFF_X + param::COT_2_COM_X * bPcot_cur(0);
+      bPc_hat(1) = param::COM_OFF_Y + param::COT_2_COM_Y * bPcot_cur(1);
       { // MPC send
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
         if (g_mpc_activated.load(std::memory_order_relaxed)) {
@@ -395,7 +395,7 @@ int main() {
 
         // CoT-offset torque around x,y
         const double f_total = geometry_ctrl.f_total;
-        const Eigen::Vector2d tau_off(-f_total * bPcot_cur(1), f_total * bPcot_cur(0));
+        const Eigen::Vector2d tau_off(-f_total*(bPcot_cur(1)-bPc_hat(1)), f_total*(bPcot_cur(0)-bPc_hat(0)));
         ld.tau_off[0] = static_cast<float>(tau_off(0));
         ld.tau_off[1] = static_cast<float>(tau_off(1));
 

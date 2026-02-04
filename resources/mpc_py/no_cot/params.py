@@ -1,7 +1,7 @@
 import numpy as np
 
 # MPC horizon
-N  = 60     # number of steps
+N  = 120     # number of steps
 DT = 1.0 / 400  # [s] (of each step)
 
 # ---------- model parameters ----------
@@ -13,7 +13,7 @@ J_TENSOR = np.array([
 ], dtype=np.float64)
 
 # GAC controller gain
-KR = np.array([50., 50., 5.5])
+KR = np.array([40., 40., 5.5])
 KW = np.array([ 5.,  5., 2.5])
 
 # control allocation
@@ -25,13 +25,16 @@ COM_OFFSET = np.array([0.0271, 0.0])
 # ---------- Constraints & Costs ----------
 # h_expr constraint
 F_MIN   = 8.0  * np.array([1.0, 1.0, 1.0, 1.0]) # thrust bound (F1,F2,F3,F4)
-F_MAX   = 22.0 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
+F_MAX   = 21.0 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
 
 # input cost
-Q_THETA = 50. * np.array([1.0, 1.0, 1.0])
+Q_THETA = 100. * np.array([1.0, 1.0, 1.0])
 
 # state cost
 Q_OMEGA = 10.0  * np.array([1.0, 1.0, 1.0])
+
+# thurst deviation cost
+Q_FDEV  = 1.0 * np.array([1.0, 1.0, 1.0, 1.0])
 
 # rate cost
 R_THETA = 0.01  * np.array([1.0, 1.0, 1.0])
