@@ -20,7 +20,7 @@ KW = np.array([ 5.,  5., 2.5])
 ZETA = 0.02
 
 # Center of mass offset (x,y)
-COM_OFFSET = np.array([0.0464, 0.0])
+COM_OFFSET = np.array([0.0271, 0.0])
 
 # ---------- Constraints & Costs ----------
 # h_expr constraint
