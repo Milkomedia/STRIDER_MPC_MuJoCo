@@ -23,10 +23,11 @@ def build_model():
     model.u = u_rate
 
     # Model parameter
-    R_raw = ca.SX.sym('R_raw', 3, 3) # SO3 matrix
+    R_raw = ca.SX.sym('R_raw', 3, 3) # desired attitude SO3 matrix
+    omega_raw = ca.SX.sym('omega_raw', 3) # desired angular rate [rad/s]
     l     = ca.SX.sym('l')           # [m]
     T_des = ca.SX.sym('T_des')       # [N]
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), l, T_des)
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), omega_raw, l, T_des)
 
     # Constants
     J = ca.DM(p.J_TENSOR)
@@ -94,8 +95,10 @@ def build_model():
     # angular rate (omega)
     R = euler_zyx_to_R(theta)  # (body->global)
     R_d = R_raw @ expm_hat(delta_theta_cmd)
-    e_R = 0.5 * vee(R_d.T @ R - R.T @ R_d)
-    tau_d = - KR * e_R - KW * omega
+    RtRd = R.T @ R_d
+    e_R = 0.5 * vee(RtRd.T - RtRd)
+    e_w = omega - RtRd @ omega_raw
+    tau_d = - KR * e_R - KW * e_w
     omega_dot = J_inv @ (tau_d - ca.cross(omega, J @ omega))
 
     # Augmented dynamics
@@ -168,5 +171,5 @@ def build_ocp():
     # ocp.solver_options.print_level = 4
 
     # codegen dir
-    ocp.code_export_directory = "generated"
+    ocp.code_export_directory = "generated_no_cot"
     return ocp

@@ -25,10 +25,11 @@ def build_model():
     model.u = u_rate
 
     # Model parameter
-    R_raw = ca.SX.sym('R_raw', 3, 3) # SO3 matrix
+    R_raw = ca.SX.sym('R_raw', 3, 3) # desired attitude SO3 matrix
+    omega_raw = ca.SX.sym('u_rate', 3) # desired angular rate [rad/s]
     l     = ca.SX.sym('l')           # [m]
     T_des = ca.SX.sym('T_des')       # [N]
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), l, T_des)
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), omega_raw, l, T_des)
 
     # Constants
     J = ca.DM(p.J_TENSOR)
@@ -97,8 +98,10 @@ def build_model():
     # angular rate (omega)
     R = euler_zyx_to_R(theta)  # (body->global)
     R_d = R_raw @ expm_hat(delta_theta_cmd)
-    e_R = 0.5 * vee(R_d.T @ R - R.T @ R_d)
-    tau_d = - KR * e_R - KW * omega
+    RtRd = R.T @ R_d
+    e_R = 0.5 * vee(RtRd.T - RtRd)
+    e_w = omega - RtRd @ omega_raw
+    tau_d = - KR * e_R - KW * e_w
     omega_dot = J_inv @ (tau_d - ca.cross(omega, J @ omega))
 
     # CoT (r_cot, 1st-order)
@@ -114,7 +117,7 @@ def build_model():
     # ---------- Propeller thrust expression ----------
     # d = r_CoT - r_CoM
     # dx, dy = r_cot[0], r_cot[1]
-    dx, dy = 0.3482*r_cot[0] - com_off[0], 0.3569*r_cot[1] - com_off[1]
+    dx, dy = 0.3569*r_cot[0] - com_off[0], 0.3569*r_cot[1] - com_off[1]
     A = ca.vertcat(ca.horzcat( l-dy,  l-dy, -l-dy, -l-dy),
                    ca.horzcat( l+dx, -l+dx, -l+dx,  l+dx),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
@@ -191,5 +194,5 @@ def build_ocp():
     # ocp.solver_options.print_level = 4
 
     # codegen dir
-    ocp.code_export_directory = "generated"
+    ocp.code_export_directory = "generated_yes_cot"
     return ocp

@@ -190,6 +190,7 @@ int main() {
       gac_state.W = delayed_s.omega;
       geometry_ctrl.position_control();
       const Eigen::Matrix3d R_raw = gac_cmd.Rd;
+      const Eigen::Vector3d w_raw = gac_cmd.Wd;
       const double T_des = -geometry_ctrl.f_total; // (f_total > 0)
       
       euler_rpy = R_to_rpy(delayed_s.R);
@@ -218,8 +219,9 @@ int main() {
 
                 int m = 0; // fill initial parameter(p)
                 for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
-                g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(9)
-                g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(10)
+                g_mpc_input.p(m++) = w_raw(0); g_mpc_input.p(m++) = w_raw(1); g_mpc_input.p(m++) = w_raw(2); // omega_raw(9~11)
+                g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(12)
+                g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(13)
 
                 int n = 0;
                 g_mpc_input.log(n++) = delayed_s.pos(0); g_mpc_input.log(n++) = delayed_s.pos(1); g_mpc_input.log(n++) = delayed_s.pos(2); // pos_cur

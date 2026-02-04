@@ -65,7 +65,7 @@ static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 static constexpr double L_DIST = 0.55; // [m]
 
 // CoM estimating gain
-static constexpr double COT_2_COM_X = 0.6518;
+static constexpr double COT_2_COM_X = 0.6431;
 static constexpr double COT_2_COM_Y = 0.6431;
 
 // ===== MPC parameters  =====
@@ -73,7 +73,7 @@ static constexpr double MPC_COMPUTE_HZ = 200.0; // [Hz]
 static constexpr double MPC_COMPUTE_DT_DOUBLE = 1.0 / MPC_COMPUTE_HZ; // [sec]
 static const std::chrono::steady_clock::duration MPC_COMPUTE_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / MPC_COMPUTE_HZ));
 
-static constexpr double COT_DELAY_TAU   = 0.2; // [sec]
+static constexpr double COT_DELAY_TAU   = 0.3; // [sec]
 inline const double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU);
 inline const double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;
 
@@ -81,7 +81,7 @@ constexpr std::size_t N_STEPS  = 60; // (Must be the same as prams.py)
 constexpr std::size_t NX       = 13;
 constexpr std::size_t NU_AUG   = 5;
 constexpr std::size_t NU       = 5;
-constexpr std::size_t NP       = 11;
+constexpr std::size_t NP       = 14;
 
 // ===== MuJoCo viewer parameters =====
 static constexpr double PATH_SEC = 10.0;   // history length [sec]

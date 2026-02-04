@@ -190,8 +190,9 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
   if use_aug and (N > 0) and (u_all.shape[0] == N) and (u_all.shape[1] >= 5):
     u_rate_stage[:, :] = u_all[:, 0:5]
 
-  # p = [vec(R_raw)(9), l(1), T_des(1)] => np=11
+  # p = [vec(R_raw)(9), omega_raw(3), l(1), T_des(1)] => np=14
   R_raw_all = np.zeros((T, 3, 3), dtype=np.float64)
+  omega_raw_all = np.zeros((T, 3), dtype=np.float64)
   l_all = np.zeros((T,), dtype=np.float64)
   T_des_all = np.zeros((T,), dtype=np.float64)
 
@@ -201,8 +202,9 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
       continue
     # NOTE: CasADi reshape is column-major.
     R_raw_all[k, :, :] = pv[0:9].reshape(3, 3, order="F")
-    l_all[k] = float(pv[9])
-    T_des_all[k] = float(pv[10])
+    omega_raw_all[k, :] = pv[9:12].astype(np.float64, copy=False)
+    l_all[k] = float(pv[12])
+    T_des_all[k] = float(pv[13])
 
   # Euler from R_raw
   theta_raw = np.zeros((T, 3), dtype=np.float64)
@@ -257,7 +259,10 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
     R = euler_zyx_to_R_np(theta[k, :])  # body->global
     R_d = R_raw_all[k, :, :] @ expm_hat_np(delta_theta_cmd[k, :])
     e_R = 0.5 * vee_np(R_d.T @ R - R.T @ R_d)
-    tau_d[k, :] = -(KR * e_R) - (KW * omega[k, :])
+    omega_k = omega[k, :]
+    omega_raw_k = omega_raw_all[k, :]
+    e_w = omega_k - (R.T @ R_d @ omega_raw_k)
+    tau_d[k, :] = -(KR * e_R) - (KW * e_w)
 
   # F1234 solve stage-wise
   F_stage = np.full((N, 4), np.nan, dtype=np.float64)

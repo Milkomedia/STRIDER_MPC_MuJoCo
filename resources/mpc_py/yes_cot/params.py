@@ -6,7 +6,7 @@ DT = 1.0 / 400  # [s] (of each step)
 
 # ---------- model parameters ----------
 # CoT actuator time constant
-TAU = 0.2
+TAU = 0.3
 
 # Inertia tensor
 J_TENSOR = np.array([
