@@ -178,29 +178,29 @@
     <motor class="BLDC" name="torque3" site="torque3" gear="0 0 0 1 0 0" ctrlrange="-3.0 3.0"/>
     <motor class="BLDC" name="torque4" site="torque4" gear="0 0 0 1 0 0" ctrlrange="-3.0 3.0"/>
     <!-- Arm1 -->
-    <position name="servo_Arm1_joint1" joint="Arm1_joint1" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm1_joint2" joint="Arm1_joint2" kp="30" kv="0.5"  ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm1_joint3" joint="Arm1_joint3" kp="30" kv="0.5"  ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm1_joint4" joint="Arm1_joint4" kp="30" kv="0.5" ctrlrange="-1.13446 -3.14159"/>
-    <position name="servo_Arm1_joint5" joint="Arm1_joint5" kp="30" kv="0.5" ctrlrange="-1.74533 1.74533"/>
+    <position name="servo_Arm1_joint1" joint="Arm1_joint1" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm1_joint2" joint="Arm1_joint2" kp="100" kv="0.3"  ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm1_joint3" joint="Arm1_joint3" kp="100" kv="0.3"  ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm1_joint4" joint="Arm1_joint4" kp="100" kv="0.3" ctrlrange="-1.13446 -3.14159"/>
+    <position name="servo_Arm1_joint5" joint="Arm1_joint5" kp="100" kv="0.3" ctrlrange="-1.74533 1.74533"/>
     <!-- Arm2 -->
-    <position name="servo_Arm2_joint1" joint="Arm2_joint1" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm2_joint2" joint="Arm2_joint2" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm2_joint3" joint="Arm2_joint3" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm2_joint4" joint="Arm2_joint4" kp="30" kv="0.5" ctrlrange="-1.13446 -3.14159"/>
-    <position name="servo_Arm2_joint5" joint="Arm2_joint5" kp="30" kv="0.5" ctrlrange="-1.74533 1.74533"/>
+    <position name="servo_Arm2_joint1" joint="Arm2_joint1" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm2_joint2" joint="Arm2_joint2" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm2_joint3" joint="Arm2_joint3" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm2_joint4" joint="Arm2_joint4" kp="100" kv="0.3" ctrlrange="-1.13446 -3.14159"/>
+    <position name="servo_Arm2_joint5" joint="Arm2_joint5" kp="100" kv="0.3" ctrlrange="-1.74533 1.74533"/>
     <!-- Arm3 -->
-    <position name="servo_Arm3_joint1" joint="Arm3_joint1" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm3_joint2" joint="Arm3_joint2" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm3_joint3" joint="Arm3_joint3" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm3_joint4" joint="Arm3_joint4" kp="30" kv="0.5" ctrlrange="-1.13446 -3.14159"/>
-    <position name="servo_Arm3_joint5" joint="Arm3_joint5" kp="30" kv="0.5" ctrlrange="-1.74533 1.74533"/>
+    <position name="servo_Arm3_joint1" joint="Arm3_joint1" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm3_joint2" joint="Arm3_joint2" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm3_joint3" joint="Arm3_joint3" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm3_joint4" joint="Arm3_joint4" kp="100" kv="0.3" ctrlrange="-1.13446 -3.14159"/>
+    <position name="servo_Arm3_joint5" joint="Arm3_joint5" kp="100" kv="0.3" ctrlrange="-1.74533 1.74533"/>
     <!-- Arm4 -->
-    <position name="servo_Arm4_joint1" joint="Arm4_joint1" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm4_joint2" joint="Arm4_joint2" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm4_joint3" joint="Arm4_joint3" kp="30" kv="0.5" ctrlrange="-2.00713 2.00713"/>
-    <position name="servo_Arm4_joint4" joint="Arm4_joint4" kp="30" kv="0.5" ctrlrange="-1.13446 -3.14159"/>
-    <position name="servo_Arm4_joint5" joint="Arm4_joint5" kp="30" kv="0.5" ctrlrange="-1.74533 1.74533"/>
+    <position name="servo_Arm4_joint1" joint="Arm4_joint1" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm4_joint2" joint="Arm4_joint2" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm4_joint3" joint="Arm4_joint3" kp="100" kv="0.3" ctrlrange="-2.00713 2.00713"/>
+    <position name="servo_Arm4_joint4" joint="Arm4_joint4" kp="100" kv="0.3" ctrlrange="-1.13446 -3.14159"/>
+    <position name="servo_Arm4_joint5" joint="Arm4_joint5" kp="100" kv="0.3" ctrlrange="-1.74533 1.74533"/>
 
   </actuator>
 

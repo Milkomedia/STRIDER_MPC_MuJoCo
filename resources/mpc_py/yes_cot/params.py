@@ -27,8 +27,8 @@ COM_OFFSET = np.array([0.0271, 0.0])
 
 # ---------- Constraints & Costs ----------
 # state constraint
-COT_MIN = -0.08 * np.array([1.0, 1.0]) # CoT box bound (x,y)
-COT_MAX =  0.08 * np.array([1.0, 1.0]) # [m]
+COT_MIN = -0.047 * np.array([1.0, 1.0]) # CoT box bound (x,y)
+COT_MAX =  0.047 * np.array([1.0, 1.0]) # [m]
 
 # h_expr constraint
 F_MIN   = 8.0  * np.array([1.0, 1.0, 1.0, 1.0]) # thrust bound (F1,F2,F3,F4)

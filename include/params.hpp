@@ -62,7 +62,7 @@ static constexpr double DH_ARM_A[5]     = {0.1395, 0.115, 0.110, 0.024, 0.068};
 static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 
 // desired inter-rotor distance
-static constexpr double L_DIST = 0.55; // [m]
+static constexpr double L_DIST = 0.48; // [m]
 
 // CoM estimating gain
 static constexpr double COM_OFF_X = 0.0271; // [m]
