@@ -49,10 +49,10 @@ static constexpr double M  = 6.5;
 static constexpr double G  = 9.80665;
 
 // Allocation parameters
-static constexpr double SERVO_DELAY_ALPHA = 0.01;  // yaw trimming
+static constexpr double SERVO_DELAY_ALPHA = 0.093158;  // yaw trimming
 static constexpr double SERVO_DELAY_BETA  = 1.0 - SERVO_DELAY_ALPHA;
-static constexpr double TAUZ_MIN = -5.0; // saturation ref [Nm]
-static constexpr double TAUZ_MAX =  5.0;
+static constexpr double TAUZ_MIN = -3.0; // saturation ref [Nm]
+static constexpr double TAUZ_MAX =  3.0;
 
 // ===== DH parameters =====
 static constexpr double B2BASE_THETA[4] = {-0.25*M_PI, -0.75*M_PI, 0.75*M_PI, 0.25*M_PI};

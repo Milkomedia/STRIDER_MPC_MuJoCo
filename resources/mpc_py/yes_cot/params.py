@@ -20,10 +20,12 @@ KR = np.array([40., 40., 5.5])
 KW = np.array([ 5.,  5., 2.5])
 
 # control allocation
-ZETA = 0.02
+# real model uses thrust-based yaw (sequential allocation). but mpc model uses reaction-based yaw.
+# To compensate this, mpc's allocation thinks that less thrust deviation produces more reaction torque.
+ZETA = 0.04
 
 # Center of mass offset (x,y)
-COM_OFFSET = np.array([0.0271, 0.0])
+COM_OFFSET = np.array([0.015157515752, 0.0])
 
 # ---------- Constraints & Costs ----------
 # state constraint
@@ -41,7 +43,7 @@ Q_THETA = 10000. * np.array([1.0, 1.0, 1.0])
 Q_OMEGA = 10.0  * np.array([1.0, 1.0, 1.0])
 
 # thurst deviation cost
-Q_FDEV  = 10.0 * np.array([1.0, 1.0, 1.0, 1.0])
+Q_FDEV  = 20.0 * np.array([1.0, 1.0, 1.0, 1.0])
 
 # rate cost
 R_THETA = 0.001  * np.array([1.0, 1.0, 1.0])

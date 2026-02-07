@@ -175,7 +175,7 @@ int main() {
       Eigen::Vector3d pos_des;
       Eigen::Vector3d vel_des = Eigen::Vector3d::Zero();
       Eigen::Vector3d acc_des = Eigen::Vector3d::Zero();
-      if (elapsed_double >= 62222.0) {l_traj_pva(elapsed_double, pos_des, vel_des, acc_des);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      if (elapsed_double >= 6.0) {l_traj_pva(elapsed_double, pos_des, vel_des, acc_des);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
       else if (elapsed_double <= 2.0) {pos_des = goes_to(Eigen::Vector3d(1.5,0.0,-1.0), elapsed_double, 2.0);}
       else {pos_des = Eigen::Vector3d(1.5,0.0,-1.0);}
 
@@ -299,17 +299,17 @@ int main() {
       const Eigen::Matrix3d R_d = R_raw * expm_hat(delta_theta_opt);
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
       
-      // // --- (Sequential) Control Allocation ---
-      // Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
-      // Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
-      // Sequential_Allocation(T_des, tau_des, tauz_bar, delayed_s.arm_q, bPc_hat, thrust_des, tilt_ang_des);
-      // thrust_des_log = thrust_des;
-
-      // --- (Normal) Control Allocation ---
+      // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
-      Control_Allocation(T_des, tau_des, bPcot_cur, bPc_hat, thrust_des);
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
+      Sequential_Allocation(T_des, tau_des, tauz_bar, delayed_s.arm_q, bPc_hat, thrust_des, tilt_ang_des);
       thrust_des_log = thrust_des;
+
+      // // --- (Normal) Control Allocation ---
+      // Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
+      // Control_Allocation(T_des, tau_des, bPcot_cur, bPc_hat, thrust_des);
+      // Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
+      // thrust_des_log = thrust_des;
 
       // --- thrust to pwm ---
       Eigen::Vector4d pwm;

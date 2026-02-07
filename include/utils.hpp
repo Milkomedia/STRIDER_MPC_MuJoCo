@@ -368,6 +368,9 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   if (lu_1.isInvertible()) {C1_des = lu_1.solve(B1);}
   else {C1_des = (A1.transpose()*A1 + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A1.transpose()*B1);}
 
+  // Thrust clamp
+  for (uint8_t i = 0; i < 4; ++i) {C1_des(i) = std::clamp(C1_des(i), 8.0, 52.0);}
+
   // tilt allocation
   Eigen::Matrix4d A2;
   A2(0,0) =  inv_sqrt2 * C1_des(0);
@@ -390,6 +393,9 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   Eigen::FullPivLU<Eigen::Matrix4d> lu_2(A2);
   if (lu_2.isInvertible()) {C2_des = lu_2.solve(B2);}
   else {C2_des = (A2.transpose()*A2 + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A2.transpose()*B2);}
+
+  // Tilt angle clamp
+  for (uint8_t i = 0; i < 4; ++i) {C2_des(i) = std::clamp(C2_des(i), -0.175, 0.175);}
 }
 
 static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& tau_d, const Eigen::Vector3d& r_cot, const Eigen::Vector3d& Pc, Eigen::Vector4d& F1234) {

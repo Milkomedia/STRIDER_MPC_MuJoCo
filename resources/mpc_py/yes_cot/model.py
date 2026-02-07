@@ -173,7 +173,7 @@ def build_ocp():
     ocp.dims.nh   = 4
 
     # ---------- x(augmented-state) constraints ----------
-    idx_r_cot_cmd = np.array([11, 12], dtype=np.int64)
+    idx_r_cot_cmd = np.array([6, 7], dtype=np.int64)
 
     ocp.constraints.idxbx   = idx_r_cot_cmd
     ocp.constraints.lbx     = p.COT_MIN
