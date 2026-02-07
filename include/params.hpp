@@ -45,7 +45,7 @@ static constexpr double kIX = 1.5;  /**< Position integral gains */
 static constexpr double J[9] = {0.27, 0.00, 0.00,
                                 0.00, 0.27, 0.00,
                                 0.00, 0.00, 0.54};
-static constexpr double M  = 6.5;
+static constexpr double M  = 7.6;
 static constexpr double G  = 9.80665;
 
 // Allocation parameters
@@ -65,8 +65,8 @@ static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 static constexpr double L_DIST = 0.48; // [m]
 
 // CoM estimating gain
-static constexpr double COM_OFF_X = 0.015157515752; // [m]
-static constexpr double COM_OFF_Y = 0.0; // [m]
+static constexpr double COM_OFF_X = 0.0; // [m]
+static constexpr double COM_OFF_Y = 0.011581012162; // [m]
 static constexpr double COT_2_COM_X = 0.6431;
 static constexpr double COT_2_COM_Y = 0.6431;
 

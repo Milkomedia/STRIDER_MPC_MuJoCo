@@ -49,8 +49,8 @@
       <site name="imu" pos="0 0 0" quat="1 0 0 0"/>
       <geom class="collision" size="0.12 0.12 .02" pos="0 0 0" contype="1" conaffinity="2"/>
 
-      <body name="payload_cube" pos="0.0 0.05 -0.04">
-      <inertial pos="0 0 0" mass="2" diaginertia="0.0000167 0.0000167 0.0000167"/>
+      <body name="payload_cube" pos="0.0 0.03 -0.04">
+      <inertial pos="0 0 0" mass="3" diaginertia="0.0000167 0.0000167 0.0000167"/>
       <geom type="box" size="0.01 0.01 0.01" rgba="0.8 0.2 0.2 1" contype="1" conaffinity="2"/>
     </body>
 
