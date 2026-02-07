@@ -65,8 +65,8 @@ static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 static constexpr double L_DIST = 0.48; // [m]
 
 // CoM estimating gain
-static constexpr double COM_OFF_X = 0.0271; // [m]
-static constexpr double COM_OFF_Y = 0.0000; // [m]
+static constexpr double COM_OFF_X = 0.015157515752; // [m]
+static constexpr double COM_OFF_Y = 0.0; // [m]
 static constexpr double COT_2_COM_X = 0.6431;
 static constexpr double COT_2_COM_Y = 0.6431;
 

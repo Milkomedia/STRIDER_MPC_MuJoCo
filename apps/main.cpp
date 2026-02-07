@@ -90,7 +90,7 @@ int main() {
     fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
     // --- parameter definition ---
-    const Eigen::Vector3d bPcot_init(0.0, 0.0, -0.2);    // [m]
+    const Eigen::Vector3d bPcot_init(0.0, 0.0, -0.24);    // [m]
     Eigen::Vector3d bPcot_des = bPcot_init;              // [m]
     Eigen::Vector3d bPc_hat   = Eigen::Vector3d::Zero(); // [m]
     Eigen::Matrix3d bRcot_des        = Eigen::Matrix3d::Identity(); // Body tilt
@@ -175,7 +175,7 @@ int main() {
       Eigen::Vector3d pos_des;
       Eigen::Vector3d vel_des = Eigen::Vector3d::Zero();
       Eigen::Vector3d acc_des = Eigen::Vector3d::Zero();
-      if (elapsed_double >= 6.0) {l_traj_pva(elapsed_double, pos_des, vel_des, acc_des);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      if (elapsed_double >= 62222.0) {l_traj_pva(elapsed_double, pos_des, vel_des, acc_des);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
       else if (elapsed_double <= 2.0) {pos_des = goes_to(Eigen::Vector3d(1.5,0.0,-1.0), elapsed_double, 2.0);}
       else {pos_des = Eigen::Vector3d(1.5,0.0,-1.0);}
 
