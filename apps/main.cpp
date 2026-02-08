@@ -21,6 +21,17 @@ static std::mutex mpc_mtx;
 static std::condition_variable mpc_cv;
 static strider_mpc::MPCInput g_mpc_input;
 static strider_mpc::MPCOutput g_mpc_output;
+static std::atomic<uint32_t> g_mpc_epoch{1}; // increments on ON/OFF transitions
+static bool g_mpc_busy = false;
+
+static inline void mpc_reset_locked(uint32_t& mpc_key, std::chrono::steady_clock::time_point& next_mpc_tick, const std::chrono::steady_clock::time_point& now) {
+  g_mpc_epoch.fetch_add(1, std::memory_order_relaxed);
+  g_mpc_input.has = false;
+  g_mpc_output.has = false;
+  g_mpc_busy = false;
+  mpc_key += 1; // force key++
+  next_mpc_tick = now + param::MPC_DT; // advance next_mpc_tick by one step
+}
 
 // ===== Main =====
 int main() {
@@ -61,6 +72,7 @@ int main() {
         if (g_mpc_input.has == true) {
           in_local = g_mpc_input;
           g_mpc_input.has = false;
+          g_mpc_busy = true;
         }
       }
       // std::printf(" [mpc]->get   ");
@@ -75,7 +87,9 @@ int main() {
         g_mpc_output = out_local;
         g_mpc_output.t = in_local.t;
         g_mpc_output.key = in_local.key;
+        g_mpc_output.epoch = in_local.epoch;
         g_mpc_output.has = true;
+        g_mpc_busy = false;
       }
     }
   });
@@ -96,8 +110,10 @@ int main() {
     // --- MRG parameters ---
     uint32_t mpc_key = 1;
     strider_mpc::MPCOutput l_mpc_output;
+    l_mpc_output.u_rate.setZero();
+    l_mpc_output.u_opt.setZero();
 
-    bool prev_mpc_on = false;
+    bool prev_mpc_on = false; // for ON/OFF edge detection
     uint8_t mpc_mod = COT_ACTIVATED;
 
     // --- noise injection ---
@@ -144,6 +160,18 @@ int main() {
       const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
       const double elapsed_double = std::chrono::duration<double>(now - t0).count();
 
+      // Handle MPC ON/OFF transitions
+      const bool mpc_on = g_mpc_activated.load(std::memory_order_relaxed);
+      if (mpc_on != prev_mpc_on) {
+        std::lock_guard<std::mutex> lk(mpc_mtx);
+        mpc_reset_locked(mpc_key, next_mpc_tick, now);
+        if (mpc_on) {
+          if (mpc_mod == COT_ACTIVATED) {mpc_mod = COT_DISABLED; std::printf("MPC->NO-COT\n");}
+          else {mpc_mod = COT_ACTIVATED; std::printf("MPC->YES-COT\n");}
+        }
+        prev_mpc_on = mpc_on;
+      }
+
       // --- mujoco measurement ---
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
@@ -180,19 +208,19 @@ int main() {
       const Eigen::Matrix3d R_raw = gac_cmd.Rd;
       const Eigen::Vector3d omega_raw = gac_cmd.Wd;
       const double F_des = -geometry_ctrl.f_total; // (f_total > 0)
-      
+
       const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
       s.r_cot = FK(delayed_s.arm_q);
       s.r_com(0) = param::COM_OFF_X + param::COT_2_COM_X * s.r_cot(0);
       s.r_com(1) = param::COM_OFF_Y + param::COT_2_COM_Y * s.r_cot(1);
       { // MPC send
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
-        if (g_mpc_activated.load(std::memory_order_relaxed)) {
+        if (mpc_on) {
           if (now >= next_mpc_tick) {
-            if (!g_mpc_output.has) {
-              next_mpc_tick += param::MPC_DT;
+            if (!g_mpc_busy && !g_mpc_input.has && !g_mpc_output.has) {
+              next_mpc_tick = now + param::MPC_DT;
               mpc_key += 1;
-              
+
               int k = 0; // fill initial state(x)
               g_mpc_input.x_0(k++) = euler_rpy(0); g_mpc_input.x_0(k++) = euler_rpy(1); g_mpc_input.x_0(k++) = euler_rpy(2); // theta(0,1,2)
               g_mpc_input.x_0(k++) = delayed_s.omega(0); g_mpc_input.x_0(k++) = delayed_s.omega(1); g_mpc_input.x_0(k++) = delayed_s.omega(2); // omega(3,4,5)
@@ -208,27 +236,17 @@ int main() {
               g_mpc_input.p(m++) = omega_raw(0); g_mpc_input.p(m++) = omega_raw(1); g_mpc_input.p(m++) = omega_raw(2); // omega_raw(9~11)
               g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(12)
               g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(13)
-              
-              if (!prev_mpc_on) {
-                if (mpc_mod==COT_ACTIVATED){
-                  std::printf("MPC->NO-COT\n");
-                  mpc_mod=COT_DISABLED;
-                }
-                else {
-                  std::printf("MPC->YES-COT\n");
-                  mpc_mod=COT_ACTIVATED;
-                }
-              }
 
               if (mpc_mod==COT_ACTIVATED) {g_mpc_input.use_cot = true;}
               else {g_mpc_input.use_cot = false;}
               g_mpc_input.t = now;
               g_mpc_input.key = mpc_key;
+              g_mpc_input.epoch = g_mpc_epoch.load(std::memory_order_relaxed);
               g_mpc_input.has = true;
+              g_mpc_busy = true;
               mpc_cv.notify_one();
             }
           }
-          prev_mpc_on = true;
         }
         else {
           // MPC OFF -> bPcot_des goes to inital value.
@@ -240,7 +258,6 @@ int main() {
           cmd.r_cot(0) = 0.0;
           cmd.r_cot(1) = 0.0;
           l_mpc_output.u_rate.setZero();
-          prev_mpc_on = false;
         }
       }
 
@@ -248,12 +265,18 @@ int main() {
       { // check got_mpc
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
         if (g_mpc_output.has) {
-          if (g_mpc_output.key == mpc_key) {
+          const uint32_t epoch_now = g_mpc_epoch.load(std::memory_order_relaxed);
+          const bool epoch_ok = (g_mpc_output.epoch == epoch_now);
+          const bool key_ok = (g_mpc_output.key == mpc_key);
+
+          if (mpc_on && epoch_ok && key_ok) {
             l_mpc_output = g_mpc_output;
             got_mpc = true;
           }
+          else {
+            if (mpc_on && epoch_ok && !key_ok) {mpc_reset_locked(mpc_key, next_mpc_tick, now);}
+          }
           g_mpc_output.has = false;
-          // else{std::printf("\n\n[MPC KEY WRONG ERROR. RESTART NOW]\n\n");}
         }
       }
 
@@ -268,8 +291,6 @@ int main() {
           cmd.r_cot    *= 0.9995;
           l_mpc_output.u_rate.setZero();
         }
-
-        l_mpc_output.has = false;
 
         // next time to solve
         if (now >= l_mpc_output.t + param::MPC_DT) {next_mpc_tick = now;}

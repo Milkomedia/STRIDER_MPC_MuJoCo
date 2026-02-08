@@ -18,6 +18,7 @@ struct MPCInput {
   bool use_cot = false;
   std::chrono::steady_clock::time_point t;
   uint32_t key = 0;
+  uint32_t epoch = 0; // session/epoch for ON/OFF safety
   bool has = false;
 };
 
@@ -29,6 +30,7 @@ struct MPCOutput {
   std::uint8_t state = 255;
   std::chrono::steady_clock::time_point t;
   uint32_t key = 0;
+  uint32_t epoch = 0; // must match input epoch
   bool has = false;
 };
 

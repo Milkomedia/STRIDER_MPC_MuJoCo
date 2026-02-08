@@ -47,4 +47,4 @@ Q_FDEV  = 20.0 * np.array([1.0, 1.0, 1.0, 1.0])
 
 # rate cost
 R_THETA = 0.001  * np.array([1.0, 1.0, 1.0])
-R_COT   = 1.0   * np.array([1.0, 1.0])
+R_COT   = 8.0   * np.array([1.0, 1.0])
