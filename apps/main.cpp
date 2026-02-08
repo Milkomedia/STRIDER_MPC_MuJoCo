@@ -107,6 +107,7 @@ int main() {
     // --- timedelay ---
     State delayed_s;
     double delayed_q_d[20] = {0};
+    double smoothed_q_d[20] = {0};
     Eigen::Vector4d smoothed_F   = Eigen::Vector4d::Zero();
     Eigen::Vector4d smoothed_Tau = Eigen::Vector4d::Zero();
 
@@ -126,6 +127,7 @@ int main() {
       double arm_angles[20]; // Initial arm joint angles
       Eigen::Vector4d tvc_angle = Eigen::Vector4d::Zero();
       IK(cmd.r_cot, cmd.R_cot, tvc_angle, cmd.l, arm_angles);
+      for (uint8_t i=0; i<20; ++i) {delayed_q_d[i] = arm_angles[i]; smoothed_q_d[i] = arm_angles[i];}
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
         // spawn and 3 second do nothing
@@ -274,9 +276,6 @@ int main() {
         else {next_mpc_tick = l_mpc_output.t + param::MPC_DT;}
       }
 
-      // cmd.r_cot(0) = param::COT_DELAY_ALPHA * cmd.r_cot(0) + param::COT_DELAY_BETA * r_cot_opt(0);
-      // cmd.r_cot(1) = param::COT_DELAY_ALPHA * cmd.r_cot(1) + param::COT_DELAY_BETA * r_cot_opt(1);
-
       // --- attitude control --- 
       const Eigen::Matrix3d R_d = R_raw * expm_hat(cmd.d_theta);
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
@@ -313,6 +312,9 @@ int main() {
       smoothed_F   = 0.882 * smoothed_F   + 0.118 * F;
       smoothed_Tau = 0.882 * smoothed_Tau + 0.118 * Tau;
 
+      // --- joint actuator delay ---
+      for (uint8_t i=0; i<20; ++i) {smoothed_q_d[i] =  param::COT_DELAY_ALPHA * smoothed_q_d[i] + param::COT_DELAY_BETA * delayed_q_d[i];}
+
       // // --- HW thrust constraint ---
       // if (elapsed_double >= 30.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > 22.0) {smoothed_F(i) = 22.0;}}}
 
@@ -330,7 +332,7 @@ int main() {
         g_pos_cur[2]=d->qpos[2]; g_pos_des[2]=-cmd.pos(2);
         Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl) = smoothed_F.cast<mjtNum>();
         Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl + 4) = smoothed_Tau.cast<mjtNum>();
-        for (int i = 0; i < 20; ++i) d->ctrl[8 + i] = delayed_q_d[i];
+        for (int i = 0; i < 20; ++i) d->ctrl[8 + i] = smoothed_q_d[i];
 
         for (int s = 0; s < n_sub; ++s) {mj_step(m, d);}
       }
