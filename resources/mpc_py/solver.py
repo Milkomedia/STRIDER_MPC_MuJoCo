@@ -31,14 +31,13 @@ class StriderNMPC:
         self.yes_cot_nu = self.yes_cot_ocp.model.u.size()[0]
         self.yes_cot_np = self.yes_cot_ocp.model.p.size()[0]
 
-        self.nlog = 10
         from .yes_cot import params as p
         self.N = int(p.N)
 
         mmap_path = os.environ.get("MRG_MMAP", "/tmp/MRG_debug.mmap")
-        self._mmap_writer = MMapWriter(mmap_path, self.N, self.yes_cot_nx, self.yes_cot_nu, self.yes_cot_np, self.nlog)
+        self._mmap_writer = MMapWriter(mmap_path, self.N, self.yes_cot_nx, self.yes_cot_nu, self.yes_cot_np)
     
-    def no_cot_solve(self, x_0, u_0, p, log):
+    def no_cot_solve(self, x_0, u_0, p):
         x_full = np.asarray(x_0, dtype=np.float64).ravel()
         u_full = np.asarray(u_0, dtype=np.float64).ravel()
 
@@ -85,7 +84,6 @@ class StriderNMPC:
             x_all=xs,
             u_all=us,
             p_all=ps,
-            log_param=log,
             solve_ms=float(solve_ms),
             status=int(status),
         )
@@ -100,7 +98,7 @@ class StriderNMPC:
         return u_opt_full, u_rate_full, float(solve_ms), int(status)
 
     
-    def yes_cot_solve(self, x_0, u_0, p, log):
+    def yes_cot_solve(self, x_0, u_0, p):
         x_0   = np.asarray(x_0,   dtype=np.float64).ravel()
         u_0   = np.asarray(u_0,   dtype=np.float64).ravel()
         p     = np.asarray(p,     dtype=np.float64).ravel()
@@ -136,7 +134,6 @@ class StriderNMPC:
             x_all=xs,
             u_all=us,
             p_all=ps,
-            log_param=log,
             solve_ms=float(solve_ms),
             status=int(status),
         )
@@ -147,23 +144,14 @@ class StriderNMPC:
         x_0    = np.asarray(mpci.get("x_0", np.zeros(self.yes_cot_nx)), dtype=np.float64).ravel()
         u_0    = np.asarray(mpci.get("u_0", np.zeros(self.yes_cot_nu)), dtype=np.float64).ravel()
         p      = np.asarray(mpci.get("p",   np.zeros(self.yes_cot_np)), dtype=np.float64).ravel()
-        log_in = np.asarray(mpci.get("log", np.zeros(self.nlog)), dtype=np.float64).ravel()
         cot_using = bool(mpci.get("use_cot", False))
-
-        if log_in.size != self.nlog:
-            log = np.zeros(self.nlog, dtype=np.float64)
-            n = min(log_in.size, self.nlog)
-            log[:n] = log_in[:n]
-        else:
-            log = log_in
-        log = np.ascontiguousarray(log, dtype=np.float64)
 
         if x_0.size != self.yes_cot_nx: raise ValueError(f"x_0 size mismatch: got {x_0.size}, expected {self.yes_cot_nx}")
         if p.size != self.yes_cot_np: raise ValueError(f"p size mismatch: got {p.size}, expected {self.yes_cot_np}")
         if u_0.size != self.yes_cot_nu: u_0 = np.zeros(self.yes_cot_nu, dtype=np.float64)
 
-        if cot_using: u_aug, u_rate, solve_ms, status = self.yes_cot_solve(x_0, u_0, p, log)
-        else: u_aug, u_rate, solve_ms, status = self.no_cot_solve(x_0, u_0, p, log)
+        if cot_using: u_aug, u_rate, solve_ms, status = self.yes_cot_solve(x_0, u_0, p)
+        else: u_aug, u_rate, solve_ms, status = self.no_cot_solve(x_0, u_0, p)
 
         return {"u_opt": u_aug.astype(np.float64), "u_rate": u_rate.astype(np.float64), "solve_ms": float(solve_ms), "state": int(status),}
 
