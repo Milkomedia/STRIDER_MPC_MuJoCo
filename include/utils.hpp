@@ -10,14 +10,30 @@
 #endif
 
 static inline constexpr double inv_sqrt2 = 0.7071067811865474617150084668537601828575;  // 1/sqrt(2)
-static inline constexpr double sqrt2 = 1.4142135623730951454746218587388284504414;      // sqrt(2)
-struct SimState { // use for copy snapshot in thread lock
-  Eigen::Vector3d pos = Eigen::Vector3d::Zero();
-  Eigen::Vector3d vel = Eigen::Vector3d::Zero();
-  Eigen::Vector3d acc = Eigen::Vector3d::Zero();
-  Eigen::Matrix3d R   = Eigen::Matrix3d::Identity();
-  Eigen::Vector3d omega = Eigen::Vector3d::Zero();
-  double arm_q[20] = {0.0};
+
+struct State {
+  Eigen::Vector3d pos = Eigen::Vector3d::Zero();       // current linear position [m]
+  Eigen::Vector3d vel = Eigen::Vector3d::Zero();       // current linear velocity [m/s]
+  Eigen::Vector3d acc = Eigen::Vector3d::Zero();       // current linear acceleration [m/s^2]
+  Eigen::Matrix3d R   = Eigen::Matrix3d::Identity();   // current Rotation matrix [SO3]
+  Eigen::Vector3d omega = Eigen::Vector3d::Zero();     // current angular velocity [rad/s]
+  Eigen::Vector3d r_cot = Eigen::Vector3d::Zero();     // current b_p_Cot position [m]
+  double arm_q[20] = {0.0};                            // current joint angle [rad]
+  Eigen::Vector3d r_com = Eigen::Vector3d::Zero();     // current estimated CoM position [m] 
+};
+
+struct Command {
+  Eigen::Vector3d pos = Eigen::Vector3d::Zero();        // desired linear position [m]
+  Eigen::Vector3d vel = Eigen::Vector3d::Zero();        // desired linear velocity [m/s]
+  Eigen::Vector3d acc = Eigen::Vector3d::Zero();        // desired linear acceleration [m/s^2]
+  Eigen::Vector3d heading = Eigen::Vector3d(1,0,0);     // desired heading vector [unit vector]
+  double l   = param::L_DIST;                           // desired inter-rotor distance [m]
+  Eigen::Matrix3d R_cot = Eigen::Matrix3d::Identity();  // desired CoT-body tilt cmd [SO3] (not updated)
+  // This can only be changed by Control Allocation
+  double tauz_bar  = 0.0;                               // current yaw thrust torque [N.m] (Sequential control allocation)
+  // These can only be changed by MRG
+  Eigen::Vector3d d_theta = Eigen::Vector3d::Zero();    // desired delta theta [rad]
+  Eigen::Vector3d r_cot = Eigen::Vector3d(0,0,param::COT_Z); // desired CoT position [m], z-element can be manually changable by SBUS
 };
 
 static inline Eigen::Vector3d fig8_point(double t_sec){
@@ -117,23 +133,6 @@ static inline Eigen::Vector3d square4_point(double t_sec) {
   }
 
   return Eigen::Vector3d(sx, sy, -2.0);
-}
-
-static inline Eigen::Vector3d quat_to_RPY(const Eigen::Quaterniond q) {
-  // Quaternion to Euler angle map
-  double w = q.w(); double x = q.x(); double y = q.y(); double z = q.z();
-
-  const double xx = x*x, yy = y*y, zz = z*z;
-  const double xy = x*y, xz = x*z, yz = y*z;
-  const double wx = w*x, wy = w*y, wz = w*z;
-  
-  const double phi = std::atan2(2.0*(wx + yz), 1.0 - 2.0*(xx + yy));
-  double sinp = 2.0*(wy - xz);
-  sinp = std::max(-1.0, std::min(1.0, sinp));
-  const double th = std::asin(sinp);
-  const double psi = std::atan2(2.0*(wz + xy), 1.0 - 2.0*(yy + zz));
-
-  return Eigen::Vector3d(phi, th, psi);
 }
 
 static inline Eigen::Matrix3d quat_to_R(const Eigen::Quaterniond q) {
@@ -457,7 +456,7 @@ struct Rng {
   }
 };
 
-struct State {
+struct nState {
   std::chrono::steady_clock::time_point last_t;
 
   Rng rng;
@@ -469,7 +468,7 @@ struct State {
 };
 
 // Reset/init the noise state
-static inline void reset(State& st, std::uint64_t seed, const std::chrono::steady_clock::time_point& now) {
+static inline void reset(nState& st, std::uint64_t seed, const std::chrono::steady_clock::time_point& now) {
   st.last_t = now;
 
   st.rng.s = (seed == 0) ? 1ull : seed;
@@ -479,7 +478,7 @@ static inline void reset(State& st, std::uint64_t seed, const std::chrono::stead
   for (uint8_t i=0; i<20; ++i) {st.q_bias[i] = 0.0;}
 }
 
-static inline void apply(State& st, const std::chrono::steady_clock::time_point& now, SimState& raw) {
+static inline void apply(nState& st, const std::chrono::steady_clock::time_point& now, State& raw) {
 
   double dt = std::chrono::duration<double>(now - st.last_t).count();
   dt = std::clamp(dt, 0.002, 0.01);
@@ -522,10 +521,6 @@ static inline void apply(State& st, const std::chrono::steady_clock::time_point&
 
   for (uint8_t i=0; i<20; ++i) {raw.arm_q[i] += st.q_bias[i] + param::ARM_NOISE_SIGMA  * st.rng.randn_fast();}
 }
-
-// static inline void apply_time_delay(State& st,
-
-// )
 
 } // namespace NOISE
 
