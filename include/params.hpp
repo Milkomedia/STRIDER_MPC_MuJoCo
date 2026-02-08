@@ -64,8 +64,9 @@ static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 // desired inter-rotor distance
 static constexpr double L_DIST = 0.48; // [m]
 
-// initial cot-z distance
-static constexpr double COT_Z = -0.24; // [m]
+// CoT constrains
+static constexpr double COT_Z = -0.24;      // [m]
+static constexpr double COT_XY_MAX = 0.047; // [m]
 
 // CoM estimating gain
 static constexpr double COM_OFF_X = 0.0; // [m]

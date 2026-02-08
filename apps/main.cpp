@@ -283,8 +283,8 @@ int main() {
       if (got_mpc) { // MPC get
         if (l_mpc_output.state == 0) {
           cmd.d_theta = l_mpc_output.u_opt.template head<3>(); // [0,1,2]
-          cmd.r_cot(0) = l_mpc_output.u_opt(3);  // [3]
-          cmd.r_cot(1) = l_mpc_output.u_opt(4);  // [4]
+          cmd.r_cot(0) = std::clamp(l_mpc_output.u_opt(3), -param::COT_XY_MAX, param::COT_XY_MAX);  // [3]
+          cmd.r_cot(1) = std::clamp(l_mpc_output.u_opt(4), -param::COT_XY_MAX, param::COT_XY_MAX);  // [4]
         }
         else { // solve failed
           cmd.d_theta  *= 0.995;
