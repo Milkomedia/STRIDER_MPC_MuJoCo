@@ -70,7 +70,7 @@ static constexpr double COT_XY_MAX = 0.047; // [m]
 
 // CoM estimating gain
 static constexpr double COM_OFF_X = 0.0; // [m]
-static constexpr double COM_OFF_Y = 0.011581012162; // [m]
+static constexpr double COM_OFF_Y = -0.011581012162; // [m]
 static constexpr double COT_2_COM_X = 0.6431;
 static constexpr double COT_2_COM_Y = 0.6431;
 
