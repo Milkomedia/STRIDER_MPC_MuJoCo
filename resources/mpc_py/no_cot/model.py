@@ -5,6 +5,7 @@ from acados_template.acados_model import AcadosModel
 from acados_template.acados_ocp import AcadosOcp
 import casadi as ca
 import numpy as np
+from pathlib import Path
 
 def build_model():
     model = AcadosModel()
@@ -176,5 +177,8 @@ def build_ocp():
     # ocp.solver_options.print_level = 4
 
     # codegen dir
-    ocp.code_export_directory = "generated_no_cot"
+    codegen_dir = Path(__file__).resolve().parent / "generated"
+    ocp.code_export_directory = str(codegen_dir)
+    codegen_dir.mkdir(parents=True, exist_ok=True)
+
     return ocp
