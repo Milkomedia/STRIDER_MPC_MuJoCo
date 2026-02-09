@@ -34,7 +34,7 @@ if __package__ is None or __package__ == "":
   __package__ = THIS_DIR.name
 
 from .mmap_manager import MMapReader, MMapPacket
-from .yes_cot import params as p  # Always use yes_cot params
+from .yes_cot import costs as p  # Always use yes_cot params
 
 DebugFrame = Dict[str, Optional[np.ndarray]]
 

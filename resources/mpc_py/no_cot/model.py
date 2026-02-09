@@ -1,4 +1,5 @@
-from . import params as p
+from . import costs as c
+from .. import params as p
 
 from acados_template.acados_model import AcadosModel
 from acados_template.acados_ocp import AcadosOcp
@@ -146,8 +147,8 @@ def build_ocp():
     ocp.dims.ny   = 13
     ocp.dims.ny_e = 10
     
-    ocp.cost.W = np.diag(np.concatenate([p.Q_OMEGA, p.Q_THETA, p.R_THETA, p.Q_FDEV]).astype(np.float64))
-    ocp.cost.W_e = np.diag(np.concatenate([p.Q_OMEGA, p.Q_THETA, p.Q_FDEV]).astype(np.float64))
+    ocp.cost.W = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.R_THETA, c.Q_FDEV]).astype(np.float64))
+    ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.Q_FDEV]).astype(np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
     ocp.cost.cost_type_e = "NONLINEAR_LS"
@@ -159,8 +160,8 @@ def build_ocp():
     ocp.constraints.x0 = np.zeros(model.x.size()[0])
 
     # ---------- h_expr constraints ----------
-    ocp.constraints.lh   = p.F_MIN
-    ocp.constraints.uh   = p.F_MAX
+    ocp.constraints.lh   = c.F_MIN
+    ocp.constraints.uh   = c.F_MAX
     ocp.dims.nh   = 4
 
     # ---------- solver options ----------

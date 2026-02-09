@@ -31,7 +31,7 @@ class StriderNMPC:
         self.yes_cot_nu = self.yes_cot_ocp.model.u.size()[0]
         self.yes_cot_np = self.yes_cot_ocp.model.p.size()[0]
 
-        from .yes_cot import params as p
+        from . import params as p
         self.N = int(p.N)
 
         mmap_path = os.environ.get("MRG_MMAP", "/tmp/MRG_debug.mmap")

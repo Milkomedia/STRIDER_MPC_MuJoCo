@@ -1,4 +1,5 @@
-from . import params as p
+from . import costs as c
+from .. import params as p
 
 from acados_template.acados_model import AcadosModel
 from acados_template.acados_ocp import AcadosOcp
@@ -39,6 +40,7 @@ def build_model():
     KR = ca.DM(p.KR).reshape((3, 1))
     KW = ca.DM(p.KW).reshape((3, 1))
     com_off = ca.DM(p.COM_OFFSET).reshape((2, 1))
+    com2cot_coeff = ca.DM(p.COT2COM_COEFF).reshape((2, 1))
     
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -117,7 +119,7 @@ def build_model():
     # ---------- Propeller thrust expression ----------
     # d = r_CoT - r_CoM
     # dx, dy = r_cot[0], r_cot[1]
-    dx, dy = 0.3569*r_cot[0] - com_off[0], 0.3569*r_cot[1] - com_off[1]
+    dx, dy = com2cot_coeff[0]*r_cot[0] - com_off[0], com2cot_coeff[1]*r_cot[1] - com_off[1]
     A = ca.vertcat(ca.horzcat( l-dy,  l-dy, -l-dy, -l-dy),
                    ca.horzcat( l+dx, -l+dx, -l+dx,  l+dx),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
@@ -155,8 +157,8 @@ def build_ocp():
     ocp.dims.ny   = 15
     ocp.dims.ny_e = 10
     
-    ocp.cost.W = np.diag(np.concatenate([p.Q_OMEGA, p.Q_THETA, p.R_THETA, p.R_COT, p.Q_FDEV]).astype(np.float64))
-    ocp.cost.W_e = np.diag(np.concatenate([p.Q_OMEGA, p.Q_THETA, p.Q_FDEV]).astype(np.float64))
+    ocp.cost.W = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.R_THETA, c.R_COT, c.Q_FDEV]).astype(np.float64))
+    ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.Q_FDEV]).astype(np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
     ocp.cost.cost_type_e = "NONLINEAR_LS"
@@ -168,19 +170,19 @@ def build_ocp():
     ocp.constraints.x0 = np.zeros(model.x.size()[0])
 
     # ---------- h_expr constraints ----------
-    ocp.constraints.lh   = p.F_MIN
-    ocp.constraints.uh   = p.F_MAX
+    ocp.constraints.lh   = c.F_MIN
+    ocp.constraints.uh   = c.F_MAX
     ocp.dims.nh   = 4
 
     # ---------- x(augmented-state) constraints ----------
     idx_r_cot_cmd = np.array([6, 7], dtype=np.int64)
 
     ocp.constraints.idxbx   = idx_r_cot_cmd
-    ocp.constraints.lbx     = p.COT_MIN
-    ocp.constraints.ubx     = p.COT_MAX
+    ocp.constraints.lbx     = c.COT_MIN
+    ocp.constraints.ubx     = c.COT_MAX
     ocp.constraints.idxbx_e = idx_r_cot_cmd
-    ocp.constraints.lbx_e   = p.COT_MIN
-    ocp.constraints.ubx_e   = p.COT_MAX
+    ocp.constraints.lbx_e   = c.COT_MIN
+    ocp.constraints.ubx_e   = c.COT_MAX
 
     ocp.dims.nbx            = idx_r_cot_cmd.size
     ocp.dims.nbx_e          = idx_r_cot_cmd.size

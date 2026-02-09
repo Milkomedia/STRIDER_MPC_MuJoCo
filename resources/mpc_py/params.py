@@ -27,24 +27,5 @@ ZETA = 0.04
 # Center of mass offset (x,y)
 COM_OFFSET = np.array([0.0, -0.011581012162])
 
-# ---------- Constraints & Costs ----------
-# state constraint
-COT_MIN = -0.047 * np.array([1.0, 1.0]) # CoT box bound (x,y)
-COT_MAX =  0.047 * np.array([1.0, 1.0]) # [m]
-
-# h_expr constraint
-F_MIN   = 8.0  * np.array([1.0, 1.0, 1.0, 1.0]) # thrust bound (F1,F2,F3,F4)
-F_MAX   = 27.36 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
-
-# input cost
-Q_THETA = 10000. * np.array([1.0, 1.0, 1.0])
-
-# state cost
-Q_OMEGA = 10.0  * np.array([1.0, 1.0, 1.0])
-
-# thurst deviation cost
-Q_FDEV  = 20.0 * np.array([1.0, 1.0, 1.0, 1.0])
-
-# rate cost
-R_THETA = 0.001  * np.array([1.0, 1.0, 1.0])
-R_COT   = 8.0   * np.array([1.0, 1.0])
+# The rate at which CoM moves as CoT moves. (x,y)
+COT2COM_COEFF = np.array([0.3569, 0.3569])
