@@ -34,7 +34,7 @@ if __package__ is None or __package__ == "":
   __package__ = THIS_DIR.name
 
 from .mmap_manager import MMapReader, MMapPacket
-from .yes_cot import costs as p  # Always use yes_cot params
+from . import params as p  # Always use yes_cot params
 
 DebugFrame = Dict[str, Optional[np.ndarray]]
 
@@ -198,7 +198,7 @@ def compute_frame_from_pkt(pkt: MMapPacket) -> DebugFrame:
 
   for k in range(T):
     pv = p_all[k, :].ravel()
-    if pv.size < 11:
+    if pv.size < 14:
       continue
     # NOTE: CasADi reshape is column-major.
     R_raw_all[k, :, :] = pv[0:9].reshape(3, 3, order="F")

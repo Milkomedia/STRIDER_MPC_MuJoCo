@@ -61,8 +61,8 @@ struct acados_wrapper::Impl {
 
   static MPCOutput from_dict(const pybind11::dict& d) {
     MPCOutput out;
-    out.u_opt    = d["u_opt"].cast<Eigen::Matrix<double, param::NU, 1>>();
-    out.u_rate   = d["u_rate"].cast<Eigen::Matrix<double, param::NU_AUG, 1>>();
+    out.u_opt    = d["u_opt"].cast<Eigen::Matrix<double, param::MPC_NU, param::N_STEPS_REQ>>();
+    out.u_rate   = d["u_rate"].cast<Eigen::Matrix<double, param::MPC_NU, param::N_STEPS_REQ>>();
     out.solve_ms = d["solve_ms"].cast<double>();
     out.state    = d["state"].cast<std::uint8_t>();
     return out;
@@ -88,6 +88,7 @@ MPCOutput acados_wrapper::compute(const MPCInput& in) {
   mpci["u_0"]   = in.u_0;
   mpci["p"]     = in.p;
   mpci["use_cot"] = pybind11::bool_(in.use_cot);
+  mpci["steps_req"] = pybind11::int_(in.steps_req);
 
   pybind11::object ret = impl_->solver.attr("compute_MPC")(mpci);
   return Impl::from_dict(ret.cast<pybind11::dict>());

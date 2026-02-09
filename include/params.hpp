@@ -77,19 +77,20 @@ static constexpr double COT_2_COM_Y = 0.6431;
 // ===== MPC parameters  =====
 static constexpr std::chrono::steady_clock::duration MPC_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::microseconds(5000)); // 200Hz
 
-static constexpr double COT_DELAY_TAU   = 0.2; // [sec]
-inline const double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU);
-inline const double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;
+static constexpr double COT_DELAY_TAU   = 0.2; // MuJoCo actuator delay [sec]
+inline const double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); // this is not tunable
+inline const double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA; // this is not tunable
 
-constexpr std::size_t N_STEPS  = 60; // (Must be the same as prams.py)
-constexpr std::size_t NX       = 13;
-constexpr std::size_t NU_AUG   = 5;
-constexpr std::size_t NU       = 5;
-constexpr std::size_t NP       = 14;
+static constexpr std::size_t N_STEPS_REQ = 40; // This value must be less than >> N << on params.py
+static constexpr std::size_t MPC_NX      = 13; // This value must be same as >> self.yes_cot_nx << on solver.py
+static constexpr std::size_t MPC_NU      = 5;  // This value must be same as >> self.yes_cot_nu << on solver.py
+static constexpr std::size_t MPC_NP      = 14; // This value must be same as >> self.yes_cot_np << on solver.py
+static constexpr double      MPC_STEP_DT = 1.0 / 400.0; // This value must be same as >> DT << on params.py
+static constexpr std::chrono::steady_clock::duration MPC_TIMEOUT_DURATUION = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(static_cast<double>(N_STEPS_REQ-1) * MPC_STEP_DT));
 
 // ===== MuJoCo viewer parameters =====
 static constexpr double PATH_SEC = 10.0;   // history length [sec]
-static constexpr float SIZE_DOT  = 0.03f; // size(radious) of dot
+static constexpr float SIZE_DOT  = 0.03f;  // size(radious) of dot
 static constexpr float SIZE_PATH = 0.005f; // size(radious) of path
 
 static constexpr float RGBA_DOT[4]   = {1.00f, 0.00f, 0.00f, 0.95f}; // current pos color

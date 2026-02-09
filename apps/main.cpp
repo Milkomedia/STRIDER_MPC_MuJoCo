@@ -24,13 +24,12 @@ static strider_mpc::MPCOutput g_mpc_output;
 static std::atomic<uint32_t> g_mpc_epoch{1}; // increments on ON/OFF transitions
 static bool g_mpc_busy = false;
 
-static inline void mpc_reset_locked(uint32_t& mpc_key, std::chrono::steady_clock::time_point& next_mpc_tick, const std::chrono::steady_clock::time_point& now) {
+static inline void mpc_reset_locked(uint32_t& mpc_key) {
   g_mpc_epoch.fetch_add(1, std::memory_order_relaxed);
   g_mpc_input.has = false;
   g_mpc_output.has = false;
   g_mpc_busy = false;
   mpc_key += 1; // force key++
-  next_mpc_tick = now + param::MPC_DT; // advance next_mpc_tick by one step
 }
 
 // ===== Main =====
@@ -112,6 +111,7 @@ int main() {
     strider_mpc::MPCOutput l_mpc_output;
     l_mpc_output.u_rate.setZero();
     l_mpc_output.u_opt.setZero();
+    l_mpc_output.t = std::chrono::steady_clock::time_point::max();
 
     bool prev_mpc_on = false; // for ON/OFF edge detection
     uint8_t mpc_mod = COT_ACTIVATED;
@@ -134,7 +134,6 @@ int main() {
     // --- time scope definition ---
     const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point next_tick = std::chrono::steady_clock::now();
-    std::chrono::steady_clock::time_point next_mpc_tick = std::chrono::steady_clock::now();
     const std::chrono::steady_clock::duration ctrl_period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(param::CTRL_DT));
     const double steps_per_ctrl = param::SIM_HZ / param::CTRL_HZ;
     double substep_accum = 0.0;
@@ -164,7 +163,7 @@ int main() {
       const bool mpc_on = g_mpc_activated.load(std::memory_order_relaxed);
       if (mpc_on != prev_mpc_on) {
         std::lock_guard<std::mutex> lk(mpc_mtx);
-        mpc_reset_locked(mpc_key, next_mpc_tick, now);
+        mpc_reset_locked(mpc_key);
         if (mpc_on) {
           if (mpc_mod == COT_ACTIVATED) {mpc_mod = COT_DISABLED; std::printf("MPC->NO-COT\n");}
           else {mpc_mod = COT_ACTIVATED; std::printf("MPC->YES-COT\n");}
@@ -209,43 +208,78 @@ int main() {
       const Eigen::Vector3d omega_raw = gac_cmd.Wd;
       const double F_des = -geometry_ctrl.f_total; // (f_total > 0)
 
+      { // MPC get
+        std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
+        if (g_mpc_output.has) {
+          const bool epoch_ok = (g_mpc_output.epoch == g_mpc_epoch.load(std::memory_order_relaxed));
+          const bool key_ok = (g_mpc_output.key == mpc_key);
+          const bool solve_ok = (g_mpc_output.state == 0);
+
+          // l_mpc_output updated only when solve succeed.
+          if (mpc_on && epoch_ok && key_ok && solve_ok) {l_mpc_output = g_mpc_output;}
+          else if (mpc_on && epoch_ok && !key_ok) {mpc_reset_locked(mpc_key);}
+          g_mpc_output.has = false;
+        }
+      }
+
+      if (mpc_on) { // MPC unpack
+        const bool epoch_ok = (l_mpc_output.epoch == g_mpc_epoch.load(std::memory_order_relaxed));
+        const bool time_ok = ((now - l_mpc_output.t) < param::MPC_TIMEOUT_DURATUION);
+        if (epoch_ok && time_ok) {
+          const std::size_t idx = static_cast<std::size_t>(std::floor(std::chrono::duration<double>(now - l_mpc_output.t).count() / param::MPC_STEP_DT));
+          cmd.d_theta = l_mpc_output.u_opt.col(idx).head<3>();
+          cmd.r_cot(0) = std::clamp(l_mpc_output.u_opt(3, idx), -param::COT_XY_MAX, param::COT_XY_MAX);
+          cmd.r_cot(1) = std::clamp(l_mpc_output.u_opt(4, idx), -param::COT_XY_MAX, param::COT_XY_MAX);
+        }
+        else { // solve failed timeout
+          cmd.d_theta *= 0.995;
+          cmd.r_cot(0) *= 0.9995;
+          cmd.r_cot(1) *= 0.9995;
+          l_mpc_output.u_rate.setZero();
+        }
+      }
+      else { // only GAC flight
+        cmd.d_theta *= 0.995;
+        cmd.r_cot(0) *= 0.9995;
+        cmd.r_cot(1) *= 0.9995;
+      }
+
       const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
       s.r_cot = FK(delayed_s.arm_q);
       s.r_com(0) = param::COM_OFF_X + param::COT_2_COM_X * s.r_cot(0);
       s.r_com(1) = param::COM_OFF_Y + param::COT_2_COM_Y * s.r_cot(1);
       { // MPC send
-        std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
         if (mpc_on) {
-          if (now >= next_mpc_tick) {
-            if (!g_mpc_busy && !g_mpc_input.has && !g_mpc_output.has) {
-              next_mpc_tick = now + param::MPC_DT;
-              mpc_key += 1;
+          std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
+          if (!g_mpc_busy && !g_mpc_input.has && !g_mpc_output.has) { // push next solve immediately after the previous output
+            mpc_key += 1;
 
-              int k = 0; // fill initial state(x)
-              g_mpc_input.x_0(k++) = euler_rpy(0); g_mpc_input.x_0(k++) = euler_rpy(1); g_mpc_input.x_0(k++) = euler_rpy(2); // theta(0,1,2)
-              g_mpc_input.x_0(k++) = delayed_s.omega(0); g_mpc_input.x_0(k++) = delayed_s.omega(1); g_mpc_input.x_0(k++) = delayed_s.omega(2); // omega(3,4,5)
-              g_mpc_input.x_0(k++) = s.r_cot(0); g_mpc_input.x_0(k++) = s.r_cot(1); // r_cot(6,7)
-              g_mpc_input.x_0(k++) = cmd.d_theta(0); g_mpc_input.x_0(k++) = cmd.d_theta(1); g_mpc_input.x_0(k++) = cmd.d_theta(2); // delta_theta(8,9,10)
-              g_mpc_input.x_0(k++) = cmd.r_cot(0); g_mpc_input.x_0(k++) = cmd.r_cot(1); // r_cot_cmd(11,12)
+            int k = 0; // fill initial state(x)
+            g_mpc_input.x_0(k++) = euler_rpy(0); g_mpc_input.x_0(k++) = euler_rpy(1); g_mpc_input.x_0(k++) = euler_rpy(2); // theta(0,1,2)
+            g_mpc_input.x_0(k++) = delayed_s.omega(0); g_mpc_input.x_0(k++) = delayed_s.omega(1); g_mpc_input.x_0(k++) = delayed_s.omega(2); // omega(3,4,5)
+            g_mpc_input.x_0(k++) = s.r_cot(0); g_mpc_input.x_0(k++) = s.r_cot(1); // r_cot(6,7)
+            g_mpc_input.x_0(k++) = cmd.d_theta(0); g_mpc_input.x_0(k++) = cmd.d_theta(1); g_mpc_input.x_0(k++) = cmd.d_theta(2); // delta_theta(8,9,10)
+            g_mpc_input.x_0(k++) = cmd.r_cot(0); g_mpc_input.x_0(k++) = cmd.r_cot(1); // r_cot_cmd(11,12)
 
-              // fill initial control input(u)
-              for (int l=0; l<5; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_rate(l);}
+            // fill initial control input(u)
+            for (int l=0; l<5; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_rate(l, 0);}
 
-              int m = 0; // fill initial parameter(p)
-              for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
-              g_mpc_input.p(m++) = omega_raw(0); g_mpc_input.p(m++) = omega_raw(1); g_mpc_input.p(m++) = omega_raw(2); // omega_raw(9~11)
-              g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(12)
-              g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(13)
+            int m = 0; // fill initial parameter(p)
+            for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
+            g_mpc_input.p(m++) = omega_raw(0); g_mpc_input.p(m++) = omega_raw(1); g_mpc_input.p(m++) = omega_raw(2); // omega_raw(9~11)
+            g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(12)
+            g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(13)
 
-              if (mpc_mod==COT_ACTIVATED) {g_mpc_input.use_cot = true;}
-              else {g_mpc_input.use_cot = false;}
-              g_mpc_input.t = now;
-              g_mpc_input.key = mpc_key;
-              g_mpc_input.epoch = g_mpc_epoch.load(std::memory_order_relaxed);
-              g_mpc_input.has = true;
-              g_mpc_busy = true;
-              mpc_cv.notify_one();
-            }
+            if (mpc_mod==COT_ACTIVATED) {g_mpc_input.use_cot = true;}
+            else {g_mpc_input.use_cot = false;}
+
+            g_mpc_input.steps_req = param::N_STEPS_REQ;
+            g_mpc_input.t = now;
+            g_mpc_input.key = mpc_key;
+            g_mpc_input.epoch = g_mpc_epoch.load(std::memory_order_relaxed);
+            g_mpc_input.has = true;
+            g_mpc_busy = true;
+            mpc_cv.notify_one();
           }
         }
         else {
@@ -259,42 +293,6 @@ int main() {
           cmd.r_cot(1) = 0.0;
           l_mpc_output.u_rate.setZero();
         }
-      }
-
-      bool got_mpc = false;
-      { // check got_mpc
-        std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
-        if (g_mpc_output.has) {
-          const uint32_t epoch_now = g_mpc_epoch.load(std::memory_order_relaxed);
-          const bool epoch_ok = (g_mpc_output.epoch == epoch_now);
-          const bool key_ok = (g_mpc_output.key == mpc_key);
-
-          if (mpc_on && epoch_ok && key_ok) {
-            l_mpc_output = g_mpc_output;
-            got_mpc = true;
-          }
-          else {
-            if (mpc_on && epoch_ok && !key_ok) {mpc_reset_locked(mpc_key, next_mpc_tick, now);}
-          }
-          g_mpc_output.has = false;
-        }
-      }
-
-      if (got_mpc) { // MPC get
-        if (l_mpc_output.state == 0) {
-          cmd.d_theta = l_mpc_output.u_opt.template head<3>(); // [0,1,2]
-          cmd.r_cot(0) = std::clamp(l_mpc_output.u_opt(3), -param::COT_XY_MAX, param::COT_XY_MAX);  // [3]
-          cmd.r_cot(1) = std::clamp(l_mpc_output.u_opt(4), -param::COT_XY_MAX, param::COT_XY_MAX);  // [4]
-        }
-        else { // solve failed
-          cmd.d_theta  *= 0.995;
-          cmd.r_cot    *= 0.9995;
-          l_mpc_output.u_rate.setZero();
-        }
-
-        // next time to solve
-        if (now >= l_mpc_output.t + param::MPC_DT) {next_mpc_tick = now;}
-        else {next_mpc_tick = l_mpc_output.t + param::MPC_DT;}
       }
 
       // --- attitude control --- 
