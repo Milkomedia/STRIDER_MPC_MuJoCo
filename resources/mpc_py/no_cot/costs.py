@@ -2,7 +2,7 @@ import numpy as np
 
 # h_expr constraint
 F_MIN   = 8.0  * np.array([1.0, 1.0, 1.0, 1.0]) # thrust bound (F1,F2,F3,F4)
-F_MAX   = 21.36 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
+F_MAX   = 27.36 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
 
 # input cost
 Q_THETA = 100. * np.array([1.0, 1.0, 1.0])
