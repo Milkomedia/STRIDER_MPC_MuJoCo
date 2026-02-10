@@ -25,7 +25,7 @@ KW = np.array([ 5.,  5., 2.5])
 ZETA = 0.04
 
 # Center of mass offset (x,y)
-COM_OFFSET = np.array([0.0, -0.011581012162])
+COM_OFFSET = np.array([0.0, 0.0])
 
 # The rate at which CoM moves as CoT moves. (x,y)
 COT2COM_COEFF = np.array([0.3569, 0.3569])

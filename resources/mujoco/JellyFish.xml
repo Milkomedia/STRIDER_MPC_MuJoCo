@@ -49,11 +49,19 @@
       <site name="imu" pos="0 0 0" quat="1 0 0 0"/>
       <geom class="collision" size="0.12 0.12 .02" pos="0 0 0" contype="1" conaffinity="2"/>
 
-      <body name="payload_cube" pos="0.0 0.03 -0.04">
-      <inertial pos="0 0 0" mass="3" diaginertia="0.0000167 0.0000167 0.0000167"/>
-      <geom type="box" size="0.01 0.01 0.01" rgba="0.8 0.2 0.2 1" contype="1" conaffinity="2"/>
+      <body name="center_mass" pos="0.0 0.0 -0.05">
+       <joint name="load_joint" type="hinge" pos="0 0 0" axis="0 0 1" limited="false" damping="0.1"/>
+       <inertial pos="0 0 0" mass="2" diaginertia="0.00072 0.00072 0.00072"/>
+       <geom type="sphere" size="0.03" rgba="0.8 0.2 0.2 1" contype="0" conaffinity="0"/>
+       <body name="load_link" pos="0 0 0">
+        <inertial pos="0.15 0 0" quat="0.707107 0 0.707107 0" mass="0.1" diaginertia="1.25e-06 7.50625e-04 7.50625e-04"/>
+        <geom type="cylinder" pos="0.15 0 0" quat="0.707107 0 0.707107 0" size="0.005 0.15" rgba="0.4 0.4 0.4 1" contype="0" conaffinity="0"/>
+        <body name="load_tip_sphere" pos="0.30 0 0">
+          <inertial pos="0 0 0" mass="1.0" diaginertia="1.6e-04 1.6e-04 1.6e-04"/>
+          <geom type="sphere" size="0.02" rgba="0.2 0.2 0.8 1" contype="0" conaffinity="0"/>
+        </body>
+      </body>
     </body>
-
 
     <body name="Arm1_Link1" pos="0.0848528 0.0848528 0" quat="0.382683 0 0 -0.92388">
       <inertial pos="-0.0628864 -0.00030071 0.0115046" quat="0.432962 0.567439 0.525068 0.46353" mass="0.374106" diaginertia="0.00164276 0.00160619 0.000141896"/>
@@ -201,6 +209,8 @@
     <position name="servo_Arm4_joint3" joint="Arm4_joint3" kp="80" kv="0.55" ctrlrange="-2.00713 2.00713"/>
     <position name="servo_Arm4_joint4" joint="Arm4_joint4" kp="80" kv="0.55" ctrlrange="-1.13446 -3.14159"/>
     <position name="servo_Arm4_joint5" joint="Arm4_joint5" kp="80" kv="0.55" ctrlrange="-1.74533 1.74533"/>
+
+    <velocity name="servo_load_joint" joint="load_joint" kv="10.0" ctrlrange="-10.0 10.0"/>
 
   </actuator>
 

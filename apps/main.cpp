@@ -180,7 +180,8 @@ int main() {
         const Eigen::Quaterniond q(d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]);
         s.R << quat_to_R(q);
         s.omega << d->qvel[3], -d->qvel[4], -d->qvel[5];
-        for (int i=0; i<20; ++i) {s.arm_q[i] = d->qpos[7 + i];}
+        for (int i=0; i<20; ++i) {s.arm_q[i] = d->qpos[8 + i];}
+        // load_rad = d->qpos[27];
       }
 
       // --- sensor noise injection ---
@@ -190,7 +191,7 @@ int main() {
       // if (elapsed_double >= 4.0) {cmd.pos = square4_point(elapsed_double);} // option: [fig8_point/square4_point]
       // else {cmd.pos = Eigen::Vector3d(0.0, 0.0, -1.0);}
       
-      if (elapsed_double >= 6.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      if (elapsed_double >= 9996.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
       else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(1.5,0.0,-1.0), elapsed_double, 2.0);}
       else {cmd.pos = Eigen::Vector3d(1.5,0.0,-1.0);}
 
@@ -352,6 +353,7 @@ int main() {
         Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl) = smoothed_F.cast<mjtNum>();
         Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl + 4) = smoothed_Tau.cast<mjtNum>();
         for (int i = 0; i < 20; ++i) d->ctrl[8 + i] = smoothed_q_d[i];
+        d->ctrl[28] = 2.0 * M_PI / 5.0; // spin mass
 
         for (int s = 0; s < n_sub; ++s) {mj_step(m, d);}
       }
