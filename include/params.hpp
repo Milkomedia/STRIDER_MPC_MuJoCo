@@ -43,9 +43,9 @@ static constexpr double kIX = 1.5;  /**< Position integral gains */
 
 // ===== UAV Parameters =====
 static constexpr double J[9] = {0.27, 0.00, 0.00,
-                                0.00, 0.27, 0.00,
-                                0.00, 0.00, 0.54};
-static constexpr double M  = 7.6;
+                                0.00, 0.77, 0.00,
+                                0.00, 0.00, 1.04};
+static constexpr double M  = 6.6;
 static constexpr double G  = 9.80665;
 
 // Allocation parameters
