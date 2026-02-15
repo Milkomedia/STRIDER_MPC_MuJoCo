@@ -141,7 +141,7 @@ int main() {
     { // Model warm-up
       double arm_angles[20]; // Initial arm joint angles
       Eigen::Vector4d tvc_angle = Eigen::Vector4d::Zero();
-      IK(cmd.r_cot, cmd.R_cot, tvc_angle, cmd.l, arm_angles);
+      IK(cmd.r1, cmd.r2, cmd.r3, cmd.r4, tvc_angle, arm_angles);
       for (uint8_t i=0; i<20; ++i) {delayed_q_d[i] = arm_angles[i]; smoothed_q_d[i] = arm_angles[i];}
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
@@ -228,24 +228,31 @@ int main() {
         if (epoch_ok && time_ok) {
           const std::size_t idx = static_cast<std::size_t>(std::floor(std::chrono::duration<double>(now - l_mpc_output.t).count() / param::MPC_STEP_DT));
           cmd.d_theta = l_mpc_output.u_opt.col(idx).head<3>();
-          cmd.r_cot(0) = std::clamp(l_mpc_output.u_opt(3, idx), -param::COT_XY_MAX, param::COT_XY_MAX);
-          cmd.r_cot(1) = std::clamp(l_mpc_output.u_opt(4, idx), -param::COT_XY_MAX, param::COT_XY_MAX);
+          cmd.r1(0) = l_mpc_output.u_opt(3, idx); cmd.r1(1) = l_mpc_output.u_opt(7, idx);
+          cmd.r2(0) = l_mpc_output.u_opt(4, idx); cmd.r2(1) = l_mpc_output.u_opt(8, idx);
+          cmd.r3(0) = l_mpc_output.u_opt(5, idx); cmd.r3(1) = l_mpc_output.u_opt(9, idx);
+          cmd.r4(0) = l_mpc_output.u_opt(6, idx); cmd.r4(1) = l_mpc_output.u_opt(10, idx);
         }
         else { // solve failed timeout
           cmd.d_theta *= 0.995;
-          cmd.r_cot(0) *= 0.9995;
-          cmd.r_cot(1) *= 0.9995;
+          cmd.r1(0) = 0.9995*cmd.r1(0) + 0.0005* 0.24; cmd.r1(1)= 0.9995*cmd.r1(1) + 0.0005*-0.24;
+          cmd.r2(0) = 0.9995*cmd.r2(0) + 0.0005*-0.24; cmd.r2(1)= 0.9995*cmd.r2(1) + 0.0005*-0.24;
+          cmd.r3(0) = 0.9995*cmd.r3(0) + 0.0005*-0.24; cmd.r3(1)= 0.9995*cmd.r3(1) + 0.0005* 0.24;
+          cmd.r4(0) = 0.9995*cmd.r4(0) + 0.0005* 0.24; cmd.r4(1)= 0.9995*cmd.r4(1) + 0.0005* 0.24;
           l_mpc_output.u_rate.setZero();
         }
       }
       else { // only GAC flight
         cmd.d_theta *= 0.995;
-        cmd.r_cot(0) *= 0.9995;
-        cmd.r_cot(1) *= 0.9995;
+        cmd.r1(0) = 0.9995*cmd.r1(0) + 0.0005* 0.24; cmd.r1(1)= 0.9995*cmd.r1(1) + 0.0005*-0.24;
+        cmd.r2(0) = 0.9995*cmd.r2(0) + 0.0005*-0.24; cmd.r2(1)= 0.9995*cmd.r2(1) + 0.0005*-0.24;
+        cmd.r3(0) = 0.9995*cmd.r3(0) + 0.0005*-0.24; cmd.r3(1)= 0.9995*cmd.r3(1) + 0.0005* 0.24;
+        cmd.r4(0) = 0.9995*cmd.r4(0) + 0.0005* 0.24; cmd.r4(1)= 0.9995*cmd.r4(1) + 0.0005* 0.24;
+        l_mpc_output.u_rate.setZero();
       }
 
       const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
-      s.r_cot = FK(delayed_s.arm_q);
+      FK(delayed_s.arm_q, s.r_cot, s.r1, s.r2, s.r3, s.r4);
       s.r_com(0) = param::COM_OFF_X + param::COT_2_COM_X * s.r_cot(0);
       s.r_com(1) = param::COM_OFF_Y + param::COT_2_COM_Y * s.r_cot(1);
       { // MPC send
@@ -257,18 +264,19 @@ int main() {
             int k = 0; // fill initial state(x)
             g_mpc_input.x_0(k++) = euler_rpy(0); g_mpc_input.x_0(k++) = euler_rpy(1); g_mpc_input.x_0(k++) = euler_rpy(2); // theta(0,1,2)
             g_mpc_input.x_0(k++) = delayed_s.omega(0); g_mpc_input.x_0(k++) = delayed_s.omega(1); g_mpc_input.x_0(k++) = delayed_s.omega(2); // omega(3,4,5)
-            g_mpc_input.x_0(k++) = s.r_cot(0); g_mpc_input.x_0(k++) = s.r_cot(1); // r_cot(6,7)
-            g_mpc_input.x_0(k++) = cmd.d_theta(0); g_mpc_input.x_0(k++) = cmd.d_theta(1); g_mpc_input.x_0(k++) = cmd.d_theta(2); // delta_theta(8,9,10)
-            g_mpc_input.x_0(k++) = cmd.r_cot(0); g_mpc_input.x_0(k++) = cmd.r_cot(1); // r_cot_cmd(11,12)
+            g_mpc_input.x_0(k++) = s.r1(0); g_mpc_input.x_0(k++) = s.r2(0); g_mpc_input.x_0(k++) = s.r3(0); g_mpc_input.x_0(k++) = s.r4(0); // r_rotor_x(6,7,8,9)
+            g_mpc_input.x_0(k++) = s.r1(1); g_mpc_input.x_0(k++) = s.r2(1); g_mpc_input.x_0(k++) = s.r3(1); g_mpc_input.x_0(k++) = s.r4(1); // r_rotor_y(10,11,12,13)
+            g_mpc_input.x_0(k++) = cmd.d_theta(0); g_mpc_input.x_0(k++) = cmd.d_theta(1); g_mpc_input.x_0(k++) = cmd.d_theta(2); // delta_theta(14,15,16)
+            g_mpc_input.x_0(k++) = cmd.r1(0); g_mpc_input.x_0(k++) = cmd.r2(0); g_mpc_input.x_0(k++) = cmd.r3(0); g_mpc_input.x_0(k++) = cmd.r4(0); // r_rotor_cmd_x(17,18,19,20)
+            g_mpc_input.x_0(k++) = cmd.r1(1); g_mpc_input.x_0(k++) = cmd.r2(1); g_mpc_input.x_0(k++) = cmd.r3(1); g_mpc_input.x_0(k++) = cmd.r4(1); // r_rotor_cmd_y(21,22,23,24)
 
             // fill initial control input(u)
-            for (int l=0; l<5; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_rate(l, 0);}
+            for (int l=0; l<11; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_rate(l, 0);}
 
             int m = 0; // fill initial parameter(p)
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
             g_mpc_input.p(m++) = omega_raw(0); g_mpc_input.p(m++) = omega_raw(1); g_mpc_input.p(m++) = omega_raw(2); // omega_raw(9~11)
-            g_mpc_input.p(m++) = 0.5 * param::L_DIST; // l(12)
-            g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(13)
+            g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(12)
 
             if (mpc_mod==COT_ACTIVATED) {g_mpc_input.use_cot = true;}
             else {g_mpc_input.use_cot = false;}
@@ -281,17 +289,6 @@ int main() {
             g_mpc_busy = true;
             mpc_cv.notify_one();
           }
-        }
-        else {
-          // MPC OFF -> bPcot_des goes to inital value.
-          cmd.r_cot(0) *= 0.995;
-          cmd.r_cot(1) *= 0.995;
-
-          // reset prev solve value
-          cmd.d_theta  = Eigen::Vector3d::Zero();
-          cmd.r_cot(0) = 0.0;
-          cmd.r_cot(1) = 0.0;
-          l_mpc_output.u_rate.setZero();
         }
       }
 
@@ -312,7 +309,7 @@ int main() {
 
       // --- resolve r_cot_cmd to q_d  ---
       double q_d[20] = {0};
-      IK(cmd.r_cot, cmd.R_cot, tilt_ang_des, cmd.l, q_d);
+      IK(cmd.r1, cmd.r2, cmd.r3, cmd.r4, tilt_ang_des, q_d);
 
       // --- thrust to pwm ---
       Eigen::Vector4d pwm;
@@ -334,8 +331,8 @@ int main() {
       // --- joint actuator delay ---
       for (uint8_t i=0; i<20; ++i) {smoothed_q_d[i] =  param::COT_DELAY_ALPHA * smoothed_q_d[i] + param::COT_DELAY_BETA * delayed_q_d[i];}
 
-      // --- HW thrust constraint ---
-      if (elapsed_double >= 10.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > 20.83) {smoothed_F(i) = 20.83;}}} // hovering is 80%
+      // // --- HW thrust constraint ---
+      // if (elapsed_double >= 10.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > 20.83) {smoothed_F(i) = 20.83;}}} // hovering is 80%
 
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;
@@ -414,8 +411,8 @@ int main() {
         ld.r_cot[0] = static_cast<float>(s.r_cot(0));
         ld.r_cot[1] = static_cast<float>(s.r_cot(1));
 
-        ld.r_cot_cmd[0] = static_cast<float>(cmd.r_cot(0));
-        ld.r_cot_cmd[1] = static_cast<float>(cmd.r_cot(1));
+        // ld.r_cot_cmd[0] = static_cast<float>(cmd.r_cot(0));
+        // ld.r_cot_cmd[1] = static_cast<float>(cmd.r_cot(1));
 
         ld.solve_ms = static_cast<float>(l_mpc_output.solve_ms);
         ld.solve_status = static_cast<int32_t>(l_mpc_output.state);

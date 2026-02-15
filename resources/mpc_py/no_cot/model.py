@@ -27,9 +27,8 @@ def build_model():
     # Model parameter
     R_raw = ca.SX.sym('R_raw', 3, 3) # desired attitude SO3 matrix
     omega_raw = ca.SX.sym('omega_raw', 3) # desired angular rate [rad/s]
-    l     = ca.SX.sym('l')           # [m]
     T_des = ca.SX.sym('T_des')       # [N]
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), omega_raw, l, T_des)
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), omega_raw, T_des)
 
     # Constants
     J = ca.DM(p.J_TENSOR)
@@ -37,7 +36,7 @@ def build_model():
     zeta = p.ZETA
     KR = ca.DM(p.KR).reshape((3, 1))
     KW = ca.DM(p.KW).reshape((3, 1))
-    com_off = ca.DM(p.COM_OFFSET).reshape((2, 1))
+    l = p.L_DIST
 
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -111,9 +110,8 @@ def build_model():
     model.f_impl_expr = x_dot - f_expl
 
     # ---------- Propeller thrust expression ----------
-    dx, dy = -com_off[0], -com_off[1]
-    A = ca.vertcat(ca.horzcat( l-dy,  l-dy, -l-dy, -l-dy),
-                   ca.horzcat( l+dx, -l+dx, -l+dx,  l+dx),
+    A = ca.vertcat(ca.horzcat( l,  l, -l, -l),
+                   ca.horzcat( l, -l, -l,  l),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
                    ca.horzcat( -1.0,  -1.0,  -1.0,  -1.0))
 

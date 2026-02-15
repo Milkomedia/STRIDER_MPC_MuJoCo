@@ -49,8 +49,8 @@ class StriderNMPC:
 
         # no_cot results upcasted to yes_cot dims for mmap (C-contiguous)
         self._xs_up  = np.empty((self.N + 1, self.yes_cot_nx), dtype=np.float64)
-        self._us_up  = np.zeros((self.N,     self.yes_cot_nu), dtype=np.float64)  # last 2 cols stay 0
-        self._ps_no  = np.empty((self.N + 1, self.no_cot_np),  dtype=np.float64)
+        self._us_up  = np.zeros((self.N,     self.yes_cot_nu), dtype=np.float64)
+        self._ps_up  = np.empty((self.N + 1, self.yes_cot_np), dtype=np.float64)
 
         # Per-call step outputs (Fortran-order helps Eigen column-major mapping)
         self._u_opt_steps  = np.empty((self.yes_cot_nu, self.N), dtype=np.float64, order="F")
@@ -59,23 +59,26 @@ class StriderNMPC:
         # no_cot down-projection buffers (avoid np.concatenate/copy every tick).
         self._x0_no = np.empty((self.no_cot_nx,), dtype=np.float64)
         self._u0_no = np.empty((self.no_cot_nu,), dtype=np.float64)
+        
+        # no_cot param buffer (for size mismatch safety)
+        self._p_no  = np.empty((self.no_cot_np,), dtype=np.float64)
 
         # Cached holds for no_cot upcast (avoid per-tick small allocations).
-        self._last_r_cot     = np.zeros(2, dtype=np.float64)
-        self._last_r_cot_cmd = np.zeros(2, dtype=np.float64)
+        self._last_r_rotor     = np.zeros(8, dtype=np.float64)
+        self._last_r_rotor_cmd = np.zeros(8, dtype=np.float64)
     
     def no_cot_solve(self, x_0, u_0, p, steps_req: int):
         x_full = np.asarray(x_0, dtype=np.float64).ravel()
         u_full = np.asarray(u_0, dtype=np.float64).ravel()
 
         # Cache holds for no_cot -> yes_cot upcast
-        self._last_r_cot[:]     = x_full[6:8]
-        self._last_r_cot_cmd[:] = x_full[11:13]
+        self._last_r_rotor[:]     = x_full[6:14]
+        self._last_r_rotor_cmd[:] = x_full[17:25]
 
         # Down-project yes_cot packet -> no_cot dimensions
         # no_cot x: [theta(0:3), omega(3:6), delta_theta_cmd(6:9)]
         self._x0_no[0:6] = x_full[0:6]
-        self._x0_no[6:9] = x_full[8:11]
+        self._x0_no[6:9] = x_full[14:17]
         # no_cot u: [delta_theta_cmd_rate(0:3)]
         self._u0_no[0:3] = u_full[0:3]
         p = np.asarray(p, dtype=np.float64).ravel()
@@ -182,14 +185,18 @@ class StriderNMPC:
             us = self._us_yes
             ps = self._ps_yes
 
-            # x/p: (N+1) stages. u_opt at step i is stored in x_{i+1}[8:13].
+            # x/p: (N+1) stages.
+            # u_opt at step i is stored in augmented command states:
+            #   delta_theta_cmd: x[14:17]
+            #   r_rotor_cmd    : x[17:25]
             for k in range(N + 1):
                 xk = sol.get(k, "x").reshape(-1)
                 pk = sol.get(k, "p").reshape(-1)
                 xs[k, :] = xk
                 ps[k, :] = pk
                 if u_opt_out is not None and steps_req > 0 and (1 <= k <= steps_req):
-                    u_opt_out[:, k - 1] = xk[8:13]
+                    u_opt_out[0:3,  k - 1] = xk[14:17]
+                    u_opt_out[3:11, k - 1] = xk[17:25]
 
             # u: (N) stages. u_rate at step i is u_i.
             for k in range(N):
@@ -205,11 +212,12 @@ class StriderNMPC:
 
         xs = self._xs_up
         us = self._us_up
-        ps = self._ps_no
+        ps = self._ps_up
 
-        # Fill holds once (broadcast). no_cot doesn't estimate cot, so hold values.
-        xs[:, 6:8]   = self._last_r_cot
-        xs[:, 11:13] = self._last_r_cot_cmd
+        # Fill holds once (broadcast).
+        # no_cot doesn't estimate rotor positions, so hold the last known values from input packet.
+        xs[:, 6:14]   = self._last_r_rotor
+        xs[:, 17:25]  = self._last_r_rotor_cmd
 
         # Pull each stage once, map into upcast arrays
         for k in range(N + 1):
@@ -218,21 +226,25 @@ class StriderNMPC:
 
             # no_cot x: [theta(0:3), omega(3:6), delta_theta_cmd(6:9)]
             xs[k, 0:6]  = xk[0:6]
-            xs[k, 8:11] = xk[6:9]
-            ps[k] = pk
+            # yes_cot delta_theta_cmd is at [14:17]
+            xs[k, 14:17] = xk[6:9]
+            # Map p -> yes_cot_np for mmap (truncate/pad with zeros)
+            ps[k, :].fill(0.0)
+            m = min(pk.size, self.yes_cot_np)
+            ps[k, 0:m] = pk[0:m]
 
-            # u_opt at step i is stored in x_{i+1}[6:9] (no_cot). Upcast to (5,).
+            # u_opt at step i: [delta_theta_cmd(3), r_rotor_cmd(8)]
             if u_opt_out is not None and steps_req > 0 and (1 <= k <= steps_req):
-                u_opt_out[0:3, k - 1] = xk[6:9]
-                u_opt_out[3:5, k - 1] = self._last_r_cot_cmd
+                u_opt_out[0:3,  k - 1] = xk[6:9]
+                u_opt_out[3:11, k - 1] = self._last_r_rotor_cmd
 
         for k in range(N):
             uk = sol.get(k, "u").reshape(-1)  # (3,)
             us[k, 0:3] = uk
 
-            # u_rate at step i is u_i. Upcast to (5,) with last 2 = 0.
+            # u_rate at step i is u_i. Upcast to (11,) with last 8 = 0.
             if u_rate_out is not None and steps_req > 0 and (k < steps_req):
                 u_rate_out[0:3, k] = uk
-                u_rate_out[3:5, k] = 0.0
+                u_rate_out[3:11, k] = 0.0
 
         return xs, us, ps

@@ -14,24 +14,23 @@ def build_model():
     # Model state
     theta           = ca.SX.sym('theta',  3) # [rad]
     omega           = ca.SX.sym('omega',  3) # [rad/s]
-    r_cot           = ca.SX.sym('r_cot',  2) # [m]
+    r_rotor         = ca.SX.sym('r_rotor',  8) # (r1x, r2x, r3x, r4x, r1y, r2y, r3y, r4y) [m]
     delta_theta_cmd = ca.SX.sym('delta_theta_cmd',  3) # [rad], Augmented state(command input)
-    r_cot_cmd       = ca.SX.sym('r_cot_cmd',  2)       # [m], Augmented state(command input)
-    x     = ca.vertcat(theta, omega, r_cot, delta_theta_cmd, r_cot_cmd)
+    r_rotor_cmd     = ca.SX.sym('r_rotor_cmd',  8)     # [m], Augmented state(command input)
+    x     = ca.vertcat(theta, omega, r_rotor, delta_theta_cmd, r_rotor_cmd)
     x_dot = ca.SX.sym('x_dot', x.size1())
     model.x = x
     model.xdot = x_dot
 
     # Model control input(u-rate)
-    u_rate = ca.SX.sym('u_rate', 5) # 3: delta_theta_cmd_rate [rad/s] / 2: r_cot_cmd_rate[m/s]
+    u_rate = ca.SX.sym('u_rate', 11) # 3: delta_theta_cmd_rate [rad/s] / 8: r_rotor_cmd_rate[m/s]
     model.u = u_rate
 
     # Model parameter
     R_raw = ca.SX.sym('R_raw', 3, 3) # desired attitude SO3 matrix
-    omega_raw = ca.SX.sym('u_rate', 3) # desired angular rate [rad/s]
-    l     = ca.SX.sym('l')           # [m]
+    omega_raw = ca.SX.sym('omega_raw', 3) # desired angular rate [rad/s]
     T_des = ca.SX.sym('T_des')       # [N]
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), omega_raw, l, T_des)
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), omega_raw, T_des)
 
     # Constants
     J = ca.DM(p.J_TENSOR)
@@ -40,8 +39,8 @@ def build_model():
     zeta = p.ZETA
     KR = ca.DM(p.KR).reshape((3, 1))
     KW = ca.DM(p.KW).reshape((3, 1))
-    com_off = ca.DM(p.COM_OFFSET).reshape((2, 1))
-    com2cot_coeff = ca.DM(p.COT2COM_COEFF).reshape((2, 1))
+    r_off_x = ca.DM(p.R_OFF_X).reshape((4, 1))
+    r_off_y = ca.DM(p.R_OFF_Y).reshape((4, 1))
     
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -107,32 +106,60 @@ def build_model():
     tau_d = - KR * e_R - KW * e_w
     omega_dot = J_inv @ (tau_d - ca.cross(omega, J @ omega))
 
-    # CoT (r_cot, 1st-order)
-    r_cot_dot = tau_inv * (r_cot_cmd - r_cot)
+    # rotor position (r_rotor, 1st-order)
+    r_rotor_dot = tau_inv * (r_rotor_cmd - r_rotor)
 
     # Augmented dynamics
     u_cmd_dot = u_rate
 
-    f_expl = ca.vertcat(theta_dot, omega_dot, r_cot_dot, u_cmd_dot)
+    f_expl = ca.vertcat(theta_dot, omega_dot, r_rotor_dot, u_cmd_dot)
     model.f_expl_expr = f_expl
     model.f_impl_expr = x_dot - f_expl
 
     # ---------- Propeller thrust expression ----------
-    # d = r_CoT - r_CoM
-    # dx, dy = r_cot[0], r_cot[1]
-    dx, dy = com2cot_coeff[0]*r_cot[0] - com_off[0], com2cot_coeff[1]*r_cot[1] - com_off[1]
-    A = ca.vertcat(ca.horzcat( l-dy,  l-dy, -l-dy, -l-dy),
-                   ca.horzcat( l+dx, -l+dx, -l+dx,  l+dx),
+    A = ca.vertcat(ca.horzcat(-r_rotor[4], -r_rotor[5], -r_rotor[6], -r_rotor[7]),
+                   ca.horzcat( r_rotor[0],  r_rotor[1],  r_rotor[2],  r_rotor[3]),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
                    ca.horzcat( -1.0,  -1.0,  -1.0,  -1.0))
 
     w_d = ca.vertcat(tau_d, T_des)
     F_expr = ca.solve(A, w_d)
-    model.con_h_expr   = F_expr
 
     F_mean = (ca.sum1(F_expr) / 4.0)
     model.thrust_dev  = F_expr - F_mean * ca.SX.ones(4, 1)
-    
+
+    # ---------- Workspace & Rotor collision expression ----------
+    # h_expr stacking order:
+    #   [0:4)   : F1, F2, F3, F4
+    #   [4:8)   : workspace radius constraints
+    #   [8:16)  : workspace sign constraints
+    #   [16:20) : collision distance constraints
+
+    ws_r2 = []
+    quad = []
+
+    # workspace radius constraints:
+    for i in range(4):
+        rx = r_rotor[i]     - r_off_x[i]
+        ry = r_rotor[4 + i] - r_off_y[i]
+        ws_r2.append(rx*rx + ry*ry)
+
+    # workspace sign constraints:
+    quad.extend([ r_rotor[0], r_rotor[4] ])  # (x1, y1)
+    quad.extend([ r_rotor[1], r_rotor[5] ])  # (x2, y2)
+    quad.extend([ r_rotor[2], r_rotor[6] ])  # (x3, y3)
+    quad.extend([ r_rotor[3], r_rotor[7] ])  # (x4, y4)
+
+    # collision distance constraints:
+    def dist2(i, j):
+        dx = r_rotor[i]     - r_rotor[j]
+        dy = r_rotor[4 + i] - r_rotor[4 + j]
+        return dx*dx + dy*dy
+
+    col = [dist2(0, 1), dist2(1, 2), dist2(2, 3), dist2(3, 0),]
+
+    model.con_h_expr = ca.vertcat(F_expr, ca.vertcat(*ws_r2), ca.vertcat(*quad), ca.vertcat(*col),)
+
     return model
 
 def build_ocp():
@@ -147,18 +174,18 @@ def build_ocp():
 
     # ---------- costs ----------
     omega           = model.x[3:6]
-    delta_theta_cmd = model.x[8:11]
+    delta_theta_cmd = model.x[14:17]
     delta_theta_cmd_rate = model.u[0:3]
-    r_cot_cmd_rate       = model.u[3:5]
+    r_rotor_cmd_rate       = model.u[3:11]
     thrust_dev      = model.thrust_dev
     
-    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, delta_theta_cmd_rate, r_cot_cmd_rate, thrust_dev) # 1~k-1 ref
+    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, thrust_dev, delta_theta_cmd_rate, r_rotor_cmd_rate) # 1~k-1 ref
     model.cost_y_expr_e = ca.vertcat(omega, delta_theta_cmd, thrust_dev) # terminal(k) ref
 
-    ocp.dims.ny   = 15
+    ocp.dims.ny   = 21
     ocp.dims.ny_e = 10
     
-    ocp.cost.W = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.R_THETA, c.R_COT, c.Q_FDEV]).astype(np.float64))
+    ocp.cost.W   = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.Q_FDEV, c.R_THETA, c.R_ROTOR]).astype(np.float64))
     ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.Q_FDEV]).astype(np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
@@ -171,22 +198,21 @@ def build_ocp():
     ocp.constraints.x0 = np.zeros(model.x.size()[0])
 
     # ---------- h_expr constraints ----------
-    ocp.constraints.lh   = c.F_MIN
-    ocp.constraints.uh   = c.F_MAX
-    ocp.dims.nh   = 4
+    r_min_sq = p.R_MIN * p.R_MIN
+    r_max_sq = p.R_MAX * p.R_MAX
+    workspace_expr1_lb = np.array([r_min_sq, r_min_sq, r_min_sq, r_min_sq])
+    workspace_expr1_ub = np.array([r_max_sq, r_max_sq, r_max_sq, r_max_sq])
 
-    # ---------- x(augmented-state) constraints ----------
-    idx_r_cot_cmd = np.array([6, 7], dtype=np.int64)
+    workspace_expr2_lb = np.array([0.0, -1e12, -1e12, -1e12, -1e12, 0.0, 0.0, 0.0], dtype=np.float64)
+    workspace_expr2_ub = np.array([1e12, 0.0, 0.0, 0.0, 0.0, 1e12, 1e12, 1e12], dtype=np.float64)
 
-    ocp.constraints.idxbx   = idx_r_cot_cmd
-    ocp.constraints.lbx     = c.COT_MIN
-    ocp.constraints.ubx     = c.COT_MAX
-    ocp.constraints.idxbx_e = idx_r_cot_cmd
-    ocp.constraints.lbx_e   = c.COT_MIN
-    ocp.constraints.ubx_e   = c.COT_MAX
+    four_r_rotor_sq = 4.0 * p.R_ROTOR *p.R_ROTOR
+    collision_expr_lb = np.array([four_r_rotor_sq, four_r_rotor_sq, four_r_rotor_sq, four_r_rotor_sq], dtype=np.float64)
+    collision_expr_ub = np.array([1e12, 1e12, 1e12, 1e12], dtype=np.float64)
 
-    ocp.dims.nbx            = idx_r_cot_cmd.size
-    ocp.dims.nbx_e          = idx_r_cot_cmd.size
+    ocp.constraints.lh = np.concatenate([c.F_MIN, workspace_expr1_lb, workspace_expr2_lb, collision_expr_lb]).astype(np.float64)
+    ocp.constraints.uh = np.concatenate([c.F_MAX, workspace_expr1_ub, workspace_expr2_ub, collision_expr_ub]).astype(np.float64)
+    ocp.dims.nh   = 20
 
     # ---------- solver options ----------
     ocp.solver_options.qp_solver        = "PARTIAL_CONDENSING_HPIPM" # or "FULL_CONDENSING_HPIPM(5ms)" "PARTIAL_CONDENSING_HPIPM"(3ms) "FULL_CONDENSING_QPOASES(6ms)"
@@ -194,7 +220,7 @@ def build_ocp():
     ocp.solver_options.integrator_type  = "ERK"
     ocp.solver_options.nlp_solver_type  = "SQP_RTI" # "SQP" or "SQP_RTI" or "DDP" or "SQP_WITH_FEASIBLE_QP"
     ocp.solver_options.qp_solver_cond_N = p.N
-    ocp.solver_options.qp_solver_iter_max = 100
+    ocp.solver_options.qp_solver_iter_max = 25
     ocp.solver_options.sim_method_num_stages = 4
     ocp.solver_options.sim_method_num_steps  = 1
     # ocp.solver_options.print_level = 4

@@ -61,13 +61,6 @@ static constexpr double B2BASE_A[4]     = {0.120, 0.120, 0.120, 0.120};
 static constexpr double DH_ARM_A[5]     = {0.1395, 0.115, 0.110, 0.024, 0.068};
 static constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 
-// desired inter-rotor distance
-static constexpr double L_DIST = 0.48; // [m]
-
-// CoT constrains
-static constexpr double COT_Z = -0.24;      // [m]
-static constexpr double COT_XY_MAX = 0.047; // [m]
-
 // CoM estimating gain
 static constexpr double COM_OFF_X = 0.0; // [m]
 static constexpr double COM_OFF_Y = 0.0; // [m]
@@ -82,9 +75,9 @@ inline const double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); // thi
 inline const double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA; // this is not tunable
 
 static constexpr std::size_t N_STEPS_REQ = 40; // This value must be less than >> N << on params.py
-static constexpr std::size_t MPC_NX      = 13; // This value must be same as >> self.yes_cot_nx << on solver.py
-static constexpr std::size_t MPC_NU      = 5;  // This value must be same as >> self.yes_cot_nu << on solver.py
-static constexpr std::size_t MPC_NP      = 14; // This value must be same as >> self.yes_cot_np << on solver.py
+static constexpr std::size_t MPC_NX      = 25; // This value must be same as >> self.yes_cot_nx << on solver.py
+static constexpr std::size_t MPC_NU      = 11;  // This value must be same as >> self.yes_cot_nu << on solver.py
+static constexpr std::size_t MPC_NP      = 13; // This value must be same as >> self.yes_cot_np << on solver.py
 static constexpr double      MPC_STEP_DT = 1.0 / 400.0; // This value must be same as >> DT << on params.py
 static constexpr std::chrono::steady_clock::duration MPC_TIMEOUT_DURATUION = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(static_cast<double>(N_STEPS_REQ-1) * MPC_STEP_DT));
 
