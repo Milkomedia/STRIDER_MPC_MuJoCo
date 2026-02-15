@@ -1,6 +1,7 @@
 import os
 import mmap
 import struct
+import errno
 import shutil
 from dataclasses import dataclass
 from typing import Tuple, Dict, Optional, List
@@ -92,12 +93,16 @@ class MMapReader:
     self.fd: Optional[int] = None
     self.mm: Optional[mmap.mmap] = None
     self.header: Optional[Header] = None
+    self._inode: Optional[int] = None
+    self._size: Optional[int] = None
 
   def open(self) -> None:
     if self.mm is not None: return
 
     self.fd = os.open(self.path, os.O_RDONLY)
     st = os.fstat(self.fd)
+    self._inode = int(st.st_ino)
+    self._size = int(st.st_size)
     self.mm = mmap.mmap(self.fd, st.st_size, access=mmap.ACCESS_READ)
 
     self.header = Header.parse(self.mm[0:HEADER_SIZE])
@@ -114,6 +119,21 @@ class MMapReader:
     if self.fd is not None:
       os.close(self.fd)
       self.fd = None
+    self._inode = None
+    self._size = None
+    self.header = None
+
+  def changed_on_disk(self) -> bool:
+    """
+    Returns True if the file at self.path was replaced (inode changed),
+    truncated/expanded (size changed), or removed.
+    """
+    if self.mm is None: return False
+    try: st = os.stat(self.path)
+    except FileNotFoundError: return True
+    except OSError: return True
+    if self._inode is None or self._size is None: return True
+    return (int(st.st_ino) != int(self._inode)) or (int(st.st_size) != int(self._size))
 
   def _u64(self, offset: int) -> int:
     return struct.unpack_from("<Q", self.mm, offset)[0]
@@ -344,7 +364,7 @@ class LogRecorder:
     self.npz_dir.mkdir(parents=True, exist_ok=True)
     self.mmap_dir.mkdir(parents=True, exist_ok=True)
 
-    npz_path = self.npz_dir / f"{ts}.npz" 
+    npz_path = self.npz_dir / f"{ts}.npz"
 
     meta = {
       "mmap_path": self.mmap_path,
@@ -407,6 +427,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self.replay_path = replay_path
 
     self.reader = MMapReader(self.live_mmap_path)
+    self._session_start_ns: Optional[int] = None  # header.start_time_ns latch
 
     self._curves: Dict[str, pg.PlotDataItem] = {}
 
@@ -451,6 +472,31 @@ class LoggerWindow(QtWidgets.QMainWindow):
       self.timer.start(self.update_ms)
     else:
       self._load_replay(self.replay_path)
+
+  def _clear_status_bars(self) -> None:
+    if self._status_plot is None: return
+    for _, bar in list(self._status_bars.items()):
+      try: self._status_plot.removeItem(bar)
+      except Exception: pass
+    self._status_bars.clear()
+
+  def _rotate_recording(self, reason: str) -> None:
+    """
+    Finish current recording (best-effort) and start a fresh recorder.
+    Called when a new flight session is detected (mmap replaced / header reset).
+    """
+    if self.recorder is None: return
+    try:
+      out = self.recorder.finalize_and_save(self.reader if self.reader.mm is not None else None)
+      if out is not None: self.lbl_stat.setText(f"saved ({reason}): {str(out)}")
+    except Exception as e: self.lbl_stat.setText(f"save error ({reason}): {e}")
+
+    # New recorder for next flight (live mode only)
+    self.recorder = LogRecorder(self.live_mmap_path, self.log_dir)
+    if self.reader.mm is not None:
+      try: self.recorder.start(self.reader)
+      except Exception: pass
+    self._clear_status_bars()
 
   def closeEvent(self, event) -> None:
     # Save recording on exit (live mode)
@@ -757,15 +803,52 @@ class LoggerWindow(QtWidgets.QMainWindow):
   @QtCore.pyqtSlot()
   def on_timer(self) -> None:
     try:
+      # ---------
+      # Detect mmap lifecycle changes (file replaced or removed)
+      # ---------
+      if self.reader.mm is not None and self.reader.changed_on_disk():
+        # Finalize current flight before losing the old mapping
+        if self.recorder is not None:
+          self._rotate_recording("mmap replaced/removed")
+        try: self.reader.close()
+        except Exception: pass
+        self._session_start_ns = None
+
+        # If file is currently missing, just wait (next ticks will open when it reappears)
+        if not os.path.exists(self.reader.path):
+          self.lbl_stat.setText(f"waiting: {self.reader.path}")
+          return
+
+      # Open if needed
       if self.reader.mm is None:
         self.reader.open()
         self.lbl_stat.setText(f"opened (cap={self.reader.header.capacity})")
-        if self.recorder is not None:
+
+        if self.recorder is not None: # new flight begins => new recorder instance already exists in live mode
           self.recorder.start(self.reader)
+        self._session_start_ns = int(self.reader.header.start_time_ns)
+        self._clear_status_bars()
+
+      # ---------
+      # Detect "new flight" even if inode didn't change:
+      # - header.start_time_ns changed
+      # - write_count went backwards (reset)
+      # ---------
+      if self.replay_path is None and self.reader.header is not None:
+        cur_start_ns = int(self.reader.header.start_time_ns)
+        if self._session_start_ns is None:
+          self._session_start_ns = cur_start_ns
+        elif cur_start_ns != self._session_start_ns:
+          self._rotate_recording("header start_time_ns changed")
+          self._session_start_ns = cur_start_ns
+      wc_now = self.reader.write_count()
+      if (self.replay_path is None and self.recorder is not None and self.recorder.started
+          and wc_now < int(self.recorder.wc_last)):
+        self._rotate_recording("write_count reset")
+        self._session_start_ns = int(self.reader.header.start_time_ns) if self.reader.header is not None else None
 
       # Recording poll (captures all samples, not just last ring window)
-      if self.recorder is not None:
-        self.recorder.poll(self.reader)
+      if self.recorder is not None: self.recorder.poll(self.reader)
 
       # Viewer uses last ring window (fast, bounded)
       t, ch = self.reader.read_all()
@@ -781,7 +864,6 @@ class LoggerWindow(QtWidgets.QMainWindow):
       self.lbl_stat.setText(f"waiting: {self.reader.path}")
     except Exception as e:
       self.lbl_stat.setText(f"error: {e}")
-
 
 def main():
   import argparse
