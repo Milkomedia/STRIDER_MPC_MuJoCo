@@ -50,6 +50,12 @@ int main() {
   mjData*  d = mj_makeData(m);
   m->opt.timestep = param::SIM_DT;
 
+  const int adr_quat = sensor_adr_check(m, "imu_quat",   4);
+  const int adr_gyro = sensor_adr_check(m, "imu_gyro",   3);
+  const int adr_pos  = sensor_adr_check(m, "imu_pos",    3);
+  const int adr_vel  = sensor_adr_check(m, "imu_linvel", 3);
+  const int adr_acc  = sensor_adr_check(m, "imu_linacc", 3);
+
   // ---------------- [ MPC thread ] ----------------
   std::thread th_mpc([&]() {
 
@@ -103,8 +109,11 @@ int main() {
     fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
     // --- state definition ---
+    Phase   phase = Phase::GAC_FLIGHT;
     State   s{};
     Command cmd{};
+    Eigen::Vector3d prev_omega = Eigen::Vector3d::Zero();
+    double prev_elapsed_double = 0.0;
 
     // --- MRG parameters ---
     uint32_t mpc_key = 1;
@@ -112,9 +121,7 @@ int main() {
     l_mpc_output.u_rate.setZero();
     l_mpc_output.u_opt.setZero();
     l_mpc_output.t = std::chrono::steady_clock::time_point::max();
-
     bool prev_mpc_on = false; // for ON/OFF edge detection
-    uint8_t mpc_mod = COT_ACTIVATED;
 
     // --- noise injection ---
     static NOISE::nState noise_state;
@@ -165,23 +172,27 @@ int main() {
         std::lock_guard<std::mutex> lk(mpc_mtx);
         mpc_reset_locked(mpc_key);
         if (mpc_on) {
-          if (mpc_mod == COT_ACTIVATED) {mpc_mod = COT_DISABLED; std::printf("MPC->NO-COT\n");}
-          else {mpc_mod = COT_ACTIVATED; std::printf("MPC->YES-COT\n");}
+          if (phase == Phase::MRG_ACTIVE_COT) {phase = Phase::MRG_FLIGHT; std::printf("MPC->NO-COT\n");}
+          else {phase = Phase::MRG_ACTIVE_COT; std::printf("MPC->YES-COT\n");}
         }
+        else {phase = Phase::GAC_FLIGHT;}
         prev_mpc_on = mpc_on;
       }
 
       // --- mujoco measurement ---
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
-        s.pos << d->qpos[0], -d->qpos[1], -d->qpos[2];
-        s.vel << d->qvel[0], -d->qvel[1], -d->qvel[2];
-        s.acc << d->qacc[0], -d->qacc[1], -d->qacc[2];
-        const Eigen::Quaterniond q(d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]);
-        s.R << quat_to_R(q);
-        s.omega << d->qvel[3], -d->qvel[4], -d->qvel[5];
-        for (int i=0; i<20; ++i) {s.arm_q[i] = d->qpos[7 + i];}
+        const mjtNum* sd = d->sensordata;
+        s.pos << sd[adr_pos], -sd[adr_pos+1], -sd[adr_pos+2];
+        s.vel << sd[adr_vel], -sd[adr_vel+1], -sd[adr_vel+2];
+        s.acc << sd[adr_acc], -sd[adr_acc+1], -sd[adr_acc+2];
+        const Eigen::Quaterniond q(sd[adr_quat], sd[adr_quat+1], sd[adr_quat+2], sd[adr_quat+3]);
+        s.R = quat_to_R(q);
+        s.omega << sd[adr_gyro], -sd[adr_gyro + 1], -sd[adr_gyro + 2];
+        for (int i = 0; i < 20; ++i) {s.arm_q[i] = d->qpos[7 + i];}
       }
+      s.alpha = diff(s.omega, prev_omega, elapsed_double, prev_elapsed_double);
+      prev_omega = s.omega; prev_elapsed_double = elapsed_double;
 
       // --- sensor noise injection ---
       if (param::NOISE_ON) {NOISE::apply(noise_state, now, s);}
@@ -278,7 +289,7 @@ int main() {
             g_mpc_input.p(m++) = omega_raw(0); g_mpc_input.p(m++) = omega_raw(1); g_mpc_input.p(m++) = omega_raw(2); // omega_raw(9~11)
             g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(12)
 
-            if (mpc_mod==COT_ACTIVATED) {g_mpc_input.use_cot = true;}
+            if (phase==Phase::MRG_ACTIVE_COT) {g_mpc_input.use_cot = true;}
             else {g_mpc_input.use_cot = false;}
 
             g_mpc_input.steps_req = param::N_STEPS_REQ;
@@ -366,14 +377,22 @@ int main() {
         ld.pos_d[0] = static_cast<float>(cmd.pos(0));
         ld.pos_d[1] = static_cast<float>(cmd.pos(1));
         ld.pos_d[2] = static_cast<float>(cmd.pos(2));
+        ld.vel_d[0] = static_cast<float>(cmd.vel(0));
+        ld.vel_d[1] = static_cast<float>(cmd.vel(1));
+        ld.vel_d[2] = static_cast<float>(cmd.vel(2));
+        ld.acc_d[0] = static_cast<float>(cmd.acc(0));
+        ld.acc_d[1] = static_cast<float>(cmd.acc(1));
+        ld.acc_d[2] = static_cast<float>(cmd.acc(2));
 
         ld.pos[0] = static_cast<float>(s.pos(0));
         ld.pos[1] = static_cast<float>(s.pos(1));
         ld.pos[2] = static_cast<float>(s.pos(2));
-
-        ld.rpy[0] = static_cast<float>(euler_rpy(0));
-        ld.rpy[1] = static_cast<float>(euler_rpy(1));
-        ld.rpy[2] = static_cast<float>(euler_rpy(2));
+        ld.vel[0] = static_cast<float>(s.vel(0));
+        ld.vel[1] = static_cast<float>(s.vel(1));
+        ld.vel[2] = static_cast<float>(s.vel(2));
+        ld.acc[0] = static_cast<float>(s.acc(0));
+        ld.acc[1] = static_cast<float>(s.acc(1));
+        ld.acc[2] = static_cast<float>(s.acc(2));
 
         {
           const Eigen::Vector3d rpy_raw = R_to_rpy(R_raw);
@@ -387,35 +406,85 @@ int main() {
           ld.rpy_d[1] = static_cast<float>(rpy_d(1));
           ld.rpy_d[2] = static_cast<float>(rpy_d(2));
         }
+        ld.omega_d[0] = static_cast<float>(omega_raw(0));
+        ld.omega_d[1] = static_cast<float>(omega_raw(1));
+        ld.omega_d[2] = static_cast<float>(omega_raw(2));
+        ld.alpha_d[0] = static_cast<float>(gac_cmd.Wd_dot(0));
+        ld.alpha_d[1] = static_cast<float>(gac_cmd.Wd_dot(1));
+        ld.alpha_d[2] = static_cast<float>(gac_cmd.Wd_dot(2));
 
+        ld.rpy[0]   = static_cast<float>(euler_rpy(0));
+        ld.rpy[1]   = static_cast<float>(euler_rpy(1));
+        ld.rpy[2]   = static_cast<float>(euler_rpy(2));
+        ld.omega[0] = static_cast<float>(s.omega(0));
+        ld.omega[1] = static_cast<float>(s.omega(1));
+        ld.omega[2] = static_cast<float>(s.omega(2));
+        ld.alpha[0] = static_cast<float>(s.alpha(0));
+        ld.alpha[1] = static_cast<float>(s.alpha(1));
+        ld.alpha[2] = static_cast<float>(s.alpha(2));
+
+        ld.f_total  = static_cast<float>(geometry_ctrl.f_total);
         ld.tau_d[0] = static_cast<float>(tau_des(0));
         ld.tau_d[1] = static_cast<float>(tau_des(1));
         ld.tau_d[2] = static_cast<float>(tau_des(2));
 
-        // CoT-offset torque around x,y
-        const Eigen::Vector2d tau_off(F_des*(s.r_cot(1)-s.r_com(1)), -F_des*(s.r_cot(0)-s.r_com(0)));
-        ld.tau_off[0] = static_cast<float>(tau_off(0));
-        ld.tau_off[1] = static_cast<float>(tau_off(1));
+        ld.tau_z_t        = static_cast<float>(cmd.tauz_bar);
+        ld.tilt_rad[0]    = static_cast<float>(tilt_ang_des(0));
+        ld.tilt_rad[1]    = static_cast<float>(tilt_ang_des(1));
+        ld.tilt_rad[2]    = static_cast<float>(tilt_ang_des(2));
+        ld.tilt_rad[3]    = static_cast<float>(tilt_ang_des(3));
+        ld.f_thrst[0]     = static_cast<float>(thrust_des(0));
+        ld.f_thrst[1]     = static_cast<float>(thrust_des(1));
+        ld.f_thrst[2]     = static_cast<float>(thrust_des(2));
+        ld.f_thrst[3]     = static_cast<float>(thrust_des(3));
+        ld.f_thrst_con[0] = static_cast<float>(smoothed_F(0));
+        ld.f_thrst_con[1] = static_cast<float>(smoothed_F(1));
+        ld.f_thrst_con[2] = static_cast<float>(smoothed_F(2));
+        ld.f_thrst_con[3] = static_cast<float>(smoothed_F(3));
 
-        // Thrust-diff torque = total tau_xy - cot-offset tau_xy
-        ld.tau_thrust[0] = static_cast<float>(tau_des(0) - tau_off(0));
-        ld.tau_thrust[1] = static_cast<float>(tau_des(1) - tau_off(1));
-
-        for (int i = 0; i < 4; ++i) {
-          ld.tilt_rad[i] = static_cast<float>(tilt_ang_des(i));
-          ld.f_thrst[i] = static_cast<float>(smoothed_F(i));
+        {
+          const Eigen::Vector2d tau_off(F_des*(s.r_cot(1)-s.r_com(1)), -F_des*(s.r_cot(0)-s.r_com(0)));
+          ld.tau_off[0] = static_cast<float>(tau_off(0));
+          ld.tau_off[1] = static_cast<float>(tau_off(1));
+        }
+        {
+          const Eigen::Vector2d tau_thrust = Forward_Allocate(smoothed_F, s.r1, s.r2, s.r3, s.r4, s.r_com);
+          ld.tau_thrust[0] = static_cast<float>(tau_thrust(0));
+          ld.tau_thrust[1] = static_cast<float>(tau_thrust(1));
         }
 
-        ld.f_total = static_cast<float>(geometry_ctrl.f_total);
-
+        ld.r_rotor1[0] = static_cast<float>(s.r1(0));
+        ld.r_rotor1[1] = static_cast<float>(s.r1(1));
+        ld.r_rotor2[0] = static_cast<float>(s.r2(0));
+        ld.r_rotor2[1] = static_cast<float>(s.r2(1));
+        ld.r_rotor3[0] = static_cast<float>(s.r3(0));
+        ld.r_rotor3[1] = static_cast<float>(s.r3(1));
+        ld.r_rotor4[0] = static_cast<float>(s.r4(0));
+        ld.r_rotor4[1] = static_cast<float>(s.r4(1));
         ld.r_cot[0] = static_cast<float>(s.r_cot(0));
         ld.r_cot[1] = static_cast<float>(s.r_cot(1));
 
-        // ld.r_cot_d[0] = static_cast<float>(cmd.r_cot(0));
-        // ld.r_cot_d[1] = static_cast<float>(cmd.r_cot(1));
+        ld.r_rotor1_d[0] = static_cast<float>(cmd.r1(0));
+        ld.r_rotor1_d[1] = static_cast<float>(cmd.r1(1));
+        ld.r_rotor2_d[0] = static_cast<float>(cmd.r2(0));
+        ld.r_rotor2_d[1] = static_cast<float>(cmd.r2(1));
+        ld.r_rotor3_d[0] = static_cast<float>(cmd.r3(0));
+        ld.r_rotor3_d[1] = static_cast<float>(cmd.r3(1));
+        ld.r_rotor4_d[0] = static_cast<float>(cmd.r4(0));
+        ld.r_rotor4_d[1] = static_cast<float>(cmd.r4(1));
+        {
+          const Eigen::Vector3d r_cot_d = (cmd.r1 + cmd.r2 + cmd.r3 + cmd.r4) / 4.0;
+          ld.r_cot_d[0] = static_cast<float>(r_cot_d(0));
+          ld.r_cot_d[1] = static_cast<float>(r_cot_d(1));
+        }
+
+        for (uint8_t i=0; i<20; ++i){ld.q[i]     = static_cast<float>(s.arm_q[i]);}
+        for (uint8_t i=0; i<20; ++i){ld.q_cmd[i] = static_cast<float>(q_d[i]);}
 
         ld.solve_ms = static_cast<float>(l_mpc_output.solve_ms);
         ld.solve_status = static_cast<int32_t>(l_mpc_output.state);
+
+        ld.phase = static_cast<uint8_t>(phase);
 
         logger.push(ld);
       }

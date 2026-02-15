@@ -10,9 +10,6 @@
 #include <Eigen/Dense>
 #include <mujoco/mujoco.h>
 
-#define COT_ACTIVATED 2
-#define COT_DISABLED  3
-
 namespace param {
 
 // ===== Frequencies & timesteps =====

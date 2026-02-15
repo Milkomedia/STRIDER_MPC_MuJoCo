@@ -203,10 +203,12 @@
 
   </actuator>
 
-    <sensor>
-    <gyro name="body_gyro" site="imu"/>
-    <accelerometer name="body_linacc" site="imu"/>
-    <framequat name="body_quat" objtype="site" objname="imu"/>
+  <sensor>
+    <framequat   name="imu_quat"   objtype="site" objname="imu"/>
+    <gyro        name="imu_gyro"   site="imu"/>
+    <framepos    name="imu_pos"    objtype="site" objname="imu"/>
+    <framelinvel name="imu_linvel" objtype="site" objname="imu"/>
+    <framelinacc name="imu_linacc" objtype="site" objname="imu"/>
   </sensor>
 
 </mujoco>

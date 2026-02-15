@@ -9,7 +9,16 @@
   #include <unistd.h>
 #endif
 
-static inline constexpr double inv_sqrt2 = 0.7071067811865474617150084668537601828575;  // 1/sqrt(2)
+enum class Phase : uint8_t {
+  READY          = 0,  // program started
+  ARMED          = 1,  // all sanity checked
+  IDLE           = 2,  // all propellers are idling
+  RISING         = 3,  // propeller thrust increasing
+  GAC_FLIGHT     = 4,  // flight with geometry controller
+  MRG_FLIGHT     = 5,  // flight with reference governor
+  MRG_ACTIVE_COT = 6,  // flight with reference governor (use CoT moving)
+  KILLED         = 99, // killed; (It's not used as a trigger, just a state representation)
+};
 
 struct State {
   Eigen::Vector3d pos = Eigen::Vector3d::Zero();       // current linear position [m]
@@ -17,6 +26,7 @@ struct State {
   Eigen::Vector3d acc = Eigen::Vector3d::Zero();       // current linear acceleration [m/s^2]
   Eigen::Matrix3d R   = Eigen::Matrix3d::Identity();   // current Rotation matrix [SO3]
   Eigen::Vector3d omega = Eigen::Vector3d::Zero();     // current angular velocity [rad/s]
+  Eigen::Vector3d alpha = Eigen::Vector3d::Zero();     // current angular acceleration [rad/s^2] (not used, just logging)
   Eigen::Vector3d r_cot = Eigen::Vector3d::Zero();     // current b_p_Cot position [m]
   Eigen::Vector3d r1  = Eigen::Vector3d::Zero();       // current rotor1 position [m]
   Eigen::Vector3d r2  = Eigen::Vector3d::Zero();       // current rotor2 position [m]
@@ -40,6 +50,8 @@ struct Command {
   Eigen::Vector3d r3 = Eigen::Vector3d(-0.24,  0.24, -0.24);  // desired rotor3 position [m], z-element is not updated
   Eigen::Vector3d r4 = Eigen::Vector3d( 0.24,  0.24, -0.24);  // desired rotor4 position [m], z-element is not updated
 };
+
+static inline constexpr double inv_sqrt2 = 0.7071067811865474617150084668537601828575;  // 1/sqrt(2)
 
 static inline Eigen::Vector3d fig8_point(double t_sec){
   // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
@@ -195,6 +207,20 @@ static inline Eigen::Matrix3d expm_hat(const Eigen::Vector3d& w) {
   const Eigen::Matrix3d K = hat(w);
   const Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
   return I + A * K + B * (K * K);
+}
+
+static inline Eigen::Vector3d diff(const Eigen::Vector3d& x_cur, const Eigen::Vector3d& x_prev, const double& t_cur, const double& t_prev) {
+  constexpr double MinDt_ = 0.0005;   // 0.5 ms  -> max 2000 Hz
+  constexpr double MaxDt_ = 0.005;    // 5.0 ms  -> min 200 Hz
+
+  if (t_cur <= t_prev) return Eigen::Vector3d::Zero();
+
+  double dt = t_cur - t_prev;
+  dt = std::max(dt, MinDt_);
+  if (dt > MaxDt_) return Eigen::Vector3d::Zero();
+
+  const double inv_dt = 1.0 / dt;
+  return (x_cur - x_prev) * inv_dt;
 }
 
 static inline void onearm_IK(const Eigen::Vector3d& pos, const Eigen::Vector3d& heading, double out5[5]) {
@@ -425,6 +451,19 @@ static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& 
   else {F1234 = (A_d.transpose()*A_d + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A_d.transpose()*Wrench);}
 }
 
+static inline Eigen::Vector2d Forward_Allocate(const Eigen::Vector4d& F1234, const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& Pc) {
+  Eigen::Matrix<double, 2, 4> A;
+  A(0,0) = -r1(1) + Pc(1);
+  A(0,1) = -r2(1) + Pc(1);
+  A(0,2) = -r3(1) + Pc(1);
+  A(0,3) = -r4(1) + Pc(1);
+  A(1,0) =  r1(0) - Pc(0);
+  A(1,1) =  r2(0) - Pc(0);
+  A(1,2) =  r3(0) - Pc(0);
+  A(1,3) =  r4(0) - Pc(0);
+  return A * F1234;
+}
+
 namespace NOISE {
 struct Rng {
   std::uint64_t s = 88172645463325252ull; // non-zero seed
@@ -521,6 +560,13 @@ static inline void apply(nState& st, const std::chrono::steady_clock::time_point
 }
 
 } // namespace NOISE
+
+static inline int sensor_adr_check(const mjModel* m, const char* name, int expect_dim) {
+  const int sid = mj_name2id(m, mjOBJ_SENSOR, name);
+  if (sid < 0) { std::printf("[ERROR] sensor '%s' not found\n", name); std::abort(); }
+  if (m->sensor_dim[sid] != expect_dim) {std::printf("[ERROR] sensor '%s' dim mismatch: got %d expect %d\n", name, m->sensor_dim[sid], expect_dim); std::abort();}
+  return m->sensor_adr[sid];
+}
 
 inline std::filesystem::path get_executable_path() {
 #if defined(__APPLE__)
