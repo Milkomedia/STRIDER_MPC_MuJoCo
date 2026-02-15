@@ -3,6 +3,7 @@
 
 #include "params.hpp"
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -25,27 +26,56 @@ namespace mmap_manager {
 #pragma pack(push, 1)
 struct LogData {
   float t              =  0.0f;  // timestamp [sec]
+
   float pos_d[3]       = {0.0f}; // desired position [m]
+  float vel_d[3]       = {0.0f}; // desired velocity [m/s]
+  float acc_d[3]       = {0.0f}; // desired acceleration [m/s^2]
   float pos[3]         = {0.0f}; // current position [m]
+  float vel[3]         = {0.0f}; // current velocity [m/s]
+  float acc[3]         = {0.0f}; // current acceleration [m/s^2]
+
+  float rpy_raw[3]     = {0.0f}; // desired attitude (from position ctrl) [rad]
+  float rpy_d[3]       = {0.0f}; // desired attitude reconstructed (MRG applied) [rad]
+  float omega_d[3]     = {0.0f}; // desired angular rate (from position ctrl) [rad/s]
+  float alpha_d[3]     = {0.0f}; // desired angular acceleration (from position ctrl) [rad/s^2]
   float rpy[3]         = {0.0f}; // current attitude [rad]
-  float rpy_raw[3]     = {0.0f}; // desired attitude from position ctrl [rad]
-  float rpy_d[3]       = {0.0f}; // desired attitude reconstructed (R_d) [rad]
-  float tau_d[3]       = {0.0f}; // desired torque (att ctrl) [N.m]
+  float omega[3]       = {0.0f}; // current angular rate [rad/s]
+  float alpha[3]       = {0.0f}; // current angular acceleration [rad/s^2]
+
+  float f_total        =  0.0f;  // desired collective thrust (from att ctrl) [N]
+  float tau_d[3]       = {0.0f}; // desired torque (from att ctrl) [N.m]
+
+  float tau_z_t        =  0.0f;  // thrust z torque [N.m]
+  float tilt_rad[4]    = {0.0f}; // per-rotor tilt command [rad]
+  float f_thrst[4]     = {0.0f}; // per-rotor thrust command [N]
+  float f_thrst_con[4] = {0.0f}; // constrain-applied per-rotor thrust command [N]
+
   float tau_off[2]     = {0.0f}; // cot&com-offset torque [N.m] (x,y)
   float tau_thrust[2]  = {0.0f}; // thrust-diff torque [N.m] (x,y)
-  float tilt_rad[4]    = {0.0f}; // per-rotor tilt command [rad]
-  float f_thrust[4]    = {0.0f}; // per-rotor thrust command [N]
-  float f_total        =  0.0f;  // desired collective thrust [N]
+
+  float r_rotor1[2]   = {0.0f}; // current rotor-1 position [m] (x,y)
+  float r_rotor2[2]   = {0.0f}; // current rotor-2 position [m] (x,y)
+  float r_rotor3[2]   = {0.0f}; // current rotor-3 position [m] (x,y)
+  float r_rotor4[2]   = {0.0f}; // current rotor-4 position [m] (x,y)
   float r_cot[2]       = {0.0f}; // current CoT position [m] (x,y)
-  float r_cot_cmd[2]   = {0.0f}; // optimal CoT command [m] (x,y)
+  float r_rotor1_d[2]  = {0.0f}; // optimal rotor-1 position [m] (x,y)
+  float r_rotor2_d[2]  = {0.0f}; // optimal rotor-2 position [m] (x,y)
+  float r_rotor3_d[2]  = {0.0f}; // optimal rotor-3 position [m] (x,y)
+  float r_rotor4_d[2]  = {0.0f}; // optimal rotor-4 position [m] (x,y)
+  float r_cot_d[2]     = {0.0f}; // optimal CoT command [m] (x,y)
+  
+  float q[20]          = {0.0f};   // current joint angle [rad]
+  float q_cmd[20]      = {0.0f};   // joint angle command [rad]
+
   float solve_ms       =  0.0f;  // acados solve time [ms]
   int32_t solve_status = -1;     // solver status (https://docs.acados.org/python_interface/index.html#acados_template.acados_ocp_options.AcadosOcpOptions.qp_solver)
+  
+  uint8_t phase        = 255;    // flight state phase
 };
 #pragma pack(pop)
 
-// 152 bytes with the layout above
-static_assert(sizeof(LogData) == 152, "LogData size changed. Update Python reader offsets.");
-
+// Packed size must match Python reader LOGDATA_SIZE.
+static_assert(sizeof(LogData) == 493, "LogData size changed. Update Python reader offsets/sizes.");
 
 // -----------------------------
 // MMap header + ring buffer slot
@@ -66,14 +96,19 @@ struct MMapHeader {
 
 static_assert(sizeof(MMapHeader) == 64, "MMapHeader must be 64 bytes.");
 
-// Slot = seq(8) + LogData(152) = 160 (already multiple of 8)
+static constexpr std::size_t kLogDataBytes = sizeof(LogData);
+static constexpr std::size_t kSlotPadBytes = (8 - (kLogDataBytes % 8)) % 8; // ensure slot stride multiple of 8
+
+// Slot stride must be multiple of 8 so that every Slot::seq is 8-byte aligned in the ring.
 struct alignas(8) Slot {
   uint64_t seq;  // seqlock counter (odd=writing, even=stable)
   LogData  data; // payload
+  std::array<uint8_t, kSlotPadBytes> pad{}; // may be size 0
 };
 
 static_assert(alignof(Slot) == 8, "Slot alignment must be 8.");
-static_assert(sizeof(Slot) == 160, "Slot size must be 160 bytes.");
+static_assert((sizeof(Slot) % 8) == 0, "Slot size must be multiple of 8.");
+static_assert(sizeof(Slot) == (8 + kLogDataBytes + kSlotPadBytes), "Slot size mismatch.");
 
 static constexpr uint32_t k_Sec = 10;
 static constexpr uint32_t k_Cap = static_cast<uint32_t>(param::CTRL_HZ) * k_Sec;

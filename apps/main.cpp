@@ -307,7 +307,7 @@ int main() {
       // Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
       // thrust_des_log = thrust_des;
 
-      // --- resolve r_cot_cmd to q_d  ---
+      // --- resolve r_cot_d to q_d  ---
       double q_d[20] = {0};
       IK(cmd.r1, cmd.r2, cmd.r3, cmd.r4, tilt_ang_des, q_d);
 
@@ -403,7 +403,7 @@ int main() {
 
         for (int i = 0; i < 4; ++i) {
           ld.tilt_rad[i] = static_cast<float>(tilt_ang_des(i));
-          ld.f_thrust[i] = static_cast<float>(smoothed_F(i));
+          ld.f_thrst[i] = static_cast<float>(smoothed_F(i));
         }
 
         ld.f_total = static_cast<float>(geometry_ctrl.f_total);
@@ -411,8 +411,8 @@ int main() {
         ld.r_cot[0] = static_cast<float>(s.r_cot(0));
         ld.r_cot[1] = static_cast<float>(s.r_cot(1));
 
-        // ld.r_cot_cmd[0] = static_cast<float>(cmd.r_cot(0));
-        // ld.r_cot_cmd[1] = static_cast<float>(cmd.r_cot(1));
+        // ld.r_cot_d[0] = static_cast<float>(cmd.r_cot(0));
+        // ld.r_cot_d[1] = static_cast<float>(cmd.r_cot(1));
 
         ld.solve_ms = static_cast<float>(l_mpc_output.solve_ms);
         ld.solve_status = static_cast<int32_t>(l_mpc_output.state);

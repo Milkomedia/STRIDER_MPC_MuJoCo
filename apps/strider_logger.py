@@ -15,35 +15,56 @@ import pyqtgraph as pg
 pg.setConfigOption("background", "w")
 pg.setConfigOption("foreground", "k")
 
-
 # -----------------------------
 # Must match C++ mmap_manager.hpp
 # -----------------------------
 HEADER_SIZE = 64
-LOGDATA_SIZE = 152
-SLOT_SIZE = 160  # seq(u64)=8 + LogData(152)=160
+LOGDATA_SIZE = 493  # sizeof(LogData) with #pragma pack(1)
+_SLOT_PAD = (8 - (LOGDATA_SIZE % 8)) % 8
+SLOT_SIZE = 8 + LOGDATA_SIZE + _SLOT_PAD  # seq(u64)=8 + LogData + pad -> multiple of 8
 
 MAGIC = b"STRLOG2\x00"
 VERSION = 2
 
-# LogData offsets (packed)
-OFF_T = 0
-OFF_POS_D = 4
-OFF_POS = 16
-OFF_RPY = 28
-OFF_RPY_RAW = 40
-OFF_RPY_D = 52
-OFF_TAU_D = 64
-OFF_TAU_OFF = 76
-OFF_TAU_THRUST = 84
-OFF_TILT = 92
-OFF_F_THRUST = 108
-OFF_F_TOTAL = 124
-OFF_R_COT = 128
-OFF_R_COT_CMD = 136
-OFF_SOLVE_MS = 144
-OFF_SOLVE_STATUS = 148
-
+# LogData offsets (packed, little-endian) float32 = 4 bytes, int32 = 4 bytes, uint8 = 1 byte
+OFF_T          = 0    # float t
+OFF_POS_D      = 4    # float pos_d[3]
+OFF_VEL_D      = 16   # float vel_d[3]
+OFF_ACC_D      = 28   # float acc_d[3]
+OFF_POS        = 40   # float pos[3]
+OFF_VEL        = 52   # float vel[3]
+OFF_ACC        = 64   # float acc[3]
+OFF_RPY_RAW    = 76   # float rpy_raw[3]
+OFF_RPY_D      = 88   # float rpy_d[3]
+OFF_OMEGA_D    = 100  # float omega_d[3]
+OFF_ALPHA_D    = 112  # float alpha_d[3]
+OFF_RPY        = 124  # float rpy[3]
+OFF_OMEGA      = 136  # float omega[3]
+OFF_ALPHA      = 148  # float alpha[3]
+OFF_F_TOTAL    = 160  # float f_total
+OFF_TAU_D      = 164  # float tau_d[3]
+OFF_TAU_Z_T    = 176  # float tau_z_t
+OFF_TILT       = 180  # float tilt_rad[4]
+OFF_F_THRST    = 196  # float f_thrst[4]
+OFF_F_THRST_CON= 212  # float f_thrst_con[4]
+OFF_TAU_OFF    = 228  # float tau_off[2]
+OFF_TAU_THRUST = 236  # float tau_thrust[2]
+OFF_R_ROTOR1   = 244  # float r_rotor1[2]
+OFF_R_ROTOR2   = 252  # float r_rotor2[2]
+OFF_R_ROTOR3   = 260  # float r_rotor3[2]
+OFF_R_ROTOR4   = 268  # float r_rotor4[2]
+OFF_R_COT      = 276  # float r_cot[2]
+OFF_R_ROTOR1_D = 284  # float r_rotor1_d[2]
+OFF_R_ROTOR2_D = 292  # float r_rotor2_d[2]
+OFF_R_ROTOR3_D = 300  # float r_rotor3_d[2]
+OFF_R_ROTOR4_D = 308  # float r_rotor4_d[2]
+OFF_R_COT_D    = 316  # float r_cot_d[2]
+OFF_Q          = 324  # float q[20]
+OFF_Q_CMD      = 404  # float q_cmd[20]
+OFF_SOLVE_MS   = 484  # float solve_ms
+OFF_SOLVE_STATUS = 488 # int32 solve_status
+OFF_PHASE      = 492  # uint8 phase
+LOGDATA_SIZE   = 493
 
 @dataclass
 class Header:
@@ -57,8 +78,7 @@ class Header:
 
   @staticmethod
   def parse(buf: bytes) -> "Header":
-    if len(buf) < HEADER_SIZE:
-      raise ValueError("Header buffer too small")
+    if len(buf) < HEADER_SIZE: raise ValueError("Header buffer too small")
 
     magic = buf[0:8]
     version, header_size, capacity, slot_size = struct.unpack_from("<IIII", buf, 8)
@@ -74,8 +94,7 @@ class MMapReader:
     self.header: Optional[Header] = None
 
   def open(self) -> None:
-    if self.mm is not None:
-      return
+    if self.mm is not None: return
 
     self.fd = os.open(self.path, os.O_RDONLY)
     st = os.fstat(self.fd)
@@ -83,14 +102,10 @@ class MMapReader:
 
     self.header = Header.parse(self.mm[0:HEADER_SIZE])
 
-    if self.header.magic != MAGIC:
-      raise RuntimeError(f"Bad magic: {self.header.magic}")
-    if self.header.version != VERSION:
-      raise RuntimeError(f"Unsupported version: {self.header.version}")
-    if self.header.header_size != HEADER_SIZE:
-      raise RuntimeError(f"Header size mismatch: {self.header.header_size}")
-    if self.header.slot_size != SLOT_SIZE:
-      raise RuntimeError(f"Slot size mismatch: {self.header.slot_size}")
+    if self.header.magic != MAGIC: raise RuntimeError(f"Bad magic: {self.header.magic}")
+    if self.header.version != VERSION: raise RuntimeError(f"Unsupported version: {self.header.version}")
+    if self.header.header_size != HEADER_SIZE: raise RuntimeError(f"Header size mismatch: {self.header.header_size}")
+    if self.header.slot_size != SLOT_SIZE: raise RuntimeError(f"Slot size mismatch: {self.header.slot_size} (expected {SLOT_SIZE})")
 
   def close(self) -> None:
     if self.mm is not None:
@@ -131,23 +146,21 @@ class MMapReader:
     out_ch["tau_off"][i, :] = np.nan
     out_ch["tau_thrust"][i, :] = np.nan
     out_ch["tilt"][i, :] = np.nan
-    out_ch["f_thrust"][i, :] = np.nan
+    out_ch["f_thrst"][i, :] = np.nan
     out_ch["f_total"][i] = np.nan
     out_ch["r_cot"][i, :] = np.nan
-    out_ch["r_cot_cmd"][i, :] = np.nan
+    out_ch["r_cot_d"][i, :] = np.nan
     out_ch["solve_ms"][i] = np.nan
     out_ch["solve_status"][i] = -1
 
     for _ in range(10):
       seq_a = self._u64(slot_off + 0)
-      if seq_a & 1:
-        continue
+      if seq_a & 1: continue
 
-      dbuf = self.mm[slot_off + 8: slot_off + 8 + LOGDATA_SIZE]
+      dbuf = self.mm[slot_off + 8: slot_off + 8 + LOGDATA_SIZE]  # bytes slice (packed LogData)
 
       seq_b = self._u64(slot_off + 0)
-      if seq_a != seq_b or (seq_b & 1):
-        continue
+      if seq_a != seq_b or (seq_b & 1): continue
 
       out_t[i] = struct.unpack_from("<f", dbuf, OFF_T)[0]
       out_ch["pos_d"][i, :] = struct.unpack_from("<fff", dbuf, OFF_POS_D)
@@ -162,11 +175,11 @@ class MMapReader:
       out_ch["tau_thrust"][i, :] = struct.unpack_from("<ff", dbuf, OFF_TAU_THRUST)
 
       out_ch["tilt"][i, :] = struct.unpack_from("<ffff", dbuf, OFF_TILT)
-      out_ch["f_thrust"][i, :] = struct.unpack_from("<ffff", dbuf, OFF_F_THRUST)
+      out_ch["f_thrst"][i, :] = struct.unpack_from("<ffff", dbuf, OFF_F_THRST)
       out_ch["f_total"][i] = struct.unpack_from("<f", dbuf, OFF_F_TOTAL)[0]
 
       out_ch["r_cot"][i, :] = struct.unpack_from("<ff", dbuf, OFF_R_COT)
-      out_ch["r_cot_cmd"][i, :] = struct.unpack_from("<ff", dbuf, OFF_R_COT_CMD)
+      out_ch["r_cot_d"][i, :] = struct.unpack_from("<ff", dbuf, OFF_R_COT_D)
 
       out_ch["solve_ms"][i] = struct.unpack_from("<f", dbuf, OFF_SOLVE_MS)[0]
       out_ch["solve_status"][i] = struct.unpack_from("<i", dbuf, OFF_SOLVE_STATUS)[0]
@@ -213,10 +226,10 @@ class MMapReader:
       "tau_off": np.empty((n, 2), dtype=np.float32),
       "tau_thrust": np.empty((n, 2), dtype=np.float32),
       "tilt": np.empty((n, 4), dtype=np.float32),
-      "f_thrust": np.empty((n, 4), dtype=np.float32),
+      "f_thrst": np.empty((n, 4), dtype=np.float32),
       "f_total": np.empty((n,), dtype=np.float32),
       "r_cot": np.empty((n, 2), dtype=np.float32),
-      "r_cot_cmd": np.empty((n, 2), dtype=np.float32),
+      "r_cot_d": np.empty((n, 2), dtype=np.float32),
       "solve_ms": np.empty((n,), dtype=np.float32),
       "solve_status": np.empty((n,), dtype=np.int32),
     }
@@ -239,7 +252,6 @@ class MMapReader:
     t, ch, _, _ = self.read_range(start, wc)
     ch["write_count"] = np.int64(wc)
     return t, ch
-
 
 # -----------------------------
 # Recording (persistent logging)
@@ -270,10 +282,8 @@ class LogRecorder:
 
   def _ensure_keys(self, ch: Dict[str, np.ndarray]) -> None:
     for k in ch.keys():
-      if k == "write_count":
-        continue
-      if k not in self._ch_blocks:
-        self._ch_blocks[k] = []
+      if k == "write_count": continue
+      if k not in self._ch_blocks: self._ch_blocks[k] = []
 
   def start(self, reader: MMapReader) -> None:
     if self.started: return
@@ -289,8 +299,7 @@ class LogRecorder:
     self.started = True
 
   def poll(self, reader: MMapReader) -> None:
-    if not self.started:
-      self.start(reader)
+    if not self.started: self.start(reader)
 
     wc_now = reader.write_count()
     self.wc_end = wc_now
@@ -377,14 +386,10 @@ def _style(plot: pg.PlotItem) -> None:
   plot.getAxis("left").setTextPen(pg.mkPen("k"))
 
 def _mk_pen(style: str, width: int = 2, color=None) -> pg.mkPen:
-  if style == "solid":
-    return pg.mkPen(color=color, width=width)
-  if style == "dash":
-    return pg.mkPen(color=color, width=width, style=QtCore.Qt.DashLine)
-  if style == "dot":
-    return pg.mkPen(color=color, width=width, style=QtCore.Qt.DotLine)
-  if style == "dashdot":
-    return pg.mkPen(color=color, width=width, style=QtCore.Qt.DashDotLine)
+  if style == "solid": return pg.mkPen(color=color, width=width)
+  if style == "dash": return pg.mkPen(color=color, width=width, style=QtCore.Qt.DashLine)
+  if style == "dot": return pg.mkPen(color=color, width=width, style=QtCore.Qt.DotLine)
+  if style == "dashdot": return pg.mkPen(color=color, width=width, style=QtCore.Qt.DashDotLine)
   return pg.mkPen(color=color, width=width)
 
 
@@ -458,10 +463,8 @@ class LoggerWindow(QtWidgets.QMainWindow):
         self.lbl_stat.setText(f"save error: {e}")
 
     # Close mmap
-    try:
-      self.reader.close()
-    except Exception:
-      pass
+    try: self.reader.close()
+    except Exception: pass
 
     super().closeEvent(event)
 
@@ -512,10 +515,8 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
       # collect & link
       self._all_plots.append(p)
-      if self._x_master is None:
-        self._x_master = p
-      else:
-        p.setXLink(self._x_master)
+      if self._x_master is None: self._x_master = p
+      else: p.setXLink(self._x_master)
 
       return p
 
@@ -564,19 +565,13 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._curves["tau_z_gac"]    = p3c3.plot(pen=pen_act, name="gac")
 
     # ========== Row 4: f1234 / tilt / f_total ==========
-    p4c1 = _mk_plot(3, 0, "f_thrust [N]", y_range=(10. , 30.))
+    p4c1 = _mk_plot(3, 0, "f_thrst [N]", y_range=(10. , 30.))
     p4c2 = _mk_plot(3, 1, "tilt [deg]", y_range=(-20., 20.))
     p4c3 = _mk_plot(3, 2, "f_total [N]", y_range=(40., 100.))
 
     for i in range(4):
-      self._curves[f"F{i+1}"] = p4c1.plot(
-        pen=_mk_pen("solid", width=2, color=rotor_colors[i]),
-        name=f"F{i+1}"
-      )
-      self._curves[f"tilt{i+1}"] = p4c2.plot(
-        pen=_mk_pen("solid", width=2, color=rotor_colors[i]),
-        name=f"tilt{i+1}"
-      )
+      self._curves[f"F{i+1}"] = p4c1.plot(pen=_mk_pen("solid", width=2, color=rotor_colors[i]), name=f"F{i+1}")
+      self._curves[f"tilt{i+1}"] = p4c2.plot(pen=_mk_pen("solid", width=2, color=rotor_colors[i]), name=f"tilt{i+1}")
 
     self._curves["f_total"] = p4c3.plot(pen=pen_act, name="act")
 
@@ -630,11 +625,11 @@ class LoggerWindow(QtWidgets.QMainWindow):
     tau_off    = ch["tau_off"]
     tau_thrust = ch["tau_thrust"]
 
-    f_thrust = ch["f_thrust"]
+    f_thrst = ch["f_thrst"]
     tilt_deg = _deg(ch["tilt"])
     f_total  = ch["f_total"]
 
-    r_cot_cmd_mm = _mm(ch["r_cot_cmd"])
+    r_cot_d_mm = _mm(ch["r_cot_d"])
     r_cot_act_mm = _mm(ch["r_cot"])
 
     solve_ms = ch["solve_ms"]
@@ -674,13 +669,13 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
     # Row 4
     for i in range(4):
-      self._curves[f"F{i+1}"].setData(tt, f_thrust[:, i])
+      self._curves[f"F{i+1}"].setData(tt, f_thrst[:, i])
       self._curves[f"tilt{i+1}"].setData(tt, tilt_deg[:, i])
     self._curves["f_total"].setData(tt, f_total)
 
     # Row 5
-    self._curves["rcot_x_cmd"].setData(tt, r_cot_cmd_mm[:, 0])
-    self._curves["rcot_y_cmd"].setData(tt, r_cot_cmd_mm[:, 1])
+    self._curves["rcot_x_cmd"].setData(tt, r_cot_d_mm[:, 0])
+    self._curves["rcot_y_cmd"].setData(tt, r_cot_d_mm[:, 1])
     self._curves["rcot_x_act"].setData(tt, r_cot_act_mm[:, 0])
     self._curves["rcot_y_act"].setData(tt, r_cot_act_mm[:, 1])
 
@@ -699,32 +694,17 @@ class LoggerWindow(QtWidgets.QMainWindow):
       width = dt if s == 0 else 6.0 * dt
 
       if s not in self._status_bars:
-        bar = pg.BarGraphItem(
-          x=xs,
-          y0=y0,
-          height=heights,
-          width=width,
-          brush=pg.mkBrush(*self._status_colors[s]),
-          pen=None,
-        )
+        bar = pg.BarGraphItem(x=xs, y0=y0, height=heights, width=width, brush=pg.mkBrush(*self._status_colors[s]), pen=None,)
         self._status_plot.addItem(bar)
         self._status_bars[s] = bar
       else:
-        self._status_bars[s].setOpts(
-          x=xs,
-          y0=y0,
-          height=heights,
-          width=width,
-          brush=pg.mkBrush(*self._status_colors[s]),
-          pen=None,
-        )
+        self._status_bars[s].setOpts(x=xs, y0=y0, height=heights, width=width, brush=pg.mkBrush(*self._status_colors[s]), pen=None,)
 
     last_ms = float(solve_ms[-1]) if solve_ms.size > 0 else float("nan")
     last_st = int(solve_status[-1]) if solve_status.size > 0 else -1
 
     extra = ""
-    if self.recorder is not None and self.recorder.started:
-      extra = f" | rec_samples={sum(b.size for b in self.recorder._t_blocks)} | dropped={self.recorder.dropped_total}"
+    if self.recorder is not None and self.recorder.started: extra = f" | rec_samples={sum(b.size for b in self.recorder._t_blocks)} | dropped={self.recorder.dropped_total}"
 
     self.lbl_stat.setText(f"wc={int(wc)} | samples={tt.size} | last solve_ms={last_ms:.3f} | last status={last_st}{extra}")
 
@@ -747,10 +727,10 @@ class LoggerWindow(QtWidgets.QMainWindow):
           "tau_off": data["tau_off"].astype(np.float32),
           "tau_thrust": data["tau_thrust"].astype(np.float32),
           "tilt": data["tilt"].astype(np.float32),
-          "f_thrust": data["f_thrust"].astype(np.float32),
+          "f_thrst": data["f_thrst"].astype(np.float32),
           "f_total": data["f_total"].astype(np.float32),
           "r_cot": data["r_cot"].astype(np.float32),
-          "r_cot_cmd": data["r_cot_cmd"].astype(np.float32),
+          "r_cot_d": data["r_cot_d"].astype(np.float32),
           "solve_ms": data["solve_ms"].astype(np.float32),
           "solve_status": data["solve_status"].astype(np.int32),
         }
@@ -772,8 +752,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
         self._update_plots(t, ch, wc)
         self.lbl_stat.setText(f"replay mmap loaded: {rp.name} | samples={int(t.size)}")
 
-    except Exception as e:
-      self.lbl_stat.setText(f"replay error: {e}")
+    except Exception as e: self.lbl_stat.setText(f"replay error: {e}")
 
   @QtCore.pyqtSlot()
   def on_timer(self) -> None:
