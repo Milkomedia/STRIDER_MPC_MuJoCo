@@ -13,3 +13,6 @@ generated/
 # macOS
 .DS_Store
 Icon?
+
+# Logging files
+log/
