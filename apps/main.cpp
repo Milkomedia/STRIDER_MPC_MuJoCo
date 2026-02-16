@@ -250,20 +250,20 @@ int main() {
           workspace_guard(cmd.r1, cmd.r2, cmd.r3, cmd.r4);
         }
         else { // solve failed timeout
-          cmd.d_theta *= 0.995;
-          cmd.r1 = 0.995*cmd.r1 + 0.005*param::r1_init;
-          cmd.r2 = 0.995*cmd.r2 + 0.005*param::r2_init;
-          cmd.r3 = 0.995*cmd.r3 + 0.005*param::r3_init;
-          cmd.r4 = 0.995*cmd.r4 + 0.005*param::r4_init;
+          cmd.d_theta *= param::GOES_2_ZERO_A;
+          cmd.r1 = param::GOES_2_ZERO_A*cmd.r1 + param::GOES_2_ZERO_B*param::r1_init;
+          cmd.r2 = param::GOES_2_ZERO_A*cmd.r2 + param::GOES_2_ZERO_B*param::r2_init;
+          cmd.r3 = param::GOES_2_ZERO_A*cmd.r3 + param::GOES_2_ZERO_B*param::r3_init;
+          cmd.r4 = param::GOES_2_ZERO_A*cmd.r4 + param::GOES_2_ZERO_B*param::r4_init;
           l_mpc_output.u_rate.setZero();
         }
       }
       else { // only GAC flight
-        cmd.d_theta *= 0.995;
-        cmd.r1 = 0.995*cmd.r1 + 0.005*param::r1_init;
-        cmd.r2 = 0.995*cmd.r2 + 0.005*param::r2_init;
-        cmd.r3 = 0.995*cmd.r3 + 0.005*param::r3_init;
-        cmd.r4 = 0.995*cmd.r4 + 0.005*param::r4_init;
+        cmd.d_theta *= param::GOES_2_ZERO_A;
+        cmd.r1 = param::GOES_2_ZERO_A*cmd.r1 + param::GOES_2_ZERO_B*param::r1_init;
+        cmd.r2 = param::GOES_2_ZERO_A*cmd.r2 + param::GOES_2_ZERO_B*param::r2_init;
+        cmd.r3 = param::GOES_2_ZERO_A*cmd.r3 + param::GOES_2_ZERO_B*param::r3_init;
+        cmd.r4 = param::GOES_2_ZERO_A*cmd.r4 + param::GOES_2_ZERO_B*param::r4_init;
         l_mpc_output.u_rate.setZero();
       }
 

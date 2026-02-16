@@ -69,28 +69,32 @@ inline constexpr double SQ_MIN_STRETCH    = MIN_STRETCH * MIN_STRETCH; // pre-ca
 inline constexpr double SQ_ROTOR_DIAMETER = ROTOR_DIAMETER * ROTOR_DIAMETER; // pre-calculation
 inline constexpr double B2BASE_X[4]       = { 0.12*inv_sqrt2, -0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2}; // x-distance from the body frame to each base frame [m]
 inline constexpr double B2BASE_Y[4]       = {-0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2,  0.12*inv_sqrt2}; // y-distance from the body frame to each base frame [m]
-inline const Eigen::Vector3d r1_init  = Eigen::Vector3d( 0.24, -0.24, -0.24); // rotor-1 inital position
-inline const Eigen::Vector3d r2_init  = Eigen::Vector3d(-0.24, -0.24, -0.24); // rotor-2 inital position
-inline const Eigen::Vector3d r3_init  = Eigen::Vector3d(-0.24,  0.24, -0.24); // rotor-3 inital position
-inline const Eigen::Vector3d r4_init  = Eigen::Vector3d( 0.24,  0.24, -0.24); // rotor-4 inital position
+inline const     Eigen::Vector3d r1_init  = Eigen::Vector3d( 0.24, -0.24, -0.24); // rotor-1 inital position
+inline const     Eigen::Vector3d r2_init  = Eigen::Vector3d(-0.24, -0.24, -0.24); // rotor-2 inital position
+inline const     Eigen::Vector3d r3_init  = Eigen::Vector3d(-0.24,  0.24, -0.24); // rotor-3 inital position
+inline const     Eigen::Vector3d r4_init  = Eigen::Vector3d( 0.24,  0.24, -0.24); // rotor-4 inital position
+
+inline constexpr double MPC_OFF_TIME_CONSTANT = 0.8; // [sec] each arm goes to initial position when MPC-off or Solve-failed
+inline const     double GOES_2_ZERO_A         = std::exp(-CTRL_DT / MPC_OFF_TIME_CONSTANT); // not a tunable parameter
+inline const     double GOES_2_ZERO_B         = 1.0 - GOES_2_ZERO_A;                        // not a tunable parameter
 
 // ===== CoM estimating gain =====
-inline constexpr double COM_OFF_X = 0.0; // [m]
-inline constexpr double COM_OFF_Y = 0.0; // [m]
+inline constexpr double COM_OFF_X   = 0.0; // [m]
+inline constexpr double COM_OFF_Y   = 0.0; // [m]
 inline constexpr double COT_2_COM_X = 0.6431;
 inline constexpr double COT_2_COM_Y = 0.6431;
 
 // ===== MPC parameters  =====
 inline constexpr std::chrono::steady_clock::duration MPC_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::microseconds(5000)); // 200Hz
 
-inline constexpr double COT_DELAY_TAU = 0.2; // MuJoCo actuator delay [sec]
-inline const double COT_DELAY_ALPHA   = std::exp(-CTRL_DT / COT_DELAY_TAU); // this is not tunable
-inline const double COT_DELAY_BETA    = 1.0 - COT_DELAY_ALPHA; // this is not tunable
+inline constexpr double COT_DELAY_TAU   = 0.2; // MuJoCo actuator delay [sec]
+inline const     double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); // not a tunable parameter
+inline const     double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;              // not a tunable parameter
 
 inline constexpr double      MPC_STEP_DT = 1.0 / 400.0; // This value must be same as >> DT << on params.py
 inline constexpr std::size_t N_STEPS_REQ = 40; // This value must be less than >> N << on params.py
 inline constexpr std::size_t MPC_NX      = 25; // This value must be same as >> self.yes_cot_nx << on solver.py
-inline constexpr std::size_t MPC_NU      = 11;  // This value must be same as >> self.yes_cot_nu << on solver.py
+inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.yes_cot_nu << on solver.py
 inline constexpr std::size_t MPC_NP      = 13; // This value must be same as >> self.yes_cot_np << on solver.py
 inline constexpr std::chrono::steady_clock::duration MPC_TIMEOUT_DURATUION = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(static_cast<double>(N_STEPS_REQ-1) * MPC_STEP_DT));
 
