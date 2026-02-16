@@ -45,13 +45,11 @@ struct Command {
   double tauz_bar  = 0.0;                               // current yaw thrust torque [N.m] (Sequential control allocation)
   // These can only be changed by MRG
   Eigen::Vector3d d_theta = Eigen::Vector3d::Zero();    // desired delta theta [rad]
-  Eigen::Vector3d r1 = Eigen::Vector3d( 0.24, -0.24, -0.24);  // desired rotor1 position [m], z-element is not updated
-  Eigen::Vector3d r2 = Eigen::Vector3d(-0.24, -0.24, -0.24);  // desired rotor2 position [m], z-element is not updated
-  Eigen::Vector3d r3 = Eigen::Vector3d(-0.24,  0.24, -0.24);  // desired rotor3 position [m], z-element is not updated
-  Eigen::Vector3d r4 = Eigen::Vector3d( 0.24,  0.24, -0.24);  // desired rotor4 position [m], z-element is not updated
+  Eigen::Vector3d r1 = Eigen::Vector3d::Zero();         // desired rotor1 position [m], z-element is not updated
+  Eigen::Vector3d r2 = Eigen::Vector3d::Zero();         // desired rotor2 position [m], z-element is not updated
+  Eigen::Vector3d r3 = Eigen::Vector3d::Zero();         // desired rotor3 position [m], z-element is not updated
+  Eigen::Vector3d r4 = Eigen::Vector3d::Zero();         // desired rotor4 position [m], z-element is not updated
 };
-
-static inline constexpr double inv_sqrt2 = 0.7071067811865474617150084668537601828575;  // 1/sqrt(2)
 
 static inline Eigen::Vector3d fig8_point(double t_sec){
   // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
@@ -341,6 +339,130 @@ static inline void FK(const double q[20], Eigen::Vector3d& bpcot, Eigen::Vector3
     bpcot += *(bparm[i]);
   }
   bpcot *= 0.25;
+}
+
+static inline void workspace_guard(Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
+  constexpr double sign_x[4] = {+1.0, -1.0, -1.0, +1.0};
+  constexpr double sign_y[4] = {-1.0, -1.0, +1.0, +1.0};
+  constexpr double Eps = 1e-12;
+
+  Eigen::Vector3d* r[4] = {&r1, &r2, &r3, &r4};
+
+  // A few iterations to resolve "workspace <-> collision" coupling
+  for (int it = 0; it < 3; ++it) {
+    // 1. Workspace guard: sign + radial
+    for (int i = 0; i < 4; ++i) {
+      double dx = (*r[i]).x() - param::B2BASE_X[i];
+      double dy = (*r[i]).y() - param::B2BASE_Y[i];
+
+      // Sign clamp
+      if (sign_x[i] > 0.0) { if (dx < 0.0) dx = 0.0; }
+      else { if (dx > 0.0) dx = 0.0; }
+
+      if (sign_y[i] > 0.0) { if (dy < 0.0) dy = 0.0; }
+      else { if (dy > 0.0) dy = 0.0; }
+
+      // Radius clamp
+      double n2 = dx*dx + dy*dy;
+      if (n2 < Eps) { // If vector collapsed to ~0, inject a valid direction in the correct quadrant
+        dx = sign_x[i] * param::MIN_STRETCH * inv_sqrt2;
+        dy = sign_y[i] * param::MIN_STRETCH * inv_sqrt2;
+        n2 = dx*dx + dy*dy;
+      }
+
+      if (n2 < param::SQ_MIN_STRETCH || n2 > param::SQ_MAX_STRETCH) {
+        const double n = std::sqrt(n2);
+        const double target = (n2 < param::SQ_MIN_STRETCH) ? param::MIN_STRETCH : param::MAX_STRETCH;
+        const double s = target / n;
+        dx *= s;
+        dy *= s;
+      }
+
+      (*r[i]).x() = param::B2BASE_X[i] + dx;
+      (*r[i]).y() = param::B2BASE_Y[i] + dy;
+    }
+
+    // 2. Rotor collision guard: move rotor along the line to satisfy distance
+    {
+      // Pair (0,1): move r2
+      double dx = r2.x() - r1.x();
+      double dy = r2.y() - r1.y();
+      double dist2 = dx*dx + dy*dy;
+      if (dist2 < param::SQ_ROTOR_DIAMETER) {
+        if (dist2 < Eps) { dx = 1e-6; dy = 0.0; dist2 = dx*dx + dy*dy; }
+        const double dist = std::sqrt(dist2);
+        const double s = param::ROTOR_DIAMETER / dist;
+        r2.x() = r1.x() + dx * s;
+        r2.y() = r1.y() + dy * s;
+      }
+
+      // Pair (1,2): move r3
+      dx = r3.x() - r2.x();
+      dy = r3.y() - r2.y();
+      dist2 = dx*dx + dy*dy;
+      if (dist2 < param::SQ_ROTOR_DIAMETER) {
+        if (dist2 < Eps) { dx = 0.0; dy = 1e-6; dist2 = dx*dx + dy*dy; }
+        const double dist = std::sqrt(dist2);
+        const double s = param::ROTOR_DIAMETER / dist;
+        r3.x() = r2.x() + dx * s;
+        r3.y() = r2.y() + dy * s;
+      }
+
+      // Pair (2,3): move r4
+      dx = r4.x() - r3.x();
+      dy = r4.y() - r3.y();
+      dist2 = dx*dx + dy*dy;
+      if (dist2 < param::SQ_ROTOR_DIAMETER) {
+        if (dist2 < Eps) { dx = -1e-6; dy = 0.0; dist2 = dx*dx + dy*dy; }
+        const double dist = std::sqrt(dist2);
+        const double s = param::ROTOR_DIAMETER / dist;
+        r4.x() = r3.x() + dx * s;
+        r4.y() = r3.y() + dy * s;
+      }
+
+      // Pair (3,0): move r1
+      dx = r1.x() - r4.x();
+      dy = r1.y() - r4.y();
+      dist2 = dx*dx + dy*dy;
+      if (dist2 < param::SQ_ROTOR_DIAMETER) {
+        if (dist2 < Eps) { dx = 0.0; dy = -1e-6; dist2 = dx*dx + dy*dy; }
+        const double dist = std::sqrt(dist2);
+        const double s = param::ROTOR_DIAMETER / dist;
+        r1.x() = r4.x() + dx * s;
+        r1.y() = r4.y() + dy * s;
+      }
+    }
+  }
+
+  // Final pass: ensure workspace constraints are satisfied after the last collision correction.
+  for (int i = 0; i < 4; ++i) {
+    double dx = (*r[i]).x() - param::B2BASE_X[i];
+    double dy = (*r[i]).y() - param::B2BASE_Y[i];
+
+    if (sign_x[i] > 0.0) { if (dx < 0.0) dx = 0.0; }
+    else { if (dx > 0.0) dx = 0.0; }
+
+    if (sign_y[i] > 0.0) { if (dy < 0.0) dy = 0.0; }
+    else { if (dy > 0.0) dy = 0.0; }
+
+    double n2 = dx*dx + dy*dy;
+    if (n2 < Eps) {
+      dx = sign_x[i] * param::MIN_STRETCH * inv_sqrt2;
+      dy = sign_y[i] * param::MIN_STRETCH * inv_sqrt2;
+      n2 = dx*dx + dy*dy;
+    }
+
+    if (n2 < param::SQ_MIN_STRETCH || n2 > param::SQ_MAX_STRETCH) {
+      const double n = std::sqrt(n2);
+      const double target = (n2 < param::SQ_MIN_STRETCH) ? param::MIN_STRETCH : param::MAX_STRETCH;
+      const double s = target / n;
+      dx *= s;
+      dy *= s;
+    }
+
+    (*r[i]).x() = param::B2BASE_X[i] + dx;
+    (*r[i]).y() = param::B2BASE_Y[i] + dy;
+  }
 }
 
 static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[20], const Eigen::Vector3d& Pc, Eigen::Vector4d& C1_des, Eigen::Vector4d& C2_des) {

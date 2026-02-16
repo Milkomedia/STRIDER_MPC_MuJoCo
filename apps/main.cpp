@@ -112,6 +112,10 @@ int main() {
     Phase   phase = Phase::GAC_FLIGHT;
     State   s{};
     Command cmd{};
+    cmd.r1 = param::r1_init;
+    cmd.r2 = param::r2_init;
+    cmd.r3 = param::r3_init;
+    cmd.r4 = param::r4_init;
     Eigen::Vector3d prev_omega = Eigen::Vector3d::Zero();
     double prev_elapsed_double = 0.0;
 
@@ -243,22 +247,23 @@ int main() {
           cmd.r2(0) = l_mpc_output.u_opt(4, idx); cmd.r2(1) = l_mpc_output.u_opt(8, idx);
           cmd.r3(0) = l_mpc_output.u_opt(5, idx); cmd.r3(1) = l_mpc_output.u_opt(9, idx);
           cmd.r4(0) = l_mpc_output.u_opt(6, idx); cmd.r4(1) = l_mpc_output.u_opt(10, idx);
+          workspace_guard(cmd.r1, cmd.r2, cmd.r3, cmd.r4);
         }
         else { // solve failed timeout
           cmd.d_theta *= 0.995;
-          cmd.r1(0) = 0.9995*cmd.r1(0) + 0.0005* 0.24; cmd.r1(1)= 0.9995*cmd.r1(1) + 0.0005*-0.24;
-          cmd.r2(0) = 0.9995*cmd.r2(0) + 0.0005*-0.24; cmd.r2(1)= 0.9995*cmd.r2(1) + 0.0005*-0.24;
-          cmd.r3(0) = 0.9995*cmd.r3(0) + 0.0005*-0.24; cmd.r3(1)= 0.9995*cmd.r3(1) + 0.0005* 0.24;
-          cmd.r4(0) = 0.9995*cmd.r4(0) + 0.0005* 0.24; cmd.r4(1)= 0.9995*cmd.r4(1) + 0.0005* 0.24;
+          cmd.r1 = 0.995*cmd.r1 + 0.005*param::r1_init;
+          cmd.r2 = 0.995*cmd.r2 + 0.005*param::r2_init;
+          cmd.r3 = 0.995*cmd.r3 + 0.005*param::r3_init;
+          cmd.r4 = 0.995*cmd.r4 + 0.005*param::r4_init;
           l_mpc_output.u_rate.setZero();
         }
       }
       else { // only GAC flight
         cmd.d_theta *= 0.995;
-        cmd.r1(0) = 0.9995*cmd.r1(0) + 0.0005* 0.24; cmd.r1(1)= 0.9995*cmd.r1(1) + 0.0005*-0.24;
-        cmd.r2(0) = 0.9995*cmd.r2(0) + 0.0005*-0.24; cmd.r2(1)= 0.9995*cmd.r2(1) + 0.0005*-0.24;
-        cmd.r3(0) = 0.9995*cmd.r3(0) + 0.0005*-0.24; cmd.r3(1)= 0.9995*cmd.r3(1) + 0.0005* 0.24;
-        cmd.r4(0) = 0.9995*cmd.r4(0) + 0.0005* 0.24; cmd.r4(1)= 0.9995*cmd.r4(1) + 0.0005* 0.24;
+        cmd.r1 = 0.995*cmd.r1 + 0.005*param::r1_init;
+        cmd.r2 = 0.995*cmd.r2 + 0.005*param::r2_init;
+        cmd.r3 = 0.995*cmd.r3 + 0.005*param::r3_init;
+        cmd.r4 = 0.995*cmd.r4 + 0.005*param::r4_init;
         l_mpc_output.u_rate.setZero();
       }
 
