@@ -340,15 +340,15 @@ int main() {
       const Eigen::Map<const Eigen::Vector4d> ROTOR_DIR(param::rotor_dir);
       const Eigen::Vector4d Tau = (param::PWM_ZETA * F.array() * ROTOR_DIR.array()).matrix();
 
-      // --- thruster force&torque smoothing ---
-      smoothed_F   = 0.882 * smoothed_F   + 0.118 * F;
-      smoothed_Tau = 0.882 * smoothed_Tau + 0.118 * Tau;
+      // --- thruster force&torque smoothing [25ms-timeconstant] ---
+      smoothed_F   = 0.9 * smoothed_F   + 0.1 * F;
+      smoothed_Tau = 0.9 * smoothed_Tau + 0.1 * Tau;
 
-      // --- joint actuator delay ---
+      // --- joint actuator delay [2.5ms one-step delay] ---
       for (uint8_t i=0; i<20; ++i) {smoothed_q_d[i] =  param::COT_DELAY_ALPHA * smoothed_q_d[i] + param::COT_DELAY_BETA * delayed_q_d[i];}
 
-      // // --- HW thrust constraint ---
-      // if (elapsed_double >= 10.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > 20.83) {smoothed_F(i) = 20.83;}}} // hovering is 80%
+      // --- MAX thrust constraint ---
+      if (elapsed_double >= 10.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > param::SATURATION_THRUST) {smoothed_F(i) = param::SATURATION_THRUST;}}}
 
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;

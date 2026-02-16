@@ -38,14 +38,16 @@ inline constexpr double kW[3] = { 5.0,  5.0,  2.5}; // angular Velocity gain [ro
 // Integral Parameters
 inline constexpr double kI  = 0.0;  /**< Attitude integral gain for roll and pitch */
 inline constexpr double kyI = 0.0;  /**< Attitude integral gain for yaw */
-inline constexpr double kIX = 1.5;  /**< Position integral gains */
+inline constexpr double kIX = 0.3;  /**< Position integral gains */
 
 // ===== UAV Parameters =====
 inline constexpr double J[9] = {0.27, 0.00, 0.00,
                                 0.00, 0.77, 0.00,
                                 0.00, 0.00, 1.04};
-inline constexpr double M  = 6.6;
+inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
+
+inline constexpr double SATURATION_THRUST  = (0.25*M*G)/0.8;
 
 // Allocation parameters
 inline constexpr double SERVO_DELAY_ALPHA = 0.093158;  // yaw trimming
