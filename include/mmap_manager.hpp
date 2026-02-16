@@ -51,7 +51,7 @@ struct LogData {
   float f_thrst_con[4] = {0.0f}; // constrain-applied per-rotor thrust command [N]
 
   float tau_off[2]     = {0.0f}; // cot&com-offset torque [N.m] (x,y)
-  float tau_thrust[2]  = {0.0f}; // thrust-diff torque [N.m] (x,y)
+  float tau_thrust[3]  = {0.0f}; // thrust-diff torque [N.m] (x,y,z)
 
   float r_rotor1[2]   = {0.0f}; // current rotor-1 position [m] (x,y)
   float r_rotor2[2]   = {0.0f}; // current rotor-2 position [m] (x,y)
@@ -75,7 +75,7 @@ struct LogData {
 #pragma pack(pop)
 
 // Packed size must match Python reader LOGDATA_SIZE.
-static_assert(sizeof(LogData) == 493, "LogData size changed. Update Python reader offsets/sizes.");
+static_assert(sizeof(LogData) == 497, "LogData size changed. Update Python reader offsets/sizes.");
 
 // -----------------------------
 // MMap header + ring buffer slot

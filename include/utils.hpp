@@ -573,8 +573,8 @@ static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& 
   else {F1234 = (A_d.transpose()*A_d + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A_d.transpose()*Wrench);}
 }
 
-static inline Eigen::Vector2d Forward_Allocate(const Eigen::Vector4d& F1234, const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& Pc) {
-  Eigen::Matrix<double, 2, 4> A;
+static inline Eigen::Vector3d Forward_Allocate(const Eigen::Vector4d& F1234, const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& Pc) {
+  Eigen::Matrix<double, 3, 4> A;
   A(0,0) = -r1(1) + Pc(1);
   A(0,1) = -r2(1) + Pc(1);
   A(0,2) = -r3(1) + Pc(1);
@@ -583,6 +583,10 @@ static inline Eigen::Vector2d Forward_Allocate(const Eigen::Vector4d& F1234, con
   A(1,1) =  r2(0) - Pc(0);
   A(1,2) =  r3(0) - Pc(0);
   A(1,3) =  r4(0) - Pc(0);
+  A(2,0) = -param::PWM_ZETA;
+  A(2,1) =  param::PWM_ZETA;
+  A(2,2) = -param::PWM_ZETA;
+  A(2,3) =  param::PWM_ZETA;
   return A * F1234;
 }
 

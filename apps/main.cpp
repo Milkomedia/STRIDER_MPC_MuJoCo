@@ -126,6 +126,7 @@ int main() {
     l_mpc_output.u_opt.setZero();
     l_mpc_output.t = std::chrono::steady_clock::time_point::max();
     bool prev_mpc_on = false; // for ON/OFF edge detection
+    bool next_use_cot = true;
 
     // --- noise injection ---
     static NOISE::nState noise_state;
@@ -176,8 +177,9 @@ int main() {
         std::lock_guard<std::mutex> lk(mpc_mtx);
         mpc_reset_locked(mpc_key);
         if (mpc_on) {
-          if (phase == Phase::MRG_ACTIVE_COT) {phase = Phase::MRG_FLIGHT; std::printf("MPC->NO-COT\n");}
-          else {phase = Phase::MRG_ACTIVE_COT; std::printf("MPC->YES-COT\n");}
+          if (next_use_cot) {phase = Phase::MRG_ACTIVE_COT; std::printf("MPC->YES-COT\n");}
+          else {phase = Phase::MRG_FLIGHT; std::printf("MPC->NO-COT\n");}
+          next_use_cot = !next_use_cot;
         }
         else {phase = Phase::GAC_FLIGHT;}
         prev_mpc_on = mpc_on;
@@ -453,9 +455,10 @@ int main() {
           ld.tau_off[1] = static_cast<float>(tau_off(1));
         }
         {
-          const Eigen::Vector2d tau_thrust = Forward_Allocate(smoothed_F, s.r1, s.r2, s.r3, s.r4, s.r_com);
+          const Eigen::Vector3d tau_thrust = Forward_Allocate(smoothed_F, s.r1, s.r2, s.r3, s.r4, s.r_com);
           ld.tau_thrust[0] = static_cast<float>(tau_thrust(0));
           ld.tau_thrust[1] = static_cast<float>(tau_thrust(1));
+          ld.tau_thrust[2] = static_cast<float>(tau_thrust(2));
         }
 
         ld.r_rotor1[0] = static_cast<float>(s.r1(0));
