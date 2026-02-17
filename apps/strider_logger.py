@@ -298,9 +298,6 @@ class ManualRangeSlider(QtWidgets.QWidget):
 
     if self._drag_mode == "mid":
       dx = int(x_now - self._press_x)
-      # Convert pixel delta -> value delta using endpoints
-      x0 = self._x_from_val(self._press_lo)
-      x1 = self._x_from_val(self._press_hi)
       span = int(self._press_hi - self._press_lo)
 
       # If span is 0 or mapping degenerate, fallback to direct x->val shift
@@ -334,11 +331,11 @@ _S_F32  = struct.Struct("<f")
 _S_FF   = struct.Struct("<ff")
 _S_FFF  = struct.Struct("<fff")
 _S_FFFF = struct.Struct("<ffff")
+_S_F20  = struct.Struct("<" + ("f" * 20))
 _S_I32  = struct.Struct("<i")
-_S_U8   = struct.Struct("<B")
 
-_RAD2DEG = 180.0 / np.pi
-_M2MM = 1000.0
+_RAD2DEG = np.float32(180.0 / np.pi)
+_M2MM    = np.float32(1000.0)
 
 # -----------------------------
 # Must match C++ mmap_manager.hpp
@@ -482,7 +479,7 @@ class MMapReader:
       seq_a = self._u64(slot_off + 0)
       if seq_a & 1: continue
 
-      # NOTE: zero-copy view (avoid allocating/copying 493 bytes per slot)
+      # NOTE: zero-copy view (avoid allocating/copying 497 bytes per slot)
       dbuf = self._mv[slot_off + 8: slot_off + 8 + LOGDATA_SIZE]
 
       seq_b = self._u64(slot_off + 0)
@@ -516,6 +513,19 @@ class MMapReader:
 
       out_ch["r_cot"][i, :] = _S_FF.unpack_from(dbuf, OFF_R_COT)
       out_ch["r_cot_d"][i, :] = _S_FF.unpack_from(dbuf, OFF_R_COT_D)
+
+      out_ch["r_rotor1"][i, :]   = _S_FF.unpack_from(dbuf, OFF_R_ROTOR1)
+      out_ch["r_rotor2"][i, :]   = _S_FF.unpack_from(dbuf, OFF_R_ROTOR2)
+      out_ch["r_rotor3"][i, :]   = _S_FF.unpack_from(dbuf, OFF_R_ROTOR3)
+      out_ch["r_rotor4"][i, :]   = _S_FF.unpack_from(dbuf, OFF_R_ROTOR4)
+      out_ch["r_rotor1_d"][i, :] = _S_FF.unpack_from(dbuf, OFF_R_ROTOR1_D)
+      out_ch["r_rotor2_d"][i, :] = _S_FF.unpack_from(dbuf, OFF_R_ROTOR2_D)
+      out_ch["r_rotor3_d"][i, :] = _S_FF.unpack_from(dbuf, OFF_R_ROTOR3_D)
+      out_ch["r_rotor4_d"][i, :] = _S_FF.unpack_from(dbuf, OFF_R_ROTOR4_D)
+
+      # q[20], q_cmd[20] (stored as [arm1(5), arm2(5), arm3(5), arm4(5)])
+      out_ch["q"][i, :]     = np.frombuffer(dbuf, dtype="<f4", count=20, offset=OFF_Q)
+      out_ch["q_cmd"][i, :] = np.frombuffer(dbuf, dtype="<f4", count=20, offset=OFF_Q_CMD)
 
       out_ch["solve_ms"][i] = _S_F32.unpack_from(dbuf, OFF_SOLVE_MS)[0]
       out_ch["solve_status"][i] = _S_I32.unpack_from(dbuf, OFF_SOLVE_STATUS)[0]
@@ -579,6 +589,16 @@ class MMapReader:
       "f_tot": np.empty((n,), dtype=np.float32),
       "r_cot": np.empty((n, 2), dtype=np.float32),
       "r_cot_d": np.empty((n, 2), dtype=np.float32),
+      "r_rotor1": np.empty((n, 2), dtype=np.float32),
+      "r_rotor2": np.empty((n, 2), dtype=np.float32),
+      "r_rotor3": np.empty((n, 2), dtype=np.float32),
+      "r_rotor4": np.empty((n, 2), dtype=np.float32),
+      "r_rotor1_d": np.empty((n, 2), dtype=np.float32),
+      "r_rotor2_d": np.empty((n, 2), dtype=np.float32),
+      "r_rotor3_d": np.empty((n, 2), dtype=np.float32),
+      "r_rotor4_d": np.empty((n, 2), dtype=np.float32),
+      "q": np.empty((n, 20), dtype=np.float32),
+      "q_cmd": np.empty((n, 20), dtype=np.float32),
       "solve_ms": np.empty((n,), dtype=np.float32),
       "solve_status": np.empty((n,), dtype=np.int32),
       "phase": np.empty((n,), dtype=np.uint8),
@@ -617,8 +637,8 @@ class LogRecorder:
   """
   Records all samples during the Python program lifetime by polling the ring buffer.
   Saves to:
-    <log_dir>/npz/log_YYYYmmdd_HHMMSS.npz
-    <log_dir>/mmap/snapshot_YYYYmmdd_HHMMSS.mmap
+    <log_dir>/npz/mmdd_HHMMSS.npz
+    <log_dir>/mmap/mmdd_HHMMSS.mmap
   """
   def __init__(self, mmap_path: str, log_dir: Path):
     self.mmap_path = str(mmap_path)
@@ -843,6 +863,11 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._replay_full_tt: Optional[np.ndarray] = None  # t - t0 (sec)
     self._replay_time_base: Optional[float] = None     # t0
     self._replay_wc_end: int = 0
+    self.glw4_joint: Optional[pg.GraphicsLayoutWidget] = None
+    self.glw4_rotor: Optional[pg.GraphicsLayoutWidget] = None
+    self._xy_map_plot: Optional[pg.PlotItem] = None
+    self._xy_circles: Dict[int, QtWidgets.QGraphicsEllipseItem] = {}
+    self._xy_border_items: List[pg.PlotDataItem] = []
 
     # Prevent feedback loops (slider <-> view range)
     self._block_slider_changed = False
@@ -1096,6 +1121,28 @@ class LoggerWindow(QtWidgets.QMainWindow):
     tab3_lay.addWidget(self.glw3, 1)
     self.tabs.addTab(tab3, "att")
 
+    # Tab 4
+    tab4 = QtWidgets.QWidget()
+    tab4_lay = QtWidgets.QVBoxLayout(tab4)
+    tab4_lay.setContentsMargins(0, 0, 0, 0)
+    tab4_lay.setSpacing(0)
+
+    split = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+    split.setContentsMargins(0, 0, 0, 0)
+    tab4_lay.addWidget(split, 1)
+
+    self.glw4_joint = pg.GraphicsLayoutWidget()
+    self.glw4_rotor = pg.GraphicsLayoutWidget()
+    split.addWidget(self.glw4_joint)
+    split.addWidget(self.glw4_rotor)
+    try:
+      split.setStretchFactor(0, 1)
+      split.setStretchFactor(1, 1)
+    except Exception:
+      pass
+
+    self.tabs.addTab(tab4, "arm")
+
     # Backward-compat alias: existing code continues to use glw (points to Plot 1)
     self.glw = self.glw1
 
@@ -1127,6 +1174,12 @@ class LoggerWindow(QtWidgets.QMainWindow):
     pen_rcot_y_cmd = _mk_pen("dash",  width=2, color="b")  # blue dashed
     pen_rcot_y_act = _mk_pen("solid", width=2, color="b")  # blue solid
     rotor_colors = ["b", "g", "m", "c"]
+    pen_q_cmd = _mk_pen("dash",  width=2, color="r")
+    pen_q_act = _mk_pen("solid", width=2, color="b")
+    pen_rx_cmd = _mk_pen("dash",  width=2, color="r")
+    pen_rx_act = _mk_pen("solid", width=2, color="r")
+    pen_ry_cmd = _mk_pen("dash",  width=2, color="b")
+    pen_ry_act = _mk_pen("solid", width=2, color="b")
 
     # Helper: create plot and link X to master
     def _mk_plot(glw: pg.GraphicsLayoutWidget, row: int, col: int, title: str, add_legend: bool = True, y_range: Optional[Tuple[float, float]] = None) -> pg.PlotItem:
@@ -1137,7 +1190,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
         except Exception: pass
       p = glw.addPlot(row=row, col=col, title=title, viewBox=vb)
       _style(p)
-      p.setLabel("bottom", "t", units="sec")
+      p.showLabel("bottom", False)
       p.enableAutoRange(axis="y", enable=False)
       if y_range is not None:
         p.setYRange(float(y_range[0]), float(y_range[1]), padding=0.0)
@@ -1202,13 +1255,13 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._curves["tau_z_des"]    = p3c3.plot(pen=pen_des,   name="des")
 
     # ========== 1-Row 4: f1234 / tilt / f_total ==========
-    p4c1 = _mk_plot(self.glw1, 3, 0,  "r_cot [mm]", y_range=(-50., 50.))
+    p4c1 = _mk_plot(self.glw1, 3, 0,  "r_cot [mm]", y_range=(-120., 120.))
     p4c2 = _mk_plot(self.glw1, 3, 1, "f_thrst [N]", y_range=(10. , 30.))
     p4c3 = _mk_plot(self.glw1, 3, 2, "f_total [N]", y_range=(40., 100.))
 
-    self._curves["rcot_x_cmd"] = p4c1.plot(pen=pen_rcot_x_cmd, name="MRG cmd x")
+    self._curves["rcot_x_cmd"] = p4c1.plot(pen=pen_rcot_x_cmd, name="cmd x")
     self._curves["rcot_x_act"] = p4c1.plot(pen=pen_rcot_x_act, name="act x")
-    self._curves["rcot_y_cmd"] = p4c1.plot(pen=pen_rcot_y_cmd, name="MRG cmd y")
+    self._curves["rcot_y_cmd"] = p4c1.plot(pen=pen_rcot_y_cmd, name="cmd y")
     self._curves["rcot_y_act"] = p4c1.plot(pen=pen_rcot_y_act, name="act y")
 
     for i in range(4):
@@ -1223,7 +1276,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._phase_plot_t1 = p5c1
     self._phase_plot_t1.setLabel("left", "phase")
     self._phase_plot_t1.getAxis("left").setTicks([[(i, str(int(code))) for i, code in enumerate(self._phase_order)]])
-    p5c2 = _mk_plot(self.glw1, 4, 1, "solve_ms [ms]", y_range=(0., 5.))
+    p5c2 = _mk_plot(self.glw1, 4, 1, "solve_ms [ms]", y_range=(0., 40.))
     p5c3 = _mk_plot(self.glw1, 4, 2, "solve_status", add_legend=True)
 
     self._curves["solve_ms"] = p5c2.plot(pen=pen_act, name="solve_ms")
@@ -1403,6 +1456,149 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._phase_plot_t3.setLabel("left", "phase")
     self._phase_plot_t3.getAxis("left").setTicks([[(i, str(int(code))) for i, code in enumerate(self._phase_order)]])
 
+    # ========== 4-Tab (arm) ==========
+    joint_y_ranges = {
+      1: (-30.0,  30.0),
+      2: (0.0,  50.0),
+      3: (30.0,  100.0),
+      4: (-45.0,  45.0),
+      5: (-15.0, 15.0),
+    }
+    default_yr = (-180.0, 180.0)
+    for j in range(5):
+      yr = joint_y_ranges.get(j+1, default_yr)
+      for a in range(4):
+        title = f"a{a+1} j{j+1} [deg]"
+        pj = _mk_plot(self.glw4_joint, j, a, title, add_legend=False, y_range=yr)
+        k_act = f"arm{a+1}_j{j+1}_act"
+        k_cmd = f"arm{a+1}_j{j+1}_cmd"
+        self._curves[k_cmd] = pj.plot(pen=pen_q_cmd)
+        self._curves[k_act] = pj.plot(pen=pen_q_act)
+
+    if self.glw4_rotor is not None:
+      # ---------------------------------------------------------
+      # XY map (left): horizontal=y[mm], vertical=x[mm]
+      # - rotor1..4 act: red dot
+      # - rotor1..4 cmd: translucent blue dot
+      # - rcot act: orange dot
+      # - rcot cmd: translucent skyblue dot
+      # - rotor1..4 act trajectory: translucent red line+dot
+      # NOTE:
+      # - Live: trajectory uses the currently rendered window (last ring window).
+      # - Replay: _apply_replay_window slices to slider window, so trajectory matches it automatically.
+      # ---------------------------------------------------------
+      pxy = self.glw4_rotor.addPlot(row=0, col=0, rowspan=2, colspan=1, title="rotor XY map [mm]")
+      _style(pxy)
+      pxy.setLabel("bottom", "y [mm]")
+      pxy.setLabel("left", "x [mm]")
+      pxy.showLabel("bottom", True)
+      pxy.enableAutoRange(axis="x", enable=False)
+      pxy.enableAutoRange(axis="y", enable=False)
+      pxy.setXRange(-400.0, 400.0, padding=0.0)
+      pxy.setYRange(-400.0, 400.0, padding=0.0)
+      try: pxy.setAspectLocked(True)
+      except Exception: pass
+      try: pxy.hideButtons()
+      except Exception: pass
+      self._xy_map_plot = pxy
+
+      def _arc_xy(cx: float, cy: float, r: float, a0_deg: float, a1_deg: float, n: int = 64):
+        th = np.linspace(np.deg2rad(a0_deg), np.deg2rad(a1_deg), int(max(8, n)), dtype=np.float32)
+        xs = (cx + r * np.cos(th)).astype(np.float32, copy=False)
+        ys = (cy + r * np.sin(th)).astype(np.float32, copy=False)
+        return xs, ys
+
+      def _add_border_segment(x: np.ndarray, y: np.ndarray, pen: pg.mkPen, z: float = 8.0):
+        it = pxy.plot(x, y, pen=pen)
+        try: it.setZValue(z)
+        except Exception: pass
+        self._xy_border_items.append(it)
+
+      inv_sqrt2 = 1.0 / math.sqrt(2.0)
+      B2BASE_X = [ 0.12*inv_sqrt2, -0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2 ]
+      B2BASE_Y = [-0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2,  0.12*inv_sqrt2 ]
+
+      R_IN  = 150.6
+      R_OUT = 292.5
+
+      pen_border = pg.mkPen(color=(0, 120, 255, 255), width=2)
+
+      for i in range(4):
+        # (x,y)[m] -> (x,y)[mm]
+        x_mm = float(B2BASE_X[i]) * 1000.0
+        y_mm = float(B2BASE_Y[i]) * 1000.0
+        # plot coords: X= y_mm (horizontal), Y= x_mm (vertical)
+        cx = y_mm
+        cy = x_mm
+
+        # Select the 90deg quadrant by center sign in *plot* coords
+        if   (cx >= 0.0) and (cy >= 0.0): a0, a1 = 0.0,   90.0
+        elif (cx <  0.0) and (cy >= 0.0): a0, a1 = 90.0,  180.0
+        elif (cx <  0.0) and (cy <  0.0): a0, a1 = 180.0, 270.0
+        else:                              a0, a1 = 270.0, 360.0
+
+        # Outer quarter-arc
+        xo, yo = _arc_xy(cx, cy, R_OUT, a0, a1, n=80)
+        _add_border_segment(xo, yo, pen_border, z=8.0)
+
+        # Inner quarter-arc
+        xi, yi = _arc_xy(cx, cy, R_IN, a0, a1, n=80)
+        _add_border_segment(xi, yi, pen_border, z=8.0)
+
+        # Two straight segments connecting arc endpoints (a0 and a1)
+        a0r = math.radians(a0)
+        a1r = math.radians(a1)
+        # at a0
+        x0o = cx + R_OUT * math.cos(a0r)
+        y0o = cy + R_OUT * math.sin(a0r)
+        x0i = cx + R_IN  * math.cos(a0r)
+        y0i = cy + R_IN  * math.sin(a0r)
+        _add_border_segment(np.asarray([x0i, x0o], dtype=np.float32), np.asarray([y0i, y0o], dtype=np.float32), pen_border, z=8.0)
+        # at a1
+        x1o = cx + R_OUT * math.cos(a1r)
+        y1o = cy + R_OUT * math.sin(a1r)
+        x1i = cx + R_IN  * math.cos(a1r)
+        y1i = cy + R_IN  * math.sin(a1r)
+        _add_border_segment(np.asarray([x1i, x1o], dtype=np.float32), np.asarray([y1i, y1o], dtype=np.float32), pen_border, z=8.0)
+
+      for i in range(4):
+        circ = QtWidgets.QGraphicsEllipseItem()
+        circ.setPen(QPen(QColor(0, 0, 0, 120), 1, QtCore.Qt.DashLine))
+        circ.setBrush(QBrush(QtCore.Qt.NoBrush))
+        circ.setZValue(5)
+        circ.setVisible(False)
+        pxy.addItem(circ)
+        self._xy_circles[i+1] = circ
+
+      # Curves for XY map
+      pen_traj = pg.mkPen(255, 0, 0, 120, width=1)          # translucent red
+      brush_traj = pg.mkBrush(255, 130, 0, 5)               # translucent orange dot
+      brush_act = pg.mkBrush(255, 0, 0, 255)                # red dot
+      brush_cmd = pg.mkBrush(0, 0, 255, 200)                # translucent blue dot
+
+      for i in range(4):
+        self._curves[f"xy_r{i+1}_traj"] = pxy.plot(pen=pen_traj, symbol="o", symbolSize=2, symbolBrush=brush_traj, symbolPen=None)
+        self._curves[f"xy_r{i+1}_act"]  = pxy.plot(pen=None, symbol="o", symbolSize=6, symbolBrush=brush_act, symbolPen=None)
+        self._curves[f"xy_r{i+1}_cmd"]  = pxy.plot(pen=None, symbol="o", symbolSize=4, symbolBrush=brush_cmd, symbolPen=None)
+      self._curves["xy_rcot_act"] = pxy.plot(pen=None, symbol="o", symbolSize=6, symbolBrush=brush_act, symbolPen=None)
+      self._curves["xy_rcot_cmd"] = pxy.plot(pen=None, symbol="o", symbolSize=4, symbolBrush=brush_cmd, symbolPen=None)
+
+      pr1 = _mk_plot(self.glw4_rotor, 0, 1, "rotor1 xy pos [mm]", add_legend=True, y_range=(-400., 400.))
+      pr4 = _mk_plot(self.glw4_rotor, 0, 2, "rotor4 xy pos [mm]", add_legend=True, y_range=(40., 440.))
+      pr2 = _mk_plot(self.glw4_rotor, 1, 1, "rotor2 xy pos [mm]", add_legend=True, y_range=(-440., -40.))
+      pr3 = _mk_plot(self.glw4_rotor, 1, 2, "rotor3 xy pos [mm]", add_legend=True, y_range=(-400., 400.))
+
+      def _add_rotor_curves(plot: pg.PlotItem, tag: str) -> None:
+        self._curves[f"{tag}_x_cmd"] = plot.plot(pen=pen_rx_cmd, name="x_cmd")
+        self._curves[f"{tag}_x_act"] = plot.plot(pen=pen_rx_act, name="x_act")
+        self._curves[f"{tag}_y_cmd"] = plot.plot(pen=pen_ry_cmd, name="y_cmd")
+        self._curves[f"{tag}_y_act"] = plot.plot(pen=pen_ry_act, name="y_act")
+
+      _add_rotor_curves(pr1, "r1")
+      _add_rotor_curves(pr2, "r2")
+      _add_rotor_curves(pr3, "r3")
+      _add_rotor_curves(pr4, "r4")
+
   def _update_plots(self, t: np.ndarray, ch: Dict[str, np.ndarray], wc: int) -> None:
     if t.size == 0:
       self.lbl_stat.setText("no data")
@@ -1427,6 +1623,8 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self.glw1.setUpdatesEnabled(False)
     self.glw2.setUpdatesEnabled(False)
     self.glw3.setUpdatesEnabled(False)
+    self.glw4_joint.setUpdatesEnabled(False)
+    self.glw4_rotor.setUpdatesEnabled(False)
     try:
       x = tt[sl]
 
@@ -1458,6 +1656,28 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
       r_cot_d_mm   = ch["r_cot_d"][sl, :] * _M2MM
       r_cot_act_mm = ch["r_cot"][sl, :] * _M2MM
+
+      q_act = ch.get("q", None)
+      q_cmd = ch.get("q_cmd", None)
+      if q_act is not None: q_act = q_act[sl, :] * _RAD2DEG
+      if q_cmd is not None: q_cmd = q_cmd[sl, :] * _RAD2DEG
+
+      r1 = ch.get("r_rotor1", None)
+      r2 = ch.get("r_rotor2", None)
+      r3 = ch.get("r_rotor3", None)
+      r4 = ch.get("r_rotor4", None)
+      r1d = ch.get("r_rotor1_d", None)
+      r2d = ch.get("r_rotor2_d", None)
+      r3d = ch.get("r_rotor3_d", None)
+      r4d = ch.get("r_rotor4_d", None)
+      if r1 is not None: r1 = r1[sl, :] * _M2MM
+      if r2 is not None: r2 = r2[sl, :] * _M2MM
+      if r3 is not None: r3 = r3[sl, :] * _M2MM
+      if r4 is not None: r4 = r4[sl, :] * _M2MM
+      if r1d is not None: r1d = r1d[sl, :] * _M2MM
+      if r2d is not None: r2d = r2d[sl, :] * _M2MM
+      if r3d is not None: r3d = r3d[sl, :] * _M2MM
+      if r4d is not None: r4d = r4d[sl, :] * _M2MM
 
       solve_ms     = ch["solve_ms"][sl]
       solve_status = ch["solve_status"][sl].astype(np.int32, copy=False)
@@ -1510,7 +1730,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
         k = f"tilt{i+1}"
         if k in self._curves: self._curves[k].setData(x, tilt_deg[:, i])
       self._curves["f_des"].setData(x, f_des)
-      self._curves["f_tot"].setData(x, f_thrst_con.sum(axis=1))
+      self._curves["f_tot"].setData(x, f_thrst_con.sum(axis=1), dtype=np.float32)
 
       # --- Row 5: r_cot / solve_ms / solve_status ---
       self._curves["rcot_x_cmd"].setData(x, r_cot_d_mm[:, 0])
@@ -1720,15 +1940,105 @@ class LoggerWindow(QtWidgets.QMainWindow):
       self._curves["t3_tau_z_reaction"].setData(x, tau_thrust[:, 2])
 
       self._curves["t3_f_des"].setData(x, f_des)
-      self._curves["t3_f_tot"].setData(x, f_thrst_con.sum(axis=1))
+      self._curves["t3_f_tot"].setData(x, f_thrst_con.sum(axis=1), dtype=np.float32)
       for i in range(4):
         k = f"t3_tilt{i+1}"
         if k in self._curves: self._curves[k].setData(x, tilt_deg[:, i])
+
+      # --- Tab 4 (arm): joints + r_rotor ---
+      # joints: 5 rows (joint 1..5), 4 cols (arm 1..4). q stored as [arm1, arm2, arm3, arm4] each 5.
+      if (q_act is not None) and (q_cmd is not None) and (q_act.shape[1] >= 20) and (q_cmd.shape[1] >= 20):
+        for a in range(4):
+          for j in range(5):
+            idx = int(5 * a + j)
+            k_act = f"arm{a+1}_j{j+1}_act"
+            k_cmd = f"arm{a+1}_j{j+1}_cmd"
+            if k_cmd in self._curves: self._curves[k_cmd].setData(x, q_cmd[:, idx])
+            if k_act in self._curves: self._curves[k_act].setData(x, q_act[:, idx])
+
+      # r_rotor plots (mm): each plot shows x/y for cmd/act
+      def _set_rotor(tag: str, act: Optional[np.ndarray], cmd: Optional[np.ndarray]) -> None:
+        if act is None or cmd is None: return
+        if act.shape[1] < 2 or cmd.shape[1] < 2: return
+        kx_c = f"{tag}_x_cmd"
+        kx_a = f"{tag}_x_act"
+        ky_c = f"{tag}_y_cmd"
+        ky_a = f"{tag}_y_act"
+        if kx_c in self._curves: self._curves[kx_c].setData(x, cmd[:, 0])
+        if kx_a in self._curves: self._curves[kx_a].setData(x, act[:, 0])
+        if ky_c in self._curves: self._curves[ky_c].setData(x, cmd[:, 1])
+        if ky_a in self._curves: self._curves[ky_a].setData(x, act[:, 1])
+
+      _set_rotor("r1", r1, r1d)
+      _set_rotor("r2", r2, r2d)
+      _set_rotor("r3", r3, r3d)
+      _set_rotor("r4", r4, r4d)
+
+      if self._xy_map_plot is not None:
+        def _set_point(key: str, xy: Optional[np.ndarray]) -> None:
+          it = self._curves.get(key, None)
+          if it is None: return
+          if xy is None or xy.size < 2 or xy.shape[1] < 2:
+            it.setData([], [])
+            return
+          x_mm = float(xy[-1, 0])
+          y_mm = float(xy[-1, 1])
+          if (not np.isfinite(x_mm)) or (not np.isfinite(y_mm)):
+            it.setData([], [])
+            return
+          # horizontal=y, vertical=x
+          it.setData([y_mm], [x_mm])
+
+        def _set_traj(key: str, xy: Optional[np.ndarray]) -> None:
+          it = self._curves.get(key, None)
+          if it is None: return
+          if xy is None or xy.ndim != 2 or xy.shape[1] < 2:
+            it.setData([], [])
+            return
+          xx = xy[:, 0].astype(np.float32, copy=False)  # x [mm]
+          yy = xy[:, 1].astype(np.float32, copy=False)  # y [mm]
+          ok = np.isfinite(xx) & np.isfinite(yy)
+          if not np.any(ok):
+            it.setData([], [])
+            return
+          # horizontal=y, vertical=x
+          it.setData(yy[ok], xx[ok])
+
+        def _set_circle(idx: int, xy: Optional[np.ndarray]) -> None:
+          it = self._xy_circles.get(idx, None)
+          if it is None: return
+          if xy is None or xy.size < 2 or xy.shape[1] < 2:
+            it.setVisible(False)
+            return
+          x_mm = float(xy[-1, 0])  # x [mm]
+          y_mm = float(xy[-1, 1])  # y [mm]
+          if (not np.isfinite(x_mm)) or (not np.isfinite(y_mm)):
+            it.setVisible(False)
+            return
+
+          r = 220.0  # radius [mm] (diameter 440mm)
+          # Plot coordinates: horizontal = y_mm, vertical = x_mm
+          it.setRect(y_mm - r, x_mm - r, 2.0 * r, 2.0 * r)
+          it.setVisible(True)
+
+        rot_act = [r1, r2, r3, r4]
+        rot_cmd = [r1d, r2d, r3d, r4d]
+        for i in range(4):
+          _set_traj(f"xy_r{i+1}_traj", rot_act[i])
+          _set_point(f"xy_r{i+1}_act", rot_act[i])
+          _set_point(f"xy_r{i+1}_cmd", rot_cmd[i])
+          _set_circle(i+1, rot_act[i])
+
+        # rcot: use latest sample (already in mm)
+        _set_point("xy_rcot_act", r_cot_act_mm)
+        _set_point("xy_rcot_cmd", r_cot_d_mm)
 
     finally:
       self.glw1.setUpdatesEnabled(True)
       self.glw2.setUpdatesEnabled(True)
       self.glw3.setUpdatesEnabled(True)
+      self.glw4_joint.setUpdatesEnabled(True)
+      self.glw4_rotor.setUpdatesEnabled(True)
 
   def _load_replay(self, replay_path: str) -> None:
     rp = Path(replay_path)
@@ -1764,6 +2074,16 @@ class LoggerWindow(QtWidgets.QMainWindow):
           "f_tot": data["f_tot"].astype(np.float32),
           "r_cot": data["r_cot"].astype(np.float32),
           "r_cot_d": data["r_cot_d"].astype(np.float32),
+          "r_rotor1": data["r_rotor1"].astype(np.float32),
+          "r_rotor2": data["r_rotor2"].astype(np.float32),
+          "r_rotor3": data["r_rotor3"].astype(np.float32),
+          "r_rotor4": data["r_rotor4"].astype(np.float32),
+          "r_rotor1_d": data["r_rotor1_d"].astype(np.float32),
+          "r_rotor2_d": data["r_rotor2_d"].astype(np.float32),
+          "r_rotor3_d": data["r_rotor3_d"].astype(np.float32),
+          "r_rotor4_d": data["r_rotor4_d"].astype(np.float32),
+          "q": data["q"].astype(np.float32),
+          "q_cmd": data["q_cmd"].astype(np.float32),
           "solve_ms": data["solve_ms"].astype(np.float32),
           "solve_status": data["solve_status"].astype(np.int32),
           "phase": data["phase"].astype(np.uint8),
@@ -1796,6 +2116,21 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
         # remove write_count from channel dict
         ch.pop("write_count", None)
+
+        # Backfill missing keys for older snapshots (keeps plotting safe)
+        n = int(t.size)
+        def _bf(key: str, shape: Tuple[int, ...], dtype, fill):
+          if key not in ch: ch[key] = np.full(shape, fill, dtype=dtype)
+        _bf("r_rotor1", (n, 2), np.float32, np.nan)
+        _bf("r_rotor2", (n, 2), np.float32, np.nan)
+        _bf("r_rotor3", (n, 2), np.float32, np.nan)
+        _bf("r_rotor4", (n, 2), np.float32, np.nan)
+        _bf("r_rotor1_d", (n, 2), np.float32, np.nan)
+        _bf("r_rotor2_d", (n, 2), np.float32, np.nan)
+        _bf("r_rotor3_d", (n, 2), np.float32, np.nan)
+        _bf("r_rotor4_d", (n, 2), np.float32, np.nan)
+        _bf("q", (n, 20), np.float32, np.nan)
+        _bf("q_cmd", (n, 20), np.float32, np.nan)
 
         # Store full replay buffers for window slicing
         self._replay_full_t = t
@@ -1935,6 +2270,16 @@ def main():
       background: #f2f2f2;
       color: #111111;
       border-color: #c0c0c0;
+    }
+    QSplitter::handle {
+      background: #e6e6e6;
+      border: 1px solid #cfcfcf;
+    }
+    QSplitter::handle:vertical {
+      height: 1px;
+    }
+    QSplitter::handle:hover {
+      background: #d8d8d8;
     }
     """)
 
