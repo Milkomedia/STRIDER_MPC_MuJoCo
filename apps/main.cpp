@@ -350,7 +350,7 @@ int main() {
       for (uint8_t i=0; i<20; ++i) {smoothed_q_d[i] =  param::COT_DELAY_ALPHA * smoothed_q_d[i] + param::COT_DELAY_BETA * delayed_q_d[i];}
 
       // --- MAX thrust constraint ---
-      if (elapsed_double >= 10.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > param::SATURATION_THRUST) {smoothed_F(i) = param::SATURATION_THRUST;}}}
+      // if (elapsed_double >= 10.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > param::SATURATION_THRUST) {smoothed_F(i) = param::SATURATION_THRUST;}}}
 
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;

@@ -3,9 +3,20 @@
 - Trajectory-following simulation of the STRIDER model.(in MuJoCo)
 ![MuJoCo overview](resources/mj_overview.png)
 
-- MPC Reference Governor(MRG) real-time view.
-![MPC overview](resources/mpc_overview.png)
+- Real-time viewer&logger.
+<p align="center">
+  <img src="resources/mrg.png" width="49%">
+  <img src="resources/pos.png" width="49%">
+</p>
+<p align="center">
+  <img src="resources/att.png" width="49%">
+  <img src="resources/arm.png" width="49%">
+</p>
 
+- MPC Reference Governor(MRG) real-time view.
+<p align="center">
+  <img src="resources/mpc_overview.png" width="60%">
+</p>
 ---
 
 ### Features
@@ -27,7 +38,7 @@
 # (in root dir)
 mkdir -p bild && cd build
 cmake ..
-make -j
+make
 ```
 
 ### execution
@@ -37,9 +48,18 @@ cd build
 ./strider
 ```
 - Can toggle MPC on/off by pressing space bar.
+```bash
+cd apps/
+# recording & realtime-view
+python3 strider_logger.py
+# replay recorded file
+python3 strider_logger.py ~/apps/log/npz/0217_1430_38.npz
+python3 strider_logger.py ~/apps/log/mmap/0217_1430_38.mmap
+```
+- Real-time flight logger 
 
 ```bash
 cd resources/mpc_py
 python3 mpc_viewer.py
 ```
-- Real-time MRG viewer.
+- Real-time MRG cost viewer.
