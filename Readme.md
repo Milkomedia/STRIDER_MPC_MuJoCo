@@ -17,6 +17,7 @@
 <p align="center">
   <img src="resources/mpc_overview.png" width="60%">
 </p>
+
 ---
 
 ### Features
