@@ -83,8 +83,8 @@ inline const     double GOES_2_ZERO_B         = 1.0 - GOES_2_ZERO_A;            
 // ===== CoM estimating gain =====
 inline constexpr double COM_OFF_X   = 0.0; // [m]
 inline constexpr double COM_OFF_Y   = 0.0; // [m]
-inline constexpr double COT_2_COM_X = 0.6431;
-inline constexpr double COT_2_COM_Y = 0.6431;
+inline constexpr double COT_2_COM_X = 0.487810132;
+inline constexpr double COT_2_COM_Y = 0.482685653;
 
 // ===== MPC parameters  =====
 inline constexpr std::chrono::steady_clock::duration MPC_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::microseconds(5000)); // 200Hz
