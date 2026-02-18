@@ -1,7 +1,7 @@
 import numpy as np
 
 # MPC horizon
-N  = 100     # number of steps
+N  = 75     # number of steps
 DT = 1.0 / 200  # [s] (of each step)
 
 # ---------- model parameters ----------
