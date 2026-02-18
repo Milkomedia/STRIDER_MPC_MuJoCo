@@ -88,7 +88,7 @@ static inline void circle_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3
 }
 
 static inline void l_traj_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d){
-  constexpr double lx_ = 1.0;            // width in X [m]
+  constexpr double lx_ = 1.5;            // width in X [m]
   constexpr double ly_ = 0.0;            // width in Y [m]
   constexpr double T_  = 4.0;            // period [sec]
   constexpr double f   = 2.0 * M_PI / T_;  // [rad/s]

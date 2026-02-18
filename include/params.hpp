@@ -47,7 +47,7 @@ inline constexpr double J[9] = {0.27, 0.00, 0.00,
 inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
 
-inline constexpr double SATURATION_THRUST  = (0.25*M*G)/0.8;
+inline constexpr double SATURATION_THRUST  = (0.25*M*G)/0.65;
 
 // Allocation parameters
 inline constexpr double SERVO_DELAY_ALPHA = 0.093158;  // yaw trimming
@@ -89,11 +89,11 @@ inline constexpr double COT_2_COM_Y = 0.6431;
 // ===== MPC parameters  =====
 inline constexpr std::chrono::steady_clock::duration MPC_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::microseconds(5000)); // 200Hz
 
-inline constexpr double COT_DELAY_TAU   = 0.2; // MuJoCo actuator delay [sec]
+inline constexpr double COT_DELAY_TAU   = 0.17; // MuJoCo actuator delay [sec]
 inline const     double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); // not a tunable parameter
 inline const     double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;              // not a tunable parameter
 
-inline constexpr double      MPC_STEP_DT = 1.0 / 400.0; // This value must be same as >> DT << on params.py
+inline constexpr double      MPC_STEP_DT = 1.0 / 200.0; // This value must be same as >> DT << on params.py
 inline constexpr std::size_t N_STEPS_REQ = 40; // This value must be less than >> N << on params.py
 inline constexpr std::size_t MPC_NX      = 25; // This value must be same as >> self.yes_cot_nx << on solver.py
 inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.yes_cot_nu << on solver.py

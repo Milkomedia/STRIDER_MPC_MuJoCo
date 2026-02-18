@@ -119,9 +119,6 @@ def build_model():
     F_expr = ca.solve(A, w_d)
     model.con_h_expr   = F_expr
 
-    F_mean = (ca.sum1(F_expr) / 4.0)
-    model.thrust_dev  = F_expr - F_mean * ca.SX.ones(4, 1)
-
     return model
 
 def build_ocp():
@@ -138,16 +135,15 @@ def build_ocp():
     omega           = model.x[3:6]
     delta_theta_cmd = model.x[6:9]
     delta_theta_cmd_rate = model.u[0:3]
-    thrust_dev      = model.thrust_dev
     
-    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, delta_theta_cmd_rate, thrust_dev) # 1~k-1 ref
-    model.cost_y_expr_e = ca.vertcat(omega, delta_theta_cmd, thrust_dev) # terminal(k) ref
+    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, delta_theta_cmd_rate) # 1~k-1 ref
+    model.cost_y_expr_e = ca.vertcat(omega, delta_theta_cmd) # terminal(k) ref
 
     ocp.dims.ny   = 13
     ocp.dims.ny_e = 10
     
-    ocp.cost.W = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.R_THETA, c.Q_FDEV]).astype(np.float64))
-    ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.Q_FDEV]).astype(np.float64))
+    ocp.cost.W = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.R_THETA]).astype(np.float64))
+    ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA]).astype(np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
     ocp.cost.cost_type_e = "NONLINEAR_LS"

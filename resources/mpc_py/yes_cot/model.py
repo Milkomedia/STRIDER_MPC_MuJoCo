@@ -135,30 +135,40 @@ def build_model():
     #   [8:16)  : workspace sign constraints
     #   [16:20) : collision distance constraints
 
-    ws_r2 = []
-    quad = []
+    ws1 = []
+    ws2 = []
+    ws1_cmd = []
+    ws2_cmd = []
 
-    # workspace radius constraints:
+    # workspace constraints:
     for i in range(4):
         rx = r_rotor[i]     - r_off_x[i]
         ry = r_rotor[4 + i] - r_off_y[i]
-        ws_r2.append(rx*rx + ry*ry)
 
-    # workspace sign constraints:
-    quad.extend([ r_rotor[0], r_rotor[4] ])  # (x1, y1)
-    quad.extend([ r_rotor[1], r_rotor[5] ])  # (x2, y2)
-    quad.extend([ r_rotor[2], r_rotor[6] ])  # (x3, y3)
-    quad.extend([ r_rotor[3], r_rotor[7] ])  # (x4, y4)
+        rx_cmd = r_rotor_cmd[i]     - r_off_x[i]
+        ry_cmd = r_rotor_cmd[4 + i] - r_off_y[i]
+
+        ws1.append(rx*rx + ry*ry)
+        ws2.extend([r_rotor[i], r_rotor[4 + i]])
+
+        ws1_cmd.append(rx_cmd*rx_cmd + ry_cmd*ry_cmd)
+        ws2_cmd.extend([r_rotor_cmd[i], r_rotor_cmd[4 + i]])
 
     # collision distance constraints:
     def dist2(i, j):
-        dx = r_rotor[i]     - r_rotor[j]
+        dx = r_rotor[i] - r_rotor[j]
         dy = r_rotor[4 + i] - r_rotor[4 + j]
         return dx*dx + dy*dy
+    
+    def dist2_cmd(i, j):
+        dx = r_rotor_cmd[i] - r_rotor_cmd[j]
+        dy = r_rotor_cmd[4 + i] - r_rotor_cmd[4 + j]
+        return dx*dx + dy*dy
 
-    col = [dist2(0, 1), dist2(1, 2), dist2(2, 3), dist2(3, 0),]
+    collision     = [dist2(0, 1),         dist2(1, 2),     dist2(2, 3),     dist2(3, 0),]
+    collision_cmd = [dist2_cmd(0, 1), dist2_cmd(1, 2), dist2_cmd(2, 3), dist2_cmd(3, 0),]
 
-    model.con_h_expr = ca.vertcat(F_expr, ca.vertcat(*ws_r2), ca.vertcat(*quad), ca.vertcat(*col),)
+    model.con_h_expr = ca.vertcat(F_expr, ca.vertcat(*ws1), ca.vertcat(*ws2), ca.vertcat(*collision), ca.vertcat(*ws1_cmd), ca.vertcat(*ws2_cmd), ca.vertcat(*collision_cmd),)
 
     return model
 
@@ -203,6 +213,11 @@ def build_ocp():
     workspace_expr1_lb = np.array([r_min_sq, r_min_sq, r_min_sq, r_min_sq])
     workspace_expr1_ub = np.array([r_max_sq, r_max_sq, r_max_sq, r_max_sq])
 
+    r_min_slk_sq = p.R_MIN_SLK * p.R_MIN_SLK
+    r_max_slk_sq = p.R_MAX_SLK * p.R_MAX_SLK
+    workspace_expr11_lb = np.array([r_min_slk_sq, r_min_slk_sq, r_min_slk_sq, r_min_slk_sq])
+    workspace_expr11_ub = np.array([r_max_slk_sq, r_max_slk_sq, r_max_slk_sq, r_max_slk_sq])
+
     workspace_expr2_lb = np.array([0.0, -1e12, -1e12, -1e12, -1e12, 0.0, 0.0, 0.0], dtype=np.float64)
     workspace_expr2_ub = np.array([1e12, 0.0, 0.0, 0.0, 0.0, 1e12, 1e12, 1e12], dtype=np.float64)
 
@@ -210,8 +225,11 @@ def build_ocp():
     collision_expr_lb = np.array([four_r_rotor_sq, four_r_rotor_sq, four_r_rotor_sq, four_r_rotor_sq], dtype=np.float64)
     collision_expr_ub = np.array([1e12, 1e12, 1e12, 1e12], dtype=np.float64)
 
-    ocp.constraints.lh = np.concatenate([c.F_MIN, workspace_expr1_lb, workspace_expr2_lb, collision_expr_lb]).astype(np.float64)
-    ocp.constraints.uh = np.concatenate([c.F_MAX, workspace_expr1_ub, workspace_expr2_ub, collision_expr_ub]).astype(np.float64)
+    four_r_rotor_slk_sq = 4.0 * p.R_ROTOR_SLK *p.R_ROTOR_SLK
+    collision_expr2_lb = np.array([four_r_rotor_slk_sq, four_r_rotor_slk_sq, four_r_rotor_slk_sq, four_r_rotor_slk_sq], dtype=np.float64)
+
+    ocp.constraints.lh = np.concatenate([c.F_MIN, workspace_expr1_lb, workspace_expr2_lb, collision_expr_lb, workspace_expr11_lb, workspace_expr2_lb, collision_expr2_lb]).astype(np.float64)
+    ocp.constraints.uh = np.concatenate([c.F_MAX, workspace_expr1_ub, workspace_expr2_ub, collision_expr_ub, workspace_expr11_ub, workspace_expr2_ub, collision_expr_ub]).astype(np.float64)
     ocp.dims.nh   = 20
 
     # ---------- solver options ----------
@@ -220,7 +238,7 @@ def build_ocp():
     ocp.solver_options.integrator_type  = "ERK"
     ocp.solver_options.nlp_solver_type  = "SQP_RTI" # "SQP" or "SQP_RTI" or "DDP" or "SQP_WITH_FEASIBLE_QP"
     ocp.solver_options.qp_solver_cond_N = p.N
-    ocp.solver_options.qp_solver_iter_max = 25
+    ocp.solver_options.qp_solver_iter_max = 10
     ocp.solver_options.sim_method_num_stages = 4
     ocp.solver_options.sim_method_num_steps  = 1
     # ocp.solver_options.print_level = 4

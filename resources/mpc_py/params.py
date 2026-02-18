@@ -1,12 +1,12 @@
 import numpy as np
 
 # MPC horizon
-N  = 120     # number of steps
-DT = 1.0 / 400  # [s] (of each step)
+N  = 100     # number of steps
+DT = 1.0 / 200  # [s] (of each step)
 
 # ---------- model parameters ----------
 # CoT actuator time constant
-TAU = 0.2
+TAU = 0.17
 
 # Inertia tensor
 J_TENSOR = np.array([
@@ -28,13 +28,12 @@ ZETA = 0.04
 R_OFF_X = np.array([ 0.12, -0.12, -0.12,  0.12])/np.sqrt(2)
 R_OFF_Y = np.array([-0.12, -0.12,  0.12,  0.12])/np.sqrt(2)
 
-# R_MIN = 0.1506
-# R_MAX = 0.2925
-
-R_MIN = 0.17
-R_MAX = 0.27
-
+R_MIN = 0.1506
+R_MAX = 0.2925
+R_MIN_SLK = 0.1506 - 0.03
+R_MAX_SLK = 0.2925 + 0.03
 R_ROTOR = 0.22
+R_ROTOR_SLK = 0.22 - 0.04
 
 # ---------- no-cot parameters ----------
 # default l
