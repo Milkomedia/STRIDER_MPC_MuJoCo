@@ -235,6 +235,7 @@ int main() {
           // l_mpc_output updated only when solve succeed.
           if (mpc_on && epoch_ok && key_ok && solve_ok) {l_mpc_output = g_mpc_output;}
           else if (mpc_on && epoch_ok && !key_ok) {mpc_reset_locked(mpc_key);}
+          l_mpc_output.state = g_mpc_output.state; // *BUT l_mpc_output state indicates previous solve state(for logging)*
           g_mpc_output.has = false;
         }
       }

@@ -1782,15 +1782,12 @@ class LoggerWindow(QtWidgets.QMainWindow):
           ws = np.asarray(per_w[s], dtype=np.float32)
           hs = np.full(xs.shape, float(s + 1), dtype=np.float32)
 
-          # Preserve original "visibility bias": non-zero statuses drawn wider
-          w_draw = ws if s == 0 else (6.0 * ws)
-
           if s not in self._status_bars:
-            bar = pg.BarGraphItem(x=xs, y0=y0, height=hs, width=w_draw, brush=pg.mkBrush(*self._status_colors[s]), pen=None,)
+            bar = pg.BarGraphItem(x=xs, y0=y0, height=hs, width=ws, brush=pg.mkBrush(*self._status_colors[s]), pen=None,)
             self._status_plot.addItem(bar)
             self._status_bars[s] = bar
           else:
-            self._status_bars[s].setOpts(x=xs, y0=y0, height=hs, width=w_draw, brush=pg.mkBrush(*self._status_colors[s]), pen=None,)
+            self._status_bars[s].setOpts(x=xs, y0=y0, height=hs, width=ws, brush=pg.mkBrush(*self._status_colors[s]), pen=None,)
 
       # --- Status text ---
       last_ms = float(solve_ms[-1]) if solve_ms.size > 0 else float("nan")
