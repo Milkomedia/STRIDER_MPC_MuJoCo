@@ -1,21 +1,21 @@
 # STRIDER
 
 - Trajectory-following simulation of the STRIDER model.(in MuJoCo)
-![MuJoCo overview](resources/mj_overview.png)
+![MuJoCo overview](resources/images/mj_overview.png)
 
 - Real-time viewer&logger.
 <p align="center">
-  <img src="resources/mrg.png" width="49%">
-  <img src="resources/pos.png" width="49%">
+  <img src="resources/images/mrg.png" width="49%">
+  <img src="resources/images/pos.png" width="49%">
 </p>
 <p align="center">
-  <img src="resources/att.png" width="49%">
-  <img src="resources/arm.png" width="49%">
+  <img src="resources/images/att.png" width="49%">
+  <img src="resources/images/arm.png" width="49%">
 </p>
 
 - MPC Reference Governor(MRG) real-time view.
 <p align="center">
-  <img src="resources/mpc_overview.png" width="60%">
+  <img src="resources/images/mpc_overview.png" width="60%">
 </p>
 
 ---
