@@ -177,8 +177,8 @@ int main() {
         std::lock_guard<std::mutex> lk(mpc_mtx);
         mpc_reset_locked(mpc_key);
         if (mpc_on) {
-          if (next_use_cot) {phase = Phase::MRG_ACTIVE_COT; std::printf("MPC->YES-COT\n");}
-          else {phase = Phase::MRG_FLIGHT; std::printf("MPC->NO-COT\n");}
+          if (next_use_cot) {phase = Phase::MRG_YES_COT; std::printf("MPC->YES-COT\n");}
+          else {phase = Phase::MRG_NO_COT; std::printf("MPC->NO-COT\n");}
           next_use_cot = !next_use_cot;
         }
         else {phase = Phase::GAC_FLIGHT;}
@@ -240,28 +240,34 @@ int main() {
         }
       }
 
+      bool mpc_applied = false;
       if (mpc_on) { // MPC unpack
         const bool epoch_ok = (l_mpc_output.epoch == g_mpc_epoch.load(std::memory_order_relaxed));
         const bool time_ok = ((now - l_mpc_output.t) < param::MPC_TIMEOUT_DURATUION);
-        if (epoch_ok && time_ok) {
+        const bool solve_ok = (l_mpc_output.state == 0);
+        
+        if (epoch_ok && time_ok && solve_ok) {
           const std::size_t idx = static_cast<std::size_t>(std::floor(std::chrono::duration<double>(now - l_mpc_output.t).count() / param::MPC_STEP_DT));
-          cmd.d_theta = l_mpc_output.u_opt.col(idx).head<3>();
-          cmd.r1(0) = l_mpc_output.u_opt(3, idx); cmd.r1(1) = l_mpc_output.u_opt(7, idx);
-          cmd.r2(0) = l_mpc_output.u_opt(4, idx); cmd.r2(1) = l_mpc_output.u_opt(8, idx);
-          cmd.r3(0) = l_mpc_output.u_opt(5, idx); cmd.r3(1) = l_mpc_output.u_opt(9, idx);
-          cmd.r4(0) = l_mpc_output.u_opt(6, idx); cmd.r4(1) = l_mpc_output.u_opt(10, idx);
-          workspace_guard(cmd.r1, cmd.r2, cmd.r3, cmd.r4);
-        }
-        else { // solve failed timeout
-          cmd.d_theta *= param::GOES_2_ZERO_A;
-          cmd.r1 = param::GOES_2_ZERO_A*cmd.r1 + param::GOES_2_ZERO_B*param::r1_init;
-          cmd.r2 = param::GOES_2_ZERO_A*cmd.r2 + param::GOES_2_ZERO_B*param::r2_init;
-          cmd.r3 = param::GOES_2_ZERO_A*cmd.r3 + param::GOES_2_ZERO_B*param::r3_init;
-          cmd.r4 = param::GOES_2_ZERO_A*cmd.r4 + param::GOES_2_ZERO_B*param::r4_init;
-          l_mpc_output.u_rate.setZero();
+          // check workspace & collision 
+          std::array<Eigen::Vector2d, 4> opt_r;
+          opt_r[0] << l_mpc_output.u_opt(3, idx),  l_mpc_output.u_opt(7, idx);
+          opt_r[1] << l_mpc_output.u_opt(4, idx),  l_mpc_output.u_opt(8, idx);
+          opt_r[2] << l_mpc_output.u_opt(5, idx),  l_mpc_output.u_opt(9, idx);
+          opt_r[3] << l_mpc_output.u_opt(6, idx),  l_mpc_output.u_opt(10, idx);
+          const bool is_feasible = make_feasible(opt_r);
+
+          if (is_feasible) {
+            cmd.d_theta = l_mpc_output.u_opt.col(idx).head<3>();
+            cmd.r1(0) = opt_r[0](0); cmd.r1(1) = opt_r[0](1);
+            cmd.r2(0) = opt_r[1](0); cmd.r2(1) = opt_r[1](1);
+            cmd.r3(0) = opt_r[2](0); cmd.r3(1) = opt_r[2](1);
+            cmd.r4(0) = opt_r[3](0); cmd.r4(1) = opt_r[3](1);
+            mpc_applied = true;
+          }
         }
       }
-      else { // only GAC flight
+      // [GAC flight] or [solve failed timeout] or [cannot make_feasible]
+      if (!mpc_applied) { 
         cmd.d_theta *= param::GOES_2_ZERO_A;
         cmd.r1 = param::GOES_2_ZERO_A*cmd.r1 + param::GOES_2_ZERO_B*param::r1_init;
         cmd.r2 = param::GOES_2_ZERO_A*cmd.r2 + param::GOES_2_ZERO_B*param::r2_init;
@@ -297,7 +303,7 @@ int main() {
             g_mpc_input.p(m++) = omega_raw(0); g_mpc_input.p(m++) = omega_raw(1); g_mpc_input.p(m++) = omega_raw(2); // omega_raw(9~11)
             g_mpc_input.p(m++) = -geometry_ctrl.f_total; // T_des(12)
 
-            if (phase==Phase::MRG_ACTIVE_COT) {g_mpc_input.use_cot = true;}
+            if (phase==Phase::MRG_YES_COT) {g_mpc_input.use_cot = true;}
             else {g_mpc_input.use_cot = false;}
 
             g_mpc_input.steps_req = param::N_STEPS_REQ;

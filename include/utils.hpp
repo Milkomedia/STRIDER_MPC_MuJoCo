@@ -15,8 +15,8 @@ enum class Phase : uint8_t {
   IDLE           = 2,  // all propellers are idling
   RISING         = 3,  // propeller thrust increasing
   GAC_FLIGHT     = 4,  // flight with geometry controller
-  MRG_FLIGHT     = 5,  // flight with reference governor
-  MRG_ACTIVE_COT = 6,  // flight with reference governor (use CoT moving)
+  MRG_NO_COT     = 5,  // flight with reference governor
+  MRG_YES_COT    = 6,  // flight with reference governor (use CoT moving)
   KILLED         = 99, // killed; (It's not used as a trigger, just a state representation)
 };
 
@@ -341,128 +341,128 @@ static inline void FK(const double q[20], Eigen::Vector3d& bpcot, Eigen::Vector3
   bpcot *= 0.25;
 }
 
-static inline void workspace_guard(Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
+static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
+  constexpr double sq_min_stretch_fail    = (param::MIN_STRETCH - param::STRETCH_FAIL_MARGIN) * (param::MIN_STRETCH - param::STRETCH_FAIL_MARGIN);
+  constexpr double sq_max_stretch_fail    = (param::MAX_STRETCH + param::STRETCH_FAIL_MARGIN) * (param::MAX_STRETCH + param::STRETCH_FAIL_MARGIN);
+  constexpr double sq_rotor_diameter_fail = (param::ROTOR_DIAMETER - param::COLLISION_FAIL_MARGIN) * (param::ROTOR_DIAMETER - param::COLLISION_FAIL_MARGIN);
+  constexpr double sq_max_stretch         = param::MAX_STRETCH * param::MAX_STRETCH;
+  constexpr double sq_min_stretch         = param::MIN_STRETCH * param::MIN_STRETCH;
+  constexpr double sq_rotor_diameter      = param::ROTOR_DIAMETER * param::ROTOR_DIAMETER;
+
   constexpr double sign_x[4] = {+1.0, -1.0, -1.0, +1.0};
   constexpr double sign_y[4] = {-1.0, -1.0, +1.0, +1.0};
-  constexpr double Eps = 1e-12;
+  constexpr int nbr_a[4] = {3, 0, 1, 2}; // nearby rotor a index
+  constexpr int nbr_b[4] = {1, 2, 3, 0}; // nearby rotor b index
 
-  Eigen::Vector3d* r[4] = {&r1, &r2, &r3, &r4};
+  for (int it = 0; it < 3; ++it) { // A few iterations to resolve "workspace <-> collision" coupling
+    for (int i = 0; i < 4; ++i) { // per each rotor
+      { // ------------ [ 1. Workspace guard ] ------------
+        double rx = r[i].x() - param::B2BASE_X[i];
+        double ry = r[i].y() - param::B2BASE_Y[i];
 
-  // A few iterations to resolve "workspace <-> collision" coupling
-  for (int it = 0; it < 3; ++it) {
-    // 1. Workspace guard: sign + radial
-    for (int i = 0; i < 4; ++i) {
-      double dx = (*r[i]).x() - param::B2BASE_X[i];
-      double dy = (*r[i]).y() - param::B2BASE_Y[i];
+        // Sign clamp
+        if (sign_x[i] > 0.0) { if (rx < 0.0) rx = 0.0; }
+        else { if (rx > 0.0) rx = 0.0; }
 
-      // Sign clamp
-      if (sign_x[i] > 0.0) { if (dx < 0.0) dx = 0.0; }
-      else { if (dx > 0.0) dx = 0.0; }
+        if (sign_y[i] > 0.0) { if (ry < 0.0) ry = 0.0; }
+        else { if (ry > 0.0) ry = 0.0; }
 
-      if (sign_y[i] > 0.0) { if (dy < 0.0) dy = 0.0; }
-      else { if (dy > 0.0) dy = 0.0; }
+        // Hard-fail if stretch is too far outside
+        double sqd_r = rx*rx + ry*ry;
+        if (sqd_r < sq_min_stretch_fail || sqd_r > sq_max_stretch_fail) {return false;}
 
-      // Radius clamp
-      double n2 = dx*dx + dy*dy;
-      if (n2 < Eps) { // If vector collapsed to ~0, inject a valid direction in the correct quadrant
-        dx = sign_x[i] * param::MIN_STRETCH * inv_sqrt2;
-        dy = sign_y[i] * param::MIN_STRETCH * inv_sqrt2;
-        n2 = dx*dx + dy*dy;
+        if (sqd_r < sq_min_stretch || sqd_r > sq_max_stretch) {
+          const double abs_r = std::sqrt(sqd_r);
+          const double target = (sqd_r < sq_min_stretch) ? param::MIN_STRETCH : param::MAX_STRETCH;
+          const double scale_factor = target / abs_r;
+          rx *= scale_factor;
+          ry *= scale_factor;
+        }
+
+        r[i].x() = param::B2BASE_X[i] + rx;
+        r[i].y() = param::B2BASE_Y[i] + ry;
       }
 
-      if (n2 < param::SQ_MIN_STRETCH || n2 > param::SQ_MAX_STRETCH) {
-        const double n = std::sqrt(n2);
-        const double target = (n2 < param::SQ_MIN_STRETCH) ? param::MIN_STRETCH : param::MAX_STRETCH;
-        const double s = target / n;
-        dx *= s;
-        dy *= s;
+      { // ------------ [ 2. Rotor collision guard ] ------------
+        const Eigen::Vector2d p0(r[i].x(), r[i].y());
+        const Eigen::Vector2d pa(r[nbr_a[i]].x(), r[nbr_a[i]].y());
+        const Eigen::Vector2d pb(r[nbr_b[i]].x(), r[nbr_b[i]].y());
+        Eigen::Vector2d p = p0; // new target xy to compute
+
+        const Eigen::Vector2d ap0 = p0 - pa;
+        const Eigen::Vector2d bp0 = p0 - pb;
+        const double sqrd_ap0 = ap0.squaredNorm();
+        const double sqrd_bp0 = bp0.squaredNorm();
+
+        // (1) collision occurred too deep -> fail
+        if (sqrd_ap0 < sq_rotor_diameter_fail || sqrd_bp0 < sq_rotor_diameter_fail) {return false;}
+
+        // (2) both already safe -> skip
+        if (sqrd_ap0 >= sq_rotor_diameter && sqrd_bp0 >= sq_rotor_diameter) {continue;}
+
+        // (3) collision occurred -> move target p
+        const bool closeA = (sqrd_ap0 < sq_rotor_diameter);
+        const bool closeB = (sqrd_bp0 < sq_rotor_diameter);
+        if (closeA && closeB) { // both are closer than D -> |p - pa| = D, |p - pb| = D  (two solutions)
+          const Eigen::Vector2d dc = pb - pa;
+          const double d2 = dc.squaredNorm();
+          const double d = std::sqrt(d2);
+
+          // For equal radii D: midpoint m, offset h along perpendicular
+          const Eigen::Vector2d m = 0.5 * (pa + pb);
+          double h2 = sq_rotor_diameter - 0.25*d2;
+          if (h2 < 0.0) {return false;}
+          const double h = std::sqrt(h2);
+          const Eigen::Vector2d n(-dc.y() / d, dc.x() / d); // unit perpendicular (rotate +90deg)
+
+          p = m + n * h;
+        }
+        else { // only one side is closer than D
+          const Eigen::Vector2d Close = closeA ? pa : pb;
+          const Eigen::Vector2d Far   = closeA ? pb : pa; 
+          const double r1_keep2 = closeA ? sqrd_bp0 : sqrd_ap0; // keep original distance to the other rotor
+
+          const Eigen::Vector2d dc = Far - Close;
+          const double d2 = dc.squaredNorm();
+          const double d = std::sqrt(d2);
+
+          const double a = (sq_rotor_diameter + d2 - r1_keep2) / (2.0 * d);
+          double h = std::sqrt(sq_rotor_diameter - a*a);
+
+          const Eigen::Vector2d n(-dc.y() / d, dc.x() / d); // unit perpendicular (rotate +90deg)
+
+          p = Close + a * dc / d + n * h;
+        }
+
+        // Commit XY
+        r[i].x() = p.x();
+        r[i].y() = p.y();
+
+        { // NaN/Inf guard
+          if (!r[i].allFinite()) { return false; }
+          const int ia = nbr_a[i]; const int ib = nbr_b[i];
+          if (!r[ia].allFinite() || !r[ib].allFinite()) { return false; }
+        }
       }
+    } // rotor 1234
+  } // iter
 
-      (*r[i]).x() = param::B2BASE_X[i] + dx;
-      (*r[i]).y() = param::B2BASE_Y[i] + dy;
-    }
-
-    // 2. Rotor collision guard: move rotor along the line to satisfy distance
-    {
-      // Pair (0,1): move r2
-      double dx = r2.x() - r1.x();
-      double dy = r2.y() - r1.y();
-      double dist2 = dx*dx + dy*dy;
-      if (dist2 < param::SQ_ROTOR_DIAMETER) {
-        if (dist2 < Eps) { dx = 1e-6; dy = 0.0; dist2 = dx*dx + dy*dy; }
-        const double dist = std::sqrt(dist2);
-        const double s = param::ROTOR_DIAMETER / dist;
-        r2.x() = r1.x() + dx * s;
-        r2.y() = r1.y() + dy * s;
-      }
-
-      // Pair (1,2): move r3
-      dx = r3.x() - r2.x();
-      dy = r3.y() - r2.y();
-      dist2 = dx*dx + dy*dy;
-      if (dist2 < param::SQ_ROTOR_DIAMETER) {
-        if (dist2 < Eps) { dx = 0.0; dy = 1e-6; dist2 = dx*dx + dy*dy; }
-        const double dist = std::sqrt(dist2);
-        const double s = param::ROTOR_DIAMETER / dist;
-        r3.x() = r2.x() + dx * s;
-        r3.y() = r2.y() + dy * s;
-      }
-
-      // Pair (2,3): move r4
-      dx = r4.x() - r3.x();
-      dy = r4.y() - r3.y();
-      dist2 = dx*dx + dy*dy;
-      if (dist2 < param::SQ_ROTOR_DIAMETER) {
-        if (dist2 < Eps) { dx = -1e-6; dy = 0.0; dist2 = dx*dx + dy*dy; }
-        const double dist = std::sqrt(dist2);
-        const double s = param::ROTOR_DIAMETER / dist;
-        r4.x() = r3.x() + dx * s;
-        r4.y() = r3.y() + dy * s;
-      }
-
-      // Pair (3,0): move r1
-      dx = r1.x() - r4.x();
-      dy = r1.y() - r4.y();
-      dist2 = dx*dx + dy*dy;
-      if (dist2 < param::SQ_ROTOR_DIAMETER) {
-        if (dist2 < Eps) { dx = 0.0; dy = -1e-6; dist2 = dx*dx + dy*dy; }
-        const double dist = std::sqrt(dist2);
-        const double s = param::ROTOR_DIAMETER / dist;
-        r1.x() = r4.x() + dx * s;
-        r1.y() = r4.y() + dy * s;
-      }
-    }
-  }
-
-  // Final pass: ensure workspace constraints are satisfied after the last collision correction.
+  // ------------ [ 3. Final pass check (just check) ] ------------
   for (int i = 0; i < 4; ++i) {
-    double dx = (*r[i]).x() - param::B2BASE_X[i];
-    double dy = (*r[i]).y() - param::B2BASE_Y[i];
+    double dx = r[i].x() - param::B2BASE_X[i];
+    double dy = r[i].y() - param::B2BASE_Y[i];
 
-    if (sign_x[i] > 0.0) { if (dx < 0.0) dx = 0.0; }
-    else { if (dx > 0.0) dx = 0.0; }
+    if (sign_x[i] > 0.0) { if (dx < 0.0) {return false;}}
+    else { if (dx > 0.0) {return false;}}
 
-    if (sign_y[i] > 0.0) { if (dy < 0.0) dy = 0.0; }
-    else { if (dy > 0.0) dy = 0.0; }
+    if (sign_y[i] > 0.0) { if (dy < 0.0) {return false;}}
+    else { if (dy > 0.0) {return false;}}
 
     double n2 = dx*dx + dy*dy;
-    if (n2 < Eps) {
-      dx = sign_x[i] * param::MIN_STRETCH * inv_sqrt2;
-      dy = sign_y[i] * param::MIN_STRETCH * inv_sqrt2;
-      n2 = dx*dx + dy*dy;
-    }
-
-    if (n2 < param::SQ_MIN_STRETCH || n2 > param::SQ_MAX_STRETCH) {
-      const double n = std::sqrt(n2);
-      const double target = (n2 < param::SQ_MIN_STRETCH) ? param::MIN_STRETCH : param::MAX_STRETCH;
-      const double s = target / n;
-      dx *= s;
-      dy *= s;
-    }
-
-    (*r[i]).x() = param::B2BASE_X[i] + dx;
-    (*r[i]).y() = param::B2BASE_Y[i] + dy;
+    if (n2 < sq_min_stretch || n2 > sq_max_stretch) {return false;}
   }
+  
+  return true;
 }
 
 static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[20], const Eigen::Vector3d& Pc, Eigen::Vector4d& C1_des, Eigen::Vector4d& C2_des) {

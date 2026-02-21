@@ -66,15 +66,16 @@ inline constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 inline constexpr double MAX_STRETCH       = 0.2925; // Maximum distance arm can extend from the base [m]
 inline constexpr double MIN_STRETCH       = 0.1506; // Minimum distance arm can extend from the base [m]
 inline constexpr double ROTOR_DIAMETER    = 0.44;   // propeller diameter [m]
-inline constexpr double SQ_MAX_STRETCH    = MAX_STRETCH * MAX_STRETCH; // pre-calculation
-inline constexpr double SQ_MIN_STRETCH    = MIN_STRETCH * MIN_STRETCH; // pre-calculation
-inline constexpr double SQ_ROTOR_DIAMETER = ROTOR_DIAMETER * ROTOR_DIAMETER; // pre-calculation
-inline constexpr double B2BASE_X[4]       = { 0.12*inv_sqrt2, -0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2}; // x-distance from the body frame to each base frame [m]
-inline constexpr double B2BASE_Y[4]       = {-0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2,  0.12*inv_sqrt2}; // y-distance from the body frame to each base frame [m]
-inline const     Eigen::Vector3d r1_init  = Eigen::Vector3d( 0.24, -0.24, -0.24); // rotor-1 inital position
-inline const     Eigen::Vector3d r2_init  = Eigen::Vector3d(-0.24, -0.24, -0.24); // rotor-2 inital position
-inline const     Eigen::Vector3d r3_init  = Eigen::Vector3d(-0.24,  0.24, -0.24); // rotor-3 inital position
-inline const     Eigen::Vector3d r4_init  = Eigen::Vector3d( 0.24,  0.24, -0.24); // rotor-4 inital position
+
+inline constexpr double STRETCH_FAIL_MARGIN    = 0.2; // [m]
+inline constexpr double COLLISION_FAIL_MARGIN  = 0.2; // [m]
+inline constexpr double GUARD_MOVE_MARGIN      = 0.2; // [m]
+inline constexpr double B2BASE_X[4]            = { 0.12*inv_sqrt2, -0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2}; // x-distance from the body frame to each base frame [m]
+inline constexpr double B2BASE_Y[4]            = {-0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2,  0.12*inv_sqrt2}; // y-distance from the body frame to each base frame [m]
+inline const     Eigen::Vector3d r1_init       = Eigen::Vector3d( 0.24, -0.24, -0.24); // rotor-1 inital position
+inline const     Eigen::Vector3d r2_init       = Eigen::Vector3d(-0.24, -0.24, -0.24); // rotor-2 inital position
+inline const     Eigen::Vector3d r3_init       = Eigen::Vector3d(-0.24,  0.24, -0.24); // rotor-3 inital position
+inline const     Eigen::Vector3d r4_init       = Eigen::Vector3d( 0.24,  0.24, -0.24); // rotor-4 inital position
 
 inline constexpr double MPC_OFF_TIME_CONSTANT = 0.8; // [sec] each arm goes to initial position when MPC-off or Solve-failed
 inline const     double GOES_2_ZERO_A         = std::exp(-CTRL_DT / MPC_OFF_TIME_CONSTANT); // not a tunable parameter
