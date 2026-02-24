@@ -250,14 +250,15 @@ int main() {
           const std::size_t idx = static_cast<std::size_t>(std::floor(std::chrono::duration<double>(now - l_mpc_output.t).count() / param::MPC_STEP_DT));
           // check workspace & collision 
           std::array<Eigen::Vector2d, 4> opt_r;
-          opt_r[0] << l_mpc_output.u_opt(3, idx),  l_mpc_output.u_opt(7, idx);
-          opt_r[1] << l_mpc_output.u_opt(4, idx),  l_mpc_output.u_opt(8, idx);
-          opt_r[2] << l_mpc_output.u_opt(5, idx),  l_mpc_output.u_opt(9, idx);
-          opt_r[3] << l_mpc_output.u_opt(6, idx),  l_mpc_output.u_opt(10, idx);
+          opt_r[0] << l_mpc_output.u_opt(6, idx),  l_mpc_output.u_opt(10, idx);
+          opt_r[1] << l_mpc_output.u_opt(7, idx),  l_mpc_output.u_opt(11, idx);
+          opt_r[2] << l_mpc_output.u_opt(8, idx),  l_mpc_output.u_opt(12, idx);
+          opt_r[3] << l_mpc_output.u_opt(9, idx),  l_mpc_output.u_opt(13, idx);
           const bool is_feasible = make_feasible(opt_r);
 
           if (is_feasible) {
-            cmd.d_theta = l_mpc_output.u_opt.col(idx).head<3>();
+            cmd.d_theta = l_mpc_output.u_opt.col(idx).segment<3>(0);
+            cmd.d_omega = l_mpc_output.u_opt.col(idx).segment<3>(3);
             cmd.r1(0) = opt_r[0](0); cmd.r1(1) = opt_r[0](1);
             cmd.r2(0) = opt_r[1](0); cmd.r2(1) = opt_r[1](1);
             cmd.r3(0) = opt_r[2](0); cmd.r3(1) = opt_r[2](1);
@@ -269,6 +270,7 @@ int main() {
       // [GAC flight] or [solve failed timeout] or [cannot make_feasible]
       if (!mpc_applied) { 
         cmd.d_theta *= param::GOES_2_ZERO_A;
+        cmd.d_omega *= param::GOES_2_ZERO_A;
         cmd.r1 = param::GOES_2_ZERO_A*cmd.r1 + param::GOES_2_ZERO_B*param::r1_init;
         cmd.r2 = param::GOES_2_ZERO_A*cmd.r2 + param::GOES_2_ZERO_B*param::r2_init;
         cmd.r3 = param::GOES_2_ZERO_A*cmd.r3 + param::GOES_2_ZERO_B*param::r3_init;
@@ -292,11 +294,12 @@ int main() {
             g_mpc_input.x_0(k++) = s.r1(0); g_mpc_input.x_0(k++) = s.r2(0); g_mpc_input.x_0(k++) = s.r3(0); g_mpc_input.x_0(k++) = s.r4(0); // r_rotor_x(6,7,8,9)
             g_mpc_input.x_0(k++) = s.r1(1); g_mpc_input.x_0(k++) = s.r2(1); g_mpc_input.x_0(k++) = s.r3(1); g_mpc_input.x_0(k++) = s.r4(1); // r_rotor_y(10,11,12,13)
             g_mpc_input.x_0(k++) = cmd.d_theta(0); g_mpc_input.x_0(k++) = cmd.d_theta(1); g_mpc_input.x_0(k++) = cmd.d_theta(2); // delta_theta(14,15,16)
-            g_mpc_input.x_0(k++) = cmd.r1(0); g_mpc_input.x_0(k++) = cmd.r2(0); g_mpc_input.x_0(k++) = cmd.r3(0); g_mpc_input.x_0(k++) = cmd.r4(0); // r_rotor_cmd_x(17,18,19,20)
-            g_mpc_input.x_0(k++) = cmd.r1(1); g_mpc_input.x_0(k++) = cmd.r2(1); g_mpc_input.x_0(k++) = cmd.r3(1); g_mpc_input.x_0(k++) = cmd.r4(1); // r_rotor_cmd_y(21,22,23,24)
+            g_mpc_input.x_0(k++) = cmd.d_omega(0); g_mpc_input.x_0(k++) = cmd.d_omega(1); g_mpc_input.x_0(k++) = cmd.d_omega(2); // delta_omega(17,18,19)
+            g_mpc_input.x_0(k++) = cmd.r1(0); g_mpc_input.x_0(k++) = cmd.r2(0); g_mpc_input.x_0(k++) = cmd.r3(0); g_mpc_input.x_0(k++) = cmd.r4(0); // r_rotor_cmd_x(20,21,22,23)
+            g_mpc_input.x_0(k++) = cmd.r1(1); g_mpc_input.x_0(k++) = cmd.r2(1); g_mpc_input.x_0(k++) = cmd.r3(1); g_mpc_input.x_0(k++) = cmd.r4(1); // r_rotor_cmd_y(24,25,26,27)
 
             // fill initial control input(u)
-            for (int l=0; l<11; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_rate(l, 0);}
+            for (int l=0; l<param::MPC_NU; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_rate(l, 0);}
 
             int m = 0; // fill initial parameter(p)
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
@@ -319,7 +322,8 @@ int main() {
 
       // --- attitude control --- 
       const Eigen::Matrix3d R_d = R_raw * expm_hat(cmd.d_theta);
-      Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
+      const Eigen::Vector3d omega_d = omega_raw + cmd.d_omega;
+      Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d, omega_d);
       
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
@@ -420,9 +424,9 @@ int main() {
           ld.rpy_d[1] = static_cast<float>(rpy_d(1));
           ld.rpy_d[2] = static_cast<float>(rpy_d(2));
         }
-        ld.omega_d[0] = static_cast<float>(omega_raw(0));
-        ld.omega_d[1] = static_cast<float>(omega_raw(1));
-        ld.omega_d[2] = static_cast<float>(omega_raw(2));
+        ld.omega_d[0] = static_cast<float>(cmd.d_omega(0));
+        ld.omega_d[1] = static_cast<float>(cmd.d_omega(1));
+        ld.omega_d[2] = static_cast<float>(cmd.d_omega(2));
         ld.alpha_d[0] = static_cast<float>(gac_cmd.Wd_dot(0));
         ld.alpha_d[1] = static_cast<float>(gac_cmd.Wd_dot(1));
         ld.alpha_d[2] = static_cast<float>(gac_cmd.Wd_dot(2));

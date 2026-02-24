@@ -105,8 +105,9 @@ void fdcl::control::position_control(void){
   command->wc3_dot = (e3).dot(state->R.transpose()*command->Rd * command->Wd_dot) - e3.dot(hat(state->W)*state->R.transpose()*command->Rd*command->Wd);
 }
 
-Vector3 fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
+Vector3 fdcl::control::attitude_control(const Eigen::Matrix3d& R_d, const Eigen::Vector3d& omega_d){
   command->Rd = R_d; // use MRG calculated R_d
+  command->Wd = omega_d; // use MRG calculated omega_d
 
   Matrix3 RdtR = command->Rd.transpose() * state->R;
   eR = 0.5 * vee(RdtR - RdtR.transpose());
