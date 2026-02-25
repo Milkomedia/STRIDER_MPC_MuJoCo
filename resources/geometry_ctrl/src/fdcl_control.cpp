@@ -123,8 +123,7 @@ Vector3 fdcl::control::attitude_control(const Eigen::Matrix3d& R_d, const Eigen:
   M = - kR * eR \
       - kW * eW \
       - kI * eIR.error \
-      + hat(state->R.transpose() * command->Rd * command->Wd) * state->J * \
-            state->R.transpose() * command->Rd * command->Wd \
+      - state->J * hat(state->W) * RdtR.transpose() * command->Wd \
       + state->J * state->R.transpose() * command->Rd * command->Wd_dot;
 
   return M;
