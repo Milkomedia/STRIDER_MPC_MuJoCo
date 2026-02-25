@@ -44,8 +44,7 @@ struct Command {
   // This can only be changed by Control Allocation
   double tauz_bar  = 0.0;                               // current yaw thrust torque [N.m] (Sequential control allocation)
   // These can only be changed by MRG
-  Eigen::Vector3d d_theta = Eigen::Vector3d::Zero();    // delta theta cmd [rad]
-  Eigen::Vector3d d_omega = Eigen::Vector3d::Zero();    // delta omega cmd [rad/s]
+  Eigen::Vector3d d_theta = Eigen::Vector3d::Zero();    // desired delta theta [rad]
   Eigen::Vector3d r1 = Eigen::Vector3d::Zero();         // desired rotor1 position [m], z-element is not updated
   Eigen::Vector3d r2 = Eigen::Vector3d::Zero();         // desired rotor2 position [m], z-element is not updated
   Eigen::Vector3d r3 = Eigen::Vector3d::Zero();         // desired rotor3 position [m], z-element is not updated

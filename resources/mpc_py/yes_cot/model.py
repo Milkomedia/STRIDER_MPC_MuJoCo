@@ -16,15 +16,14 @@ def build_model():
     omega           = ca.SX.sym('omega',  3) # [rad/s]
     r_rotor         = ca.SX.sym('r_rotor',  8) # (r1x, r2x, r3x, r4x, r1y, r2y, r3y, r4y) [m]
     delta_theta_cmd = ca.SX.sym('delta_theta_cmd',  3) # [rad], Augmented state(command input)
-    delta_omega_cmd = ca.SX.sym('delta_omega_cmd',  3) # [rad/s], Augmented state(command input)
     r_rotor_cmd     = ca.SX.sym('r_rotor_cmd',  8)     # [m], Augmented state(command input)
-    x     = ca.vertcat(theta, omega, r_rotor, delta_theta_cmd, delta_omega_cmd, r_rotor_cmd)
+    x     = ca.vertcat(theta, omega, r_rotor, delta_theta_cmd, r_rotor_cmd)
     x_dot = ca.SX.sym('x_dot', x.size1())
     model.x = x
     model.xdot = x_dot
 
     # Model control input(u-rate)
-    u_rate = ca.SX.sym('u_rate', 14) # 3: delta_theta_cmd_rate [rad/s] / 3: delta_omega_cmd_rate [rad/s^2] / 8: r_rotor_cmd_rate[m/s]
+    u_rate = ca.SX.sym('u_rate', 11) # 3: delta_theta_cmd_rate [rad/s] / 8: r_rotor_cmd_rate[m/s]
     model.u = u_rate
 
     # Model parameter
@@ -101,10 +100,9 @@ def build_model():
     # angular rate (omega)
     R = euler_zyx_to_R(theta)  # (body->global)
     R_d = R_raw @ expm_hat(delta_theta_cmd)
-    omega_d = omega_raw + delta_omega_cmd
     RtRd = R.T @ R_d
     e_R = 0.5 * vee(RtRd.T - RtRd)
-    e_w = omega - RtRd @ omega_d
+    e_w = omega - RtRd @ omega_raw
     tau_d = - KR * e_R - KW * e_w
     omega_dot = J_inv @ (tau_d - ca.cross(omega, J @ omega))
 
@@ -187,20 +185,18 @@ def build_ocp():
     # ---------- costs ----------
     omega           = model.x[3:6]
     delta_theta_cmd = model.x[14:17]
-    delta_omega_cmd = model.x[17:20]
     delta_theta_cmd_rate = model.u[0:3]
-    delta_omega_cmd_rate = model.u[3:6]
-    r_rotor_cmd_rate       = model.u[6:14]
+    r_rotor_cmd_rate       = model.u[3:11]
     thrust_dev      = model.thrust_dev
     
-    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, delta_omega_cmd, thrust_dev, delta_theta_cmd_rate, delta_omega_cmd_rate, r_rotor_cmd_rate) # 1~k-1 ref
-    model.cost_y_expr_e = ca.vertcat(omega, delta_theta_cmd, delta_omega_cmd, thrust_dev) # terminal(k) ref
+    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, thrust_dev, delta_theta_cmd_rate, r_rotor_cmd_rate) # 1~k-1 ref
+    model.cost_y_expr_e = ca.vertcat(omega, delta_theta_cmd, thrust_dev) # terminal(k) ref
 
-    ocp.dims.ny   = 27
-    ocp.dims.ny_e = 13
+    ocp.dims.ny   = 21
+    ocp.dims.ny_e = 10
     
-    ocp.cost.W   = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA_CMD, c.Q_OMEGA_CMD, c.Q_FDEV, c.R_THETA_CMD, c.R_OMEGA_CMD, c.R_ROTOR]).astype(np.float64))
-    ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA_CMD, c.Q_OMEGA_CMD, c.Q_FDEV]).astype(np.float64))
+    ocp.cost.W   = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.Q_FDEV, c.R_THETA, c.R_ROTOR]).astype(np.float64))
+    ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.Q_FDEV]).astype(np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
     ocp.cost.cost_type_e = "NONLINEAR_LS"
@@ -234,7 +230,7 @@ def build_ocp():
 
     ocp.constraints.lh = np.concatenate([c.F_MIN, workspace_expr1_lb, workspace_expr2_lb, collision_expr_lb, workspace_expr11_lb, workspace_expr2_lb, collision_expr2_lb]).astype(np.float64)
     ocp.constraints.uh = np.concatenate([c.F_MAX, workspace_expr1_ub, workspace_expr2_ub, collision_expr_ub, workspace_expr11_ub, workspace_expr2_ub, collision_expr_ub]).astype(np.float64)
-    ocp.dims.nh   = int(model.con_h_expr.size()[0])
+    ocp.dims.nh   = 20
 
     # ---------- solver options ----------
     ocp.solver_options.qp_solver        = "PARTIAL_CONDENSING_HPIPM" # or "FULL_CONDENSING_HPIPM(5ms)" "PARTIAL_CONDENSING_HPIPM"(3ms) "FULL_CONDENSING_QPOASES(6ms)"

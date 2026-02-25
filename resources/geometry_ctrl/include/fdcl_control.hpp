@@ -46,7 +46,7 @@ public:
   
   void load_config(void);
   void position_control(void);
-  Vector3 attitude_control(const Eigen::Matrix3d& R_d, const Eigen::Vector3d& omega_d);
+  Vector3 attitude_control(const Eigen::Matrix3d& R_d);
   void integral_reset();
 
 private:

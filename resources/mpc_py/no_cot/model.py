@@ -15,14 +15,13 @@ def build_model():
     theta           = ca.SX.sym('theta',  3) # [rad]
     omega           = ca.SX.sym('omega',  3) # [rad/s]
     delta_theta_cmd = ca.SX.sym('delta_theta_cmd',  3) # [rad], Augmented state(command input)
-    delta_omega_cmd = ca.SX.sym('delta_omega_cmd',  3) # [rad/s], Augmented state(command input)
-    x     = ca.vertcat(theta, omega, delta_theta_cmd, delta_omega_cmd)
+    x     = ca.vertcat(theta, omega, delta_theta_cmd)
     x_dot = ca.SX.sym('x_dot', x.size1())
     model.x = x
     model.xdot = x_dot
 
     # Model control input(u-rate)
-    u_rate = ca.SX.sym('u_rate', 6) # 3: delta_theta_cmd_rate [rad/s] / 3: delta_omega_cmd_rate [rad/s^2]
+    u_rate = ca.SX.sym('u_rate', 3) # delta_theta_cmd_rate [rad/s]
     model.u = u_rate
 
     # Model parameter
@@ -97,10 +96,9 @@ def build_model():
     # angular rate (omega)
     R = euler_zyx_to_R(theta)  # (body->global)
     R_d = R_raw @ expm_hat(delta_theta_cmd)
-    omega_d = omega_raw + delta_omega_cmd
     RtRd = R.T @ R_d
     e_R = 0.5 * vee(RtRd.T - RtRd)
-    e_w = omega - RtRd @ omega_d
+    e_w = omega - RtRd @ omega_raw
     tau_d = - KR * e_R - KW * e_w
     omega_dot = J_inv @ (tau_d - ca.cross(omega, J @ omega))
 
@@ -136,18 +134,16 @@ def build_ocp():
     # ---------- costs ----------
     omega           = model.x[3:6]
     delta_theta_cmd = model.x[6:9]
-    delta_omega_cmd = model.x[9:12]
     delta_theta_cmd_rate = model.u[0:3]
-    delta_omega_cmd_rate = model.u[3:6]
     
-    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, delta_omega_cmd, delta_theta_cmd_rate, delta_omega_cmd_rate) # 1~k-1 ref
-    model.cost_y_expr_e = ca.vertcat(omega, delta_theta_cmd, delta_omega_cmd) # terminal(k) ref
+    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, delta_theta_cmd_rate) # 1~k-1 ref
+    model.cost_y_expr_e = ca.vertcat(omega, delta_theta_cmd) # terminal(k) ref
 
-    ocp.dims.ny   = 15
-    ocp.dims.ny_e = 9
+    ocp.dims.ny   = 13
+    ocp.dims.ny_e = 10
     
-    ocp.cost.W = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA_CMD, c.Q_OMEGA_CMD, c.R_THETA_CMD, c.R_OMEGA_CMD]).astype(np.float64))
-    ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA_CMD, c.Q_OMEGA_CMD]).astype(np.float64))
+    ocp.cost.W = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.R_THETA]).astype(np.float64))
+    ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA]).astype(np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
     ocp.cost.cost_type_e = "NONLINEAR_LS"
