@@ -30,8 +30,8 @@ inline constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-inline constexpr double kX[3] = {50.0, 50.0,  5.0}; // Position gain [x, y, z]
-inline constexpr double kV[3] = {30.0, 30.0, 10.0}; // Velocity gain [x, y, z]
+inline constexpr double kX[3] = {50.0, 50.0, 35.0}; // Position gain [x, y, z]
+inline constexpr double kV[3] = {30.0, 30.0, 20.0}; // Velocity gain [x, y, z]
 inline constexpr double kR[3] = {40.0, 40.0,  5.5}; // Rotational gain [roll, pitch, yaw]
 inline constexpr double kW[3] = { 5.0,  5.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
 
