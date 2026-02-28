@@ -29,8 +29,9 @@ def build_model():
     # Model parameter
     R_raw = ca.SX.sym('R_raw', 3, 3) # desired attitude SO3 matrix
     omega_raw = ca.SX.sym('omega_raw', 3) # desired angular rate [rad/s]
-    T_des = ca.SX.sym('T_des')       # [N]
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), omega_raw, T_des)
+    R_0   = ca.SX.sym('R_0', 3, 3)   # initial attitude SO3 matrix
+    f_0 = ca.SX.sym('f_0')           # [N]
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), omega_raw, ca.reshape(R_0, 9, 1), f_0)
 
     # Constants
     J = ca.DM(p.J_TENSOR)
@@ -41,6 +42,8 @@ def build_model():
     KW = ca.DM(p.KW).reshape((3, 1))
     r_off_x = ca.DM(p.R_OFF_X).reshape((4, 1))
     r_off_y = ca.DM(p.R_OFF_Y).reshape((4, 1))
+    b_F0 = ca.vertcat(0.0, 0.0, -f_0)
+    g_F0 = R_0 @ b_F0
     
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -122,7 +125,8 @@ def build_model():
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
                    ca.horzcat( -1.0,  -1.0,  -1.0,  -1.0))
 
-    w_d = ca.vertcat(tau_d, T_des)
+    b_F = R.T @ g_F0
+    w_d = ca.vertcat(tau_d, b_F[2])
     F_expr = ca.solve(A, w_d)
 
     F_mean = (ca.sum1(F_expr) / 4.0)
