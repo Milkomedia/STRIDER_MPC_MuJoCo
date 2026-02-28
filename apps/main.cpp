@@ -223,7 +223,7 @@ int main() {
       geometry_ctrl.position_control();
       const Eigen::Matrix3d R_raw = gac_cmd.Rd;
       const Eigen::Vector3d omega_raw = gac_cmd.Wd;
-      const double F_des = -geometry_ctrl.f_total; // (f_total > 0)
+      const double f_sum = -geometry_ctrl.f_total; // (f_total > 0)
 
       { // MPC get
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
@@ -323,6 +323,7 @@ int main() {
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
       
       // --- (Sequential) Control Allocation ---
+      const double F_des = f_sum * R_raw.col(2).dot(R_d.col(2));
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
       Sequential_Allocation(F_des, tau_des, cmd.tauz_bar, delayed_s.arm_q, s.r_com, thrust_des, tilt_ang_des);
