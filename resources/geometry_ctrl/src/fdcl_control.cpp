@@ -57,7 +57,8 @@ void fdcl::control::position_control(void){
 
   // force 'f' along negative b3-axis - eq (14)
   // this term equals to R.e3
-  Vector3 A = -kX*eX - kV*eV - kIX*eIX.error - m*g*e3 + m*command->xd_2dot;
+  command->lin_f = -kX*eX - kV*eV - kIX*eIX.error + m*command->xd_2dot;
+  Vector3 A = command->lin_f - m*g*e3;
 
   Vector3 b3 = state->R * e3;
   Vector3 b3_dot = state->R * hat(state->W) * e3; // eq (22)

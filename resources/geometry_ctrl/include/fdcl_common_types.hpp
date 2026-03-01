@@ -44,6 +44,7 @@ public:
   Vector3 b1 = Vector3::Zero();
   Vector3 b2 = Vector3::Zero();
   Vector3 b3 = Vector3::Zero();
+  Vector3 lin_f = Vector3::Zero();
 };
 }
 

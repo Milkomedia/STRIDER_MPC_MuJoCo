@@ -323,7 +323,8 @@ int main() {
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
       
       // --- (Sequential) Control Allocation ---
-      const double F_des = f_sum * R_raw.col(2).dot(R_d.col(2));
+      double F_des = 0.0;
+      if (!recalc_fsum(gac_cmd.lin_f, R_d.col(2), F_des)) {F_des = f_sum;}
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
       Sequential_Allocation(F_des, tau_des, cmd.tauz_bar, delayed_s.arm_q, s.r_com, thrust_des, tilt_ang_des);

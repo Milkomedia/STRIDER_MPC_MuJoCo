@@ -465,6 +465,28 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
   return true;
 }
 
+inline bool recalc_fsum(const Eigen::Vector3d& a, const Eigen::Vector3d& bz_d, double& f_sum){
+  constexpr double eps = 1e-6;
+  constexpr double mg  = param::M * param::G;
+
+  if (a.squaredNorm() < eps) return false;
+
+  // b = -(mg*e3) x a = -mg*(e3 x a) = -mg*(-a_y, a_x, 0) = (mg*a_y, -mg*a_x, 0)
+  const Eigen::Vector3d b(mg * a.y(), -mg * a.x(), 0.0);
+  if (b.squaredNorm() < eps) return false;
+
+  const Eigen::Vector3d n = a.cross(b);
+  if (n.squaredNorm() < eps) return false;
+
+  const double denom = n.dot(bz_d);
+  if (std::abs(denom) < eps) return false;
+
+  // n·(mg*e3) = mg * n_z
+  f_sum = (-mg * n.z()) / denom;
+
+  return std::isfinite(f_sum);
+}
+
 static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[20], const Eigen::Vector3d& Pc, Eigen::Vector4d& C1_des, Eigen::Vector4d& C2_des) {
   // yaw wrench conversion
   tauz_bar = param::SERVO_DELAY_ALPHA*tau_d(2) + param::SERVO_DELAY_BETA*tauz_bar;
