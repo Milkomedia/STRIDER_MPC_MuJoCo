@@ -217,7 +217,6 @@ int main() {
       gac_cmd.b1d = cmd.heading;
       gac_state.x = delayed_s.pos;
       gac_state.v = delayed_s.vel;
-      gac_state.a = delayed_s.acc;
       gac_state.R = delayed_s.R;
       gac_state.W = delayed_s.omega;
       geometry_ctrl.position_control();
@@ -323,8 +322,6 @@ int main() {
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
       
       // --- (Sequential) Control Allocation ---
-      // double F_des = 0.0;
-      // if (!recalc_fsum(gac_cmd.lin_f, R_d.col(2), F_des)) {F_des = f_sum;}
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
       Sequential_Allocation(f_sum, tau_des, cmd.tauz_bar, delayed_s.arm_q, s.r_com, thrust_des, tilt_ang_des);
@@ -460,7 +457,7 @@ int main() {
         ld.f_thrst_con[3] = static_cast<float>(smoothed_F(3));
 
         {
-          const Eigen::Vector2d tau_off(F_des*(s.r_cot(1)-s.r_com(1)), -F_des*(s.r_cot(0)-s.r_com(0)));
+          const Eigen::Vector2d tau_off(-f_sum*(s.r_cot(1)-s.r_com(1)), f_sum*(s.r_cot(0)-s.r_com(0)));
           ld.tau_off[0] = static_cast<float>(tau_off(0));
           ld.tau_off[1] = static_cast<float>(tau_off(1));
         }
