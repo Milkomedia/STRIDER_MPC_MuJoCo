@@ -16,8 +16,8 @@ J_TENSOR = np.array([
 ], dtype=np.float64)
 
 # GAC controller gain
-KR = np.array([40., 40., 5.5])
-KW = np.array([ 5.,  5., 2.5])
+KR = np.array([45., 45., 5.5])
+KW = np.array([20., 20., 2.5])
 
 # control allocation
 # real model uses thrust-based yaw (sequential allocation). but mpc model uses reaction-based yaw.

@@ -30,10 +30,10 @@ inline constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-inline constexpr double kX[3] = {50.0, 50.0, 35.0}; // Position gain [x, y, z]
-inline constexpr double kV[3] = {30.0, 30.0, 20.0}; // Velocity gain [x, y, z]
-inline constexpr double kR[3] = {40.0, 40.0,  5.5}; // Rotational gain [roll, pitch, yaw]
-inline constexpr double kW[3] = { 5.0,  5.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
+inline constexpr double kX[3] = {25.0, 25.0, 65.0}; // Position gain [x, y, z]
+inline constexpr double kV[3] = {20.0, 20.0, 60.0}; // Velocity gain [x, y, z]
+inline constexpr double kR[3] = {45.0, 45.0,  5.5}; // Rotational gain [roll, pitch, yaw]
+inline constexpr double kW[3] = {20.0, 20.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
 
 // Integral Parameters
 inline constexpr double kI  = 0.0;  /**< Attitude integral gain for roll and pitch */
@@ -95,7 +95,7 @@ inline const     double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); //
 inline const     double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;              // not a tunable parameter
 
 inline constexpr double      MPC_STEP_DT = 1.0 / 200.0; // This value must be same as >> DT << on params.py
-inline constexpr std::size_t N_STEPS_REQ = 40; // This value must be less than >> N << on params.py
+inline constexpr std::size_t N_STEPS_REQ = 70; // This value must be less than >> N << on params.py
 inline constexpr std::size_t MPC_NX      = 25; // This value must be same as >> self.yes_cot_nx << on solver.py
 inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.yes_cot_nu << on solver.py
 inline constexpr std::size_t MPC_NP      = 22; // This value must be same as >> self.yes_cot_np << on solver.py

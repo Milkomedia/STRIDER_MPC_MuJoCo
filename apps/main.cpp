@@ -207,7 +207,7 @@ int main() {
       // if (elapsed_double >= 4.0) {cmd.pos = square4_point(elapsed_double);} // option: [fig8_point/square4_point]
       // else {cmd.pos = Eigen::Vector3d(0.0, 0.0, -1.0);}
       
-      if (elapsed_double >= 6.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      if (elapsed_double >= 4.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
       else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(1.5,0.0,-1.0), elapsed_double, 2.0);}
       else {cmd.pos = Eigen::Vector3d(1.5,0.0,-1.0);}
 
@@ -323,11 +323,11 @@ int main() {
       Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
       
       // --- (Sequential) Control Allocation ---
-      double F_des = 0.0;
-      if (!recalc_fsum(gac_cmd.lin_f, R_d.col(2), F_des)) {F_des = f_sum;}
+      // double F_des = 0.0;
+      // if (!recalc_fsum(gac_cmd.lin_f, R_d.col(2), F_des)) {F_des = f_sum;}
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
-      Sequential_Allocation(F_des, tau_des, cmd.tauz_bar, delayed_s.arm_q, s.r_com, thrust_des, tilt_ang_des);
+      Sequential_Allocation(f_sum, tau_des, cmd.tauz_bar, delayed_s.arm_q, s.r_com, thrust_des, tilt_ang_des);
 
       // // --- (Normal) Control Allocation ---
       // Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
@@ -360,7 +360,7 @@ int main() {
       for (uint8_t i=0; i<20; ++i) {smoothed_q_d[i] =  param::COT_DELAY_ALPHA * smoothed_q_d[i] + param::COT_DELAY_BETA * delayed_q_d[i];}
 
       // --- MAX thrust constraint ---
-      if (elapsed_double >= 10.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > param::SATURATION_THRUST) {smoothed_F(i) = param::SATURATION_THRUST;}}}
+      if (elapsed_double >= 6.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > param::SATURATION_THRUST) {smoothed_F(i) = param::SATURATION_THRUST;}}}
 
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;

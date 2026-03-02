@@ -136,18 +136,17 @@ def build_ocp():
     ocp.solver_options.tf        = p.N * p.DT
 
     # ---------- costs ----------
-    omega           = model.x[3:6]
     delta_theta_cmd = model.x[6:9]
     delta_theta_cmd_rate = model.u[0:3]
     
-    model.cost_y_expr   = ca.vertcat(omega, delta_theta_cmd, delta_theta_cmd_rate) # 1~k-1 ref
-    model.cost_y_expr_e = ca.vertcat(omega, delta_theta_cmd) # terminal(k) ref
+    model.cost_y_expr   = ca.vertcat(delta_theta_cmd, delta_theta_cmd_rate) # 1~k-1 ref
+    model.cost_y_expr_e = ca.vertcat(delta_theta_cmd) # terminal(k) ref
 
     ocp.dims.ny   = 13
     ocp.dims.ny_e = 10
     
-    ocp.cost.W = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA, c.R_THETA]).astype(np.float64))
-    ocp.cost.W_e = np.diag(np.concatenate([c.Q_OMEGA, c.Q_THETA]).astype(np.float64))
+    ocp.cost.W = np.diag(np.concatenate([c.Q_THETA, c.R_THETA]).astype(np.float64))
+    ocp.cost.W_e = np.diag(np.concatenate([c.Q_THETA]).astype(np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
     ocp.cost.cost_type_e = "NONLINEAR_LS"
