@@ -93,16 +93,6 @@ void fdcl::control::position_control(void){
 
   command->Wd = vee(command->Rd.transpose()*Rddot);
   command->Wd_dot = vee(command->Rd.transpose()*Rdddot - hat(command->Wd)*hat(command->Wd));
-
-  // roll / pitch
-  command->b3d = b3c;
-  command->b3d_dot = b3c_dot;
-  command->b3d_ddot = b3c_ddot;
-
-  // yaw
-  command->b1c = b1c;
-  command->wc3 = e3.dot(state->R.transpose() * command->Rd * command->Wd);
-  command->wc3_dot = (e3).dot(state->R.transpose()*command->Rd * command->Wd_dot) - e3.dot(hat(state->W)*state->R.transpose()*command->Rd*command->Wd);
 }
 
 Vector3 fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){

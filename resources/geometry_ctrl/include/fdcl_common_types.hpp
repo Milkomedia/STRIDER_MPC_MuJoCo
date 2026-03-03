@@ -33,12 +33,6 @@ public:
   Vector3 b1d = Vector3::Zero();
   Vector3 b1d_dot = Vector3::Zero();
   Vector3 b1d_ddot = Vector3::Zero();
-  Vector3 b3d = Vector3::Zero();
-  Vector3 b3d_dot = Vector3::Zero();
-  Vector3 b3d_ddot = Vector3::Zero();
-  Vector3 b1c = Vector3::Zero();
-  double wc3 = 0.0;
-  double wc3_dot = 0.0;
 
   Vector3 b1 = Vector3::Zero();
   Vector3 b2 = Vector3::Zero();
