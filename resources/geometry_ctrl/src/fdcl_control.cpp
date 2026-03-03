@@ -6,8 +6,6 @@ fdcl::control::control(
   state(state_), command(command_)
 {
   // init uninitialized parameters
-  e1 << 1.0, 0.0, 0.0;
-  e2 << 0.0, 1.0, 0.0;
   e3 << 0.0, 0.0, 1.0;
 
   state->J << param::J[0], param::J[1], param::J[2], 
@@ -17,15 +15,11 @@ fdcl::control::control(
   // load parameters from the config file
   fdcl::control::load_config();
 
-  command_->xd << 0.0, 0.0, 0.0;
+  command_->xd.setZero();
   command_->xd_dot.setZero();
   command_->xd_2dot.setZero();
-  command_->xd_3dot.setZero();
-  command_->xd_4dot.setZero();
 
   command_->b1d << 1.0, 0.0, 0.0;
-  command_->b1d_dot.setZero();
-  command_->b1d_ddot.setZero();
 };
 
 fdcl::control::control(void){
@@ -57,7 +51,7 @@ void fdcl::control::position_control(void){
 
   // force 'f' along negative b3-axis - eq (14)
   // this term equals to R.e3
-  Vector3 A = -kX*eX - kV*eV - kIX*eIX.error + m*command->xd_2dot - m*g*e3;
+  Vector3 A = -kX * eX - kV * eV - kIX * eIX.error - m * g * e3 + m * command->xd_2dot;
 
   Vector3 b3 = state->R * e3;
   Vector3 b3_dot = state->R * hat(state->W) * e3; // eq (22)
@@ -65,18 +59,18 @@ void fdcl::control::position_control(void){
 
   // intermediate terms for rotational errors
   Vector3 ea = g * e3 - f_total / m * b3 - command->xd_2dot;
-  Vector3 A_dot = -kX * eV - kV * ea + m * command->xd_3dot;
+  Vector3 A_dot = -kX * eV - kV * ea;
 
   double fdot = -A_dot.dot(b3) - A.dot(b3_dot);
-  Vector3 eb = -fdot / m * b3 - f_total / m * b3_dot - command->xd_3dot;
-  Vector3 A_ddot = -kX * ea - kV * eb + m * command->xd_4dot;
+  Vector3 eb = -fdot / m * b3 - f_total / m * b3_dot;
+  Vector3 A_ddot = -kX * ea - kV * eb;
 
   Vector3 b3c, b3c_dot, b3c_ddot;
   deriv_unit_vector(-A, -A_dot, -A_ddot, b3c, b3c_dot, b3c_ddot);
 
   Vector3 A2 = -hat(command->b1d) * b3c;
-  Vector3 A2_dot = -hat(command->b1d_dot) * b3c - hat(command->b1d) * b3c_dot;
-  Vector3 A2_ddot = -hat(command->b1d_ddot)*b3c - 2.0*hat(command->b1d_dot)*b3c_dot - hat(command->b1d)*b3c_ddot;
+  Vector3 A2_dot = -hat(command->b1d) * b3c_dot;
+  Vector3 A2_ddot = -hat(command->b1d)*b3c_ddot;
 
   Vector3 b2c, b2c_dot, b2c_ddot;
   deriv_unit_vector(A2, A2_dot, A2_ddot, b2c, b2c_dot, b2c_ddot);
@@ -120,9 +114,6 @@ Vector3 fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
 
 void fdcl::control::integral_reset(){
   eIR.set_zero();
-  eI1.set_zero();
-  eI2.set_zero();
-  eIy.set_zero();
   eIX.set_zero();
 }
 
@@ -147,7 +138,6 @@ void fdcl::control::load_config(void){
 
   kIX = param::kIX;
   kI  = param::kI;
-  kyI = param::kyI;
 
   this->m = param::M;
   this->g = param::G;

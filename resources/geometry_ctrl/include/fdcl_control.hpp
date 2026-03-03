@@ -17,23 +17,14 @@ public:
 
   // for integral controller
   fdcl::integral_error_vec3 eIR; /**< Attitude integral error */
-  fdcl::integral_error eI1; /**< Attitude integral error for roll axis */
-  fdcl::integral_error eI2; /**< Attitude integral error for pitch axis */
-  fdcl::integral_error eIy; /**< Attitude integral error for yaw axis */
   fdcl::integral_error_vec3 eIX; /**< Position integral error */
 
   Vector3 eR = Vector3::Zero(); /**< Attitude error */
   Vector3 eW = Vector3::Zero(); /**< Angular rate error */
-  Vector3 ei = Vector3::Zero(); /**< Position integral error */
   Vector3 M = Vector3::Zero();  /**< Control moments */
 
   Vector3 eX = Vector3::Zero(); /**< Position error */
   Vector3 eV = Vector3::Zero(); /**< Velocity error */
-
-  Vector3 b1 = Vector3::Zero(); /**< Direction of the first body axis */
-  Vector3 b2 = Vector3::Zero(); /**< Direction of the second body axis */
-  Vector3 b3 = Vector3::Zero(); /**< Direction of the third body axis */
-  Vector3 b3_dot = Vector3::Zero(); /**< Desired rate of change of b3 axis */
 
   double f_total = 0.0;  /**< Total propeller thrust */
    
@@ -56,8 +47,6 @@ private:
   fdcl::state_t *state = nullptr; /**< Pointer to the current states */
   fdcl::command_t *command = nullptr; /**< Pointer to the desired states */
 
-  Vector3 e1; /**< Direction of the first axis of the fixed frame */
-  Vector3 e2; /**< Direction of the second axis of the fixed frame */
   Vector3 e3; /**< Direction of the third axis of the fixed frame */
 
   double m = 0.0;  /**< Mass of the rover (kg) */
@@ -73,7 +62,6 @@ private:
 
   // Integral gains
   double kI = 0.0;  /**< Attitude integral gain for roll and pitch */
-  double kyI = 0.0;  /**< Attitude integral gain for yaw */
   double kIX = 0.0;  /**< Position integral gains */
 };
 

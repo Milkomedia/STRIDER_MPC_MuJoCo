@@ -28,15 +28,7 @@ public:
   Vector3 xd = Vector3::Zero();
   Vector3 xd_dot = Vector3::Zero();
   Vector3 xd_2dot = Vector3::Zero();
-  Vector3 xd_3dot = Vector3::Zero();
-  Vector3 xd_4dot = Vector3::Zero();
   Vector3 b1d = Vector3::Zero();
-  Vector3 b1d_dot = Vector3::Zero();
-  Vector3 b1d_ddot = Vector3::Zero();
-
-  Vector3 b1 = Vector3::Zero();
-  Vector3 b2 = Vector3::Zero();
-  Vector3 b3 = Vector3::Zero();
 };
 }
 
