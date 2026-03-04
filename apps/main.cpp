@@ -281,8 +281,7 @@ int main() {
 
       const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
       FK(delayed_s.arm_q, s.r_cot, s.r1, s.r2, s.r3, s.r4);
-      s.r_com(0) = param::COM_OFF_X + param::COT_2_COM_X * s.r_cot(0);
-      s.r_com(1) = param::COM_OFF_Y + param::COT_2_COM_Y * s.r_cot(1);
+      s.r_com = com_guess(s.r1, s.r2, s.r3, s.r4);
       { // MPC send
         if (mpc_on) {
           Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;

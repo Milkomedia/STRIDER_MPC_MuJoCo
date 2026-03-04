@@ -341,6 +341,17 @@ static inline void FK(const double q[20], Eigen::Vector3d& bpcot, Eigen::Vector3
   bpcot *= 0.25;
 }
 
+static inline Eigen::Vector3d com_guess(const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4) {
+  if (!std::isfinite(r1.x()) || !std::isfinite(r1.y()) || !std::isfinite(r2.x()) || !std::isfinite(r2.y()) || !std::isfinite(r3.x()) || !std::isfinite(r3.y()) || !std::isfinite(r4.x()) || !std::isfinite(r4.y())) {
+    return Eigen::Vector3d(param::COM_OFF_X, param::COM_OFF_Y, 0.0);
+  }
+
+  const double com_x = param::INV_MASS_TOT * (param::ARM_MASS[0]*r1.x() + param::ARM_MASS[1]*r2.x() + param::ARM_MASS[2]*r3.x() + param::ARM_MASS[3]*r4.x());
+  const double com_y = param::INV_MASS_TOT * (param::ARM_MASS[0]*r1.y() + param::ARM_MASS[1]*r2.y() + param::ARM_MASS[2]*r3.y() + param::ARM_MASS[3]*r4.y());
+
+  return Eigen::Vector3d(com_x + param::COM_OFF_X, com_y + param::COM_OFF_Y, 0.0);
+}
+
 static inline double spin_360(double a, double amin, double amax) {
   constexpr double two_pi = 2.0 * M_PI;
 
