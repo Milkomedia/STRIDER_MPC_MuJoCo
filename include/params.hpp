@@ -72,6 +72,8 @@ inline constexpr double COLLISION_FAIL_MARGIN  = 0.2; // [m]
 inline constexpr double GUARD_MOVE_MARGIN      = 0.2; // [m]
 inline constexpr double B2BASE_X[4]            = { 0.12*inv_sqrt2, -0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2}; // x-distance from the body frame to each base frame [m]
 inline constexpr double B2BASE_Y[4]            = {-0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2,  0.12*inv_sqrt2}; // y-distance from the body frame to each base frame [m]
+inline constexpr double ALPHA_MIN[4] = {-105.0 * M_PI/180.0, -195.0 * M_PI/180.0,  75.0 * M_PI/180.0, -15.0 * M_PI/180.0};
+inline constexpr double ALPHA_MAX[4] = {  15.0 * M_PI/180.0,  -75.0 * M_PI/180.0, 195.0 * M_PI/180.0, 105.0 * M_PI/180.0};
 inline const     Eigen::Vector3d r1_init       = Eigen::Vector3d( 0.24, -0.24, -0.24); // rotor-1 inital position
 inline const     Eigen::Vector3d r2_init       = Eigen::Vector3d(-0.24, -0.24, -0.24); // rotor-2 inital position
 inline const     Eigen::Vector3d r3_init       = Eigen::Vector3d(-0.24,  0.24, -0.24); // rotor-3 inital position
@@ -119,15 +121,15 @@ inline constexpr double POS_BIAS_RW       = 0.00005; // bias random-walk, [m/sqr
 inline constexpr double VEL_NOISE_SIGMA   = 0.010; // white noise std, [m/s]
 inline constexpr double ACC_NOISE_SIGMA   = 0.020; // white noise std, [m/s^2]
 
-inline constexpr double RP_NOISE_SIGMA    = 1.00 * M_PI / 180.0;  // white noise std (roll/pitch), [rad]
-inline constexpr double YAW_NOISE_SIGMA   = 1.50 * M_PI / 180.0;  // white noise std (yaw), [rad]
-inline constexpr double RP_NOISE_BIAS_RW  = 0.002 * M_PI / 180.0;  // [rad/sqrt(s)]
-inline constexpr double YAW_NOISE_BIAS_RW = 0.005 * M_PI / 180.0;  // [rad/sqrt(s)]
+inline constexpr double RP_NOISE_SIGMA    = 1.00 * M_PI/180.0;  // white noise std (roll/pitch), [rad]
+inline constexpr double YAW_NOISE_SIGMA   = 1.50 * M_PI/180.0;  // white noise std (yaw), [rad]
+inline constexpr double RP_NOISE_BIAS_RW  = 0.002 * M_PI/180.0;  // [rad/sqrt(s)]
+inline constexpr double YAW_NOISE_BIAS_RW = 0.005 * M_PI/180.0;  // [rad/sqrt(s)]
 
-inline constexpr double OMEGA_NOISE_SIGMA = 4.0 * M_PI / 180.0;  // white noise std, [rad/s]
+inline constexpr double OMEGA_NOISE_SIGMA = 4.0 * M_PI/180.0;  // white noise std, [rad/s]
 
-inline constexpr double ARM_NOISE_SIGMA   = 0.40 * M_PI / 180.0;  // white noise std,  [rad/s]
-inline constexpr double ARM_BIAS_RW       = 0.03 * M_PI / 180.0;  // bias random-walk, [rad/s/sqrt(s)]
+inline constexpr double ARM_NOISE_SIGMA   = 0.40 * M_PI/180.0;  // white noise std,  [rad/s]
+inline constexpr double ARM_BIAS_RW       = 0.03 * M_PI/180.0;  // bias random-walk, [rad/s/sqrt(s)]
 
 } // namespace param
 

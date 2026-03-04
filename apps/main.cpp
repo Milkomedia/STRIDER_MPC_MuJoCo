@@ -247,14 +247,17 @@ int main() {
         const bool solve_ok = (l_mpc_output.state == 0);
         
         if (epoch_ok && time_ok && solve_ok) {
-          const std::size_t idx = static_cast<std::size_t>(std::floor(std::chrono::duration<double>(now - l_mpc_output.t).count() / param::MPC_STEP_DT));
-          // check workspace & collision 
-          std::array<Eigen::Vector2d, 4> opt_r;
-          opt_r[0] << l_mpc_output.u_opt(3, idx),  l_mpc_output.u_opt(7, idx);
-          opt_r[1] << l_mpc_output.u_opt(4, idx),  l_mpc_output.u_opt(8, idx);
-          opt_r[2] << l_mpc_output.u_opt(5, idx),  l_mpc_output.u_opt(9, idx);
-          opt_r[3] << l_mpc_output.u_opt(6, idx),  l_mpc_output.u_opt(10, idx);
-          const bool is_feasible = make_feasible(opt_r);
+          const std::size_t idx_raw = static_cast<std::size_t>(std::floor(std::chrono::duration<double>(now - l_mpc_output.t).count() / param::MPC_STEP_DT));
+          const std::size_t idx = (idx_raw < param::N_STEPS_REQ) ? idx_raw : (param::N_STEPS_REQ - 1);
+
+          Eigen::Vector2d p1, p2, p3, p4; // polar opt r_cmd
+          std::array<Eigen::Vector2d, 4> opt_r; // cartesian opt r_cmd
+          p1 << l_mpc_output.u_opt(3, idx),  l_mpc_output.u_opt(4, idx);
+          p2 << l_mpc_output.u_opt(5, idx),  l_mpc_output.u_opt(6, idx);
+          p3 << l_mpc_output.u_opt(7, idx),  l_mpc_output.u_opt(8, idx);
+          p4 << l_mpc_output.u_opt(9, idx),  l_mpc_output.u_opt(10, idx);
+          polar2cart(p1, p2, p3, p4, opt_r[0], opt_r[1], opt_r[2], opt_r[3]);
+          const bool is_feasible = make_feasible(opt_r); // check workspace & collision 
 
           if (is_feasible) {
             cmd.d_theta = l_mpc_output.u_opt.col(idx).head<3>();
@@ -282,6 +285,10 @@ int main() {
       s.r_com(1) = param::COM_OFF_Y + param::COT_2_COM_Y * s.r_cot(1);
       { // MPC send
         if (mpc_on) {
+          Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;
+          Eigen::Vector2d c_p1, c_p2, c_p3, c_p4;
+          cart2polar(s.r1, s.r2, s.r3, s.r4, s_p1, s_p2, s_p3, s_p4);
+          cart2polar(cmd.r1, cmd.r2, cmd.r3, cmd.r4, c_p1, c_p2, c_p3, c_p4);
           std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
           if (!g_mpc_busy && !g_mpc_input.has && !g_mpc_output.has) { // push next solve immediately after the previous output
             mpc_key += 1;
@@ -289,11 +296,15 @@ int main() {
             int k = 0; // fill initial state(x)
             g_mpc_input.x_0(k++) = euler_rpy(0); g_mpc_input.x_0(k++) = euler_rpy(1); g_mpc_input.x_0(k++) = euler_rpy(2); // theta(0,1,2)
             g_mpc_input.x_0(k++) = delayed_s.omega(0); g_mpc_input.x_0(k++) = delayed_s.omega(1); g_mpc_input.x_0(k++) = delayed_s.omega(2); // omega(3,4,5)
-            g_mpc_input.x_0(k++) = s.r1(0); g_mpc_input.x_0(k++) = s.r2(0); g_mpc_input.x_0(k++) = s.r3(0); g_mpc_input.x_0(k++) = s.r4(0); // r_rotor_x(6,7,8,9)
-            g_mpc_input.x_0(k++) = s.r1(1); g_mpc_input.x_0(k++) = s.r2(1); g_mpc_input.x_0(k++) = s.r3(1); g_mpc_input.x_0(k++) = s.r4(1); // r_rotor_y(10,11,12,13)
+            g_mpc_input.x_0(k++) = s_p1(0); g_mpc_input.x_0(k++) = s_p1(1);
+            g_mpc_input.x_0(k++) = s_p2(0); g_mpc_input.x_0(k++) = s_p2(1);
+            g_mpc_input.x_0(k++) = s_p3(0); g_mpc_input.x_0(k++) = s_p3(1);
+            g_mpc_input.x_0(k++) = s_p4(0); g_mpc_input.x_0(k++) = s_p4(1); // r_rotor(6~13)
             g_mpc_input.x_0(k++) = cmd.d_theta(0); g_mpc_input.x_0(k++) = cmd.d_theta(1); g_mpc_input.x_0(k++) = cmd.d_theta(2); // delta_theta(14,15,16)
-            g_mpc_input.x_0(k++) = cmd.r1(0); g_mpc_input.x_0(k++) = cmd.r2(0); g_mpc_input.x_0(k++) = cmd.r3(0); g_mpc_input.x_0(k++) = cmd.r4(0); // r_rotor_cmd_x(17,18,19,20)
-            g_mpc_input.x_0(k++) = cmd.r1(1); g_mpc_input.x_0(k++) = cmd.r2(1); g_mpc_input.x_0(k++) = cmd.r3(1); g_mpc_input.x_0(k++) = cmd.r4(1); // r_rotor_cmd_y(21,22,23,24)
+            g_mpc_input.x_0(k++) = c_p1(0); g_mpc_input.x_0(k++) = c_p1(1);
+            g_mpc_input.x_0(k++) = c_p2(0); g_mpc_input.x_0(k++) = c_p2(1);
+            g_mpc_input.x_0(k++) = c_p3(0); g_mpc_input.x_0(k++) = c_p3(1);
+            g_mpc_input.x_0(k++) = c_p4(0); g_mpc_input.x_0(k++) = c_p4(1); // r_rotor_cmd_x(17~24)
 
             // fill initial control input(u)
             for (int l=0; l<11; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_rate(l, 0);}
@@ -303,7 +314,7 @@ int main() {
             g_mpc_input.p(m++) = omega_raw(0); g_mpc_input.p(m++) = omega_raw(1); g_mpc_input.p(m++) = omega_raw(2); // omega_raw(9~11)
             g_mpc_input.p(m++) = alpha_raw(0); g_mpc_input.p(m++) = alpha_raw(1); g_mpc_input.p(m++) = alpha_raw(2); // alpha_raw(12~14)
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = delayed_s.R(i, j);}} // R_0(15~23), column-major order to match CasADi reshape
-            g_mpc_input.p(m++) = geometry_ctrl.f_total; // f_sum(24)
+            g_mpc_input.p(m++) = -f_sum; // positive, f_sum(24)
 
             if (phase==Phase::MRG_YES_COT) {g_mpc_input.use_cot = true;}
             else {g_mpc_input.use_cot = false;}

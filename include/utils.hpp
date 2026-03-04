@@ -341,6 +341,60 @@ static inline void FK(const double q[20], Eigen::Vector3d& bpcot, Eigen::Vector3
   bpcot *= 0.25;
 }
 
+static inline double spin_360(double a, double amin, double amax) {
+  constexpr double two_pi = 2.0 * M_PI;
+
+  double best = a;
+  double best_err = 1e100;
+
+  for (int k = -2; k <= 2; ++k) {
+    const double ak = a + static_cast<double>(k) * two_pi;
+    double err = 0.0;
+    if (ak < amin) err = amin - ak;
+    else if (ak > amax) err = ak - amax;
+
+    if (err < best_err) {
+      best_err = err;
+      best = ak;
+    }
+    if (err <= 1e-12) break; // already inside
+  }
+  return best;
+}
+
+static inline void cart2polar(const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, Eigen::Vector2d& p1, Eigen::Vector2d& p2, Eigen::Vector2d& p3, Eigen::Vector2d& p4) {
+  constexpr double eps = 1e-12;
+
+  const Eigen::Vector3d* cart[4] = {&r1, &r2, &r3, &r4};
+  Eigen::Vector2d* polar[4] = {&p1, &p2, &p3, &p4};
+
+  for (int a = 0; a < 4; ++a) {
+    const double dx = (*cart[a])(0) - param::B2BASE_X[a];
+    const double dy = (*cart[a])(1) - param::B2BASE_Y[a];
+
+    const double rho = std::sqrt(dx * dx + dy * dy);
+    double alpha = (rho > eps) ? std::atan2(dy, dx) : 0.0;
+
+    // Make alpha compatible with your box bounds which may exceed [-pi, pi].
+    alpha = spin_360(alpha, param::ALPHA_MIN[a], param::ALPHA_MAX[a]);
+
+    (*polar[a])(0) = rho;
+    (*polar[a])(1) = alpha;
+  }
+}
+
+static inline void polar2cart(const Eigen::Vector2d& p1, const Eigen::Vector2d& p2, const Eigen::Vector2d& p3, const Eigen::Vector2d& p4, Eigen::Vector2d& r1, Eigen::Vector2d& r2, Eigen::Vector2d& r3, Eigen::Vector2d& r4) {
+  const Eigen::Vector2d* polar[4] = {&p1, &p2, &p3, &p4};
+  Eigen::Vector2d* cart[4] = {&r1, &r2, &r3, &r4};
+
+  for (int a = 0; a < 4; ++a) {
+    const double rho   = (*polar[a])(0);
+    const double alpha = (*polar[a])(1);
+    (*cart[a])(0) = param::B2BASE_X[a] + rho * std::cos(alpha);
+    (*cart[a])(1) = param::B2BASE_Y[a] + rho * std::sin(alpha);
+  }
+}
+
 static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
   constexpr double sq_min_stretch_fail    = (param::MIN_STRETCH - param::STRETCH_FAIL_MARGIN) * (param::MIN_STRETCH - param::STRETCH_FAIL_MARGIN);
   constexpr double sq_max_stretch_fail    = (param::MAX_STRETCH + param::STRETCH_FAIL_MARGIN) * (param::MAX_STRETCH + param::STRETCH_FAIL_MARGIN);

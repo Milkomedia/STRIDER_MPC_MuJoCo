@@ -14,10 +14,16 @@ def build_model():
     # Model state
     theta           = ca.SX.sym('theta',  3) # [rad]
     omega           = ca.SX.sym('omega',  3) # [rad/s]
-    r_rotor         = ca.SX.sym('r_rotor',  8) # (r1x, r2x, r3x, r4x, r1y, r2y, r3y, r4y) [m]
-    delta_theta_cmd = ca.SX.sym('delta_theta_cmd',  3) # [rad], Augmented state(command input)
-    r_rotor_cmd     = ca.SX.sym('r_rotor_cmd',  8)     # [m], Augmented state(command input)
-    x     = ca.vertcat(theta, omega, r_rotor, delta_theta_cmd, r_rotor_cmd)
+    r1              = ca.SX.sym('r1',  2)    # [m, rad]
+    r2              = ca.SX.sym('r2',  2)    # [m, rad]
+    r3              = ca.SX.sym('r3',  2)    # [m, rad]
+    r4              = ca.SX.sym('r4',  2)    # [m, rad]
+    delta_theta_cmd = ca.SX.sym('delta_theta_cmd', 3) # [rad], Augmented state(command input)
+    r1_cmd          = ca.SX.sym('r1_cmd', 2) # [m, rad], Augmented state(command input)
+    r2_cmd          = ca.SX.sym('r2_cmd', 2) # [m, rad], Augmented state(command input)
+    r3_cmd          = ca.SX.sym('r3_cmd', 2) # [m, rad], Augmented state(command input)
+    r4_cmd          = ca.SX.sym('r4_cmd', 2) # [m, rad], Augmented state(command input)
+    x     = ca.vertcat(theta, omega, r1, r2, r3, r4, delta_theta_cmd, r1_cmd, r2_cmd, r3_cmd, r4_cmd)
     x_dot = ca.SX.sym('x_dot', x.size1())
     model.x = x
     model.xdot = x_dot
@@ -37,7 +43,11 @@ def build_model():
     # Constants
     J = ca.DM(p.J_TENSOR)
     J_inv = ca.inv(J)
-    tau_inv = 1.0 / p.TAU
+    t_arm_inv  = 1.0 / p.TAU_ARM
+    t_base_inv = 1.0 / p.TAU_BASE
+    m_arm = ca.DM(p.M_ARM).reshape((4, 1))
+    m_tot = ca.DM(p.M_BODY) + ca.sum1(m_arm)
+    inv_m_tot = 1.0 / m_tot
     zeta = p.ZETA
     KR = ca.DM(p.KR).reshape((3, 1))
     KW = ca.DM(p.KW).reshape((3, 1))
@@ -112,21 +122,48 @@ def build_model():
     tau_d = - KR * e_R - KW * e_w
     omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega)) + hat(omega)@RtRd@Wd + RtRd@Wd_dot
 
-    # rotor position (r_rotor, 1st-order)
-    r_rotor_dot = tau_inv * (r_rotor_cmd - r_rotor)
+    # body->rotor pos in cartesian coordinate (state)
+    r_pol = [r1, r2, r3, r4]
+    r = []
+    for a in range(4):
+        ra = ca.vertcat(
+            r_off_x[a] + r_pol[a][0] * ca.cos(r_pol[a][1]),
+            r_off_y[a] + r_pol[a][0] * ca.sin(r_pol[a][1]))
+        r.append(ra)
+
+    # body->rotor pos in cartesian coordinate (cmd)
+    r_pol_cmd = [r1_cmd, r2_cmd, r3_cmd, r4_cmd]
+    r_cmd = []
+    for a in range(4):
+        ra_cmd = ca.vertcat(
+            r_off_x[a] + r_pol_cmd[a][0] * ca.cos(r_pol_cmd[a][1]),
+            r_off_y[a] + r_pol_cmd[a][0] * ca.sin(r_pol_cmd[a][1]))
+        r_cmd.append(ra_cmd)
+
+    # CoM position
+    pc = ca.SX.zeros(2, 1)
+    for a in range(4): pc += m_arm[a] * r[a]
+    pc = inv_m_tot * pc
+
+    # rotor position (r, 1st-order)
+    r_dot = ca.SX.zeros(8, 1)
+    r_dot[0] = t_arm_inv  * (r1_cmd[0] - r1[0]); r_dot[1] = t_base_inv * (r1_cmd[1] - r1[1])
+    r_dot[2] = t_arm_inv  * (r2_cmd[0] - r2[0]); r_dot[3] = t_base_inv * (r2_cmd[1] - r2[1])
+    r_dot[4] = t_arm_inv  * (r3_cmd[0] - r3[0]); r_dot[5] = t_base_inv * (r3_cmd[1] - r3[1])
+    r_dot[6] = t_arm_inv  * (r4_cmd[0] - r4[0]); r_dot[7] = t_base_inv * (r4_cmd[1] - r4[1])
 
     # Augmented dynamics
     u_cmd_dot = u_rate
 
-    f_expl = ca.vertcat(theta_dot, omega_dot, r_rotor_dot, u_cmd_dot)
+    f_expl = ca.vertcat(theta_dot, omega_dot, r_dot, u_cmd_dot)
     model.f_expl_expr = f_expl
     model.f_impl_expr = x_dot - f_expl
 
     # ---------- Propeller thrust expression ----------
-    A = ca.vertcat(ca.horzcat(-r_rotor[4], -r_rotor[5], -r_rotor[6], -r_rotor[7]),
-                   ca.horzcat( r_rotor[0],  r_rotor[1],  r_rotor[2],  r_rotor[3]),
+    A = ca.vertcat(ca.horzcat(-(r[0][1]-pc[1]), -(r[1][1]-pc[1]), -(r[2][1]-pc[1]), -(r[3][1]-pc[1])),
+                   ca.horzcat( (r[0][0]-pc[0]),  (r[1][0]-pc[0]),  (r[2][0]-pc[0]),  (r[3][0]-pc[0])),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
-                   ca.horzcat( -1.0,  -1.0,  -1.0,  -1.0))
+                   ca.horzcat(-1.0,  -1.0,  -1.0,  -1.0))
 
     b_F = R.T @ g_F0
     w_d = ca.vertcat(tau_d, b_F[2])
@@ -136,46 +173,26 @@ def build_model():
     model.thrust_dev  = F_expr - F_mean * ca.SX.ones(4, 1)
 
     # ---------- Workspace & Rotor collision expression ----------
-    # h_expr stacking order:
-    #   [0:4)   : F1, F2, F3, F4
-    #   [4:8)   : workspace radius constraints
-    #   [8:16)  : workspace sign constraints
-    #   [16:20) : collision distance constraints
-
-    ws1 = []
-    ws2 = []
-    ws1_cmd = []
-    ws2_cmd = []
-
-    # workspace constraints:
-    for i in range(4):
-        rx = r_rotor[i]     - r_off_x[i]
-        ry = r_rotor[4 + i] - r_off_y[i]
-
-        rx_cmd = r_rotor_cmd[i]     - r_off_x[i]
-        ry_cmd = r_rotor_cmd[4 + i] - r_off_y[i]
-
-        ws1.append(rx*rx + ry*ry)
-        ws2.extend([r_rotor[i], r_rotor[4 + i]])
-
-        ws1_cmd.append(rx_cmd*rx_cmd + ry_cmd*ry_cmd)
-        ws2_cmd.extend([r_rotor_cmd[i], r_rotor_cmd[4 + i]])
-
-    # collision distance constraints:
-    def dist2(i, j):
-        dx = r_rotor[i] - r_rotor[j]
-        dy = r_rotor[4 + i] - r_rotor[4 + j]
-        return dx*dx + dy*dy
-    
-    def dist2_cmd(i, j):
-        dx = r_rotor_cmd[i] - r_rotor_cmd[j]
-        dy = r_rotor_cmd[4 + i] - r_rotor_cmd[4 + j]
+    def dist2_cart(rr, i, j):
+        dx = rr[i][0] - rr[j][0]
+        dy = rr[i][1] - rr[j][1]
         return dx*dx + dy*dy
 
-    collision     = [dist2(0, 1),         dist2(1, 2),     dist2(2, 3),     dist2(3, 0),]
-    collision_cmd = [dist2_cmd(0, 1), dist2_cmd(1, 2), dist2_cmd(2, 3), dist2_cmd(3, 0),]
+    collision_state = ca.vertcat(
+        dist2_cart(r, 0, 1),
+        dist2_cart(r, 1, 2),
+        dist2_cart(r, 2, 3),
+        dist2_cart(r, 3, 0),
+    )
 
-    model.con_h_expr = ca.vertcat(F_expr, ca.vertcat(*ws1), ca.vertcat(*ws2), ca.vertcat(*collision), ca.vertcat(*ws1_cmd), ca.vertcat(*ws2_cmd), ca.vertcat(*collision_cmd),)
+    collision_cmd = ca.vertcat(
+        dist2_cart(r_cmd, 0, 1),
+        dist2_cart(r_cmd, 1, 2),
+        dist2_cart(r_cmd, 2, 3),
+        dist2_cart(r_cmd, 3, 0),
+    )
+
+    model.con_h_expr = ca.vertcat(F_expr, collision_state, collision_cmd)
 
     return model
 
@@ -190,16 +207,16 @@ def build_ocp():
     ocp.solver_options.tf        = p.N * p.DT
 
     # ---------- costs ----------
-    delta_theta_cmd = model.x[14:17]
+    delta_theta_cmd      = model.x[14:17]
     delta_theta_cmd_rate = model.u[0:3]
-    r_rotor_cmd_rate       = model.u[3:11]
-    thrust_dev      = model.thrust_dev
+    r_rotor_cmd_rate     = model.u[3:11]
+    thrust_dev           = model.thrust_dev
     
     model.cost_y_expr   = ca.vertcat(delta_theta_cmd, thrust_dev, delta_theta_cmd_rate, r_rotor_cmd_rate) # 1~k-1 ref
     model.cost_y_expr_e = ca.vertcat(delta_theta_cmd, thrust_dev) # terminal(k) ref
 
-    ocp.dims.ny   = 21
-    ocp.dims.ny_e = 10
+    ocp.dims.ny   = 18
+    ocp.dims.ny_e = 7
     
     ocp.cost.W   = np.diag(np.concatenate([c.Q_THETA, c.Q_FDEV, c.R_THETA, c.R_ROTOR]).astype(np.float64))
     ocp.cost.W_e = np.diag(np.concatenate([c.Q_THETA, c.Q_FDEV]).astype(np.float64))
@@ -213,30 +230,35 @@ def build_ocp():
     ocp.parameter_values = np.zeros((model.p.size()[0],))
     ocp.constraints.x0 = np.zeros(model.x.size()[0])
 
+    # ---- box constraints on x ----
+    idx_rho_state   = np.array([6, 8, 10, 12], dtype=np.int64)
+    idx_alpha_state = np.array([7, 9, 11, 13], dtype=np.int64)
+    idx_rho_cmd     = np.array([17, 19, 21, 23], dtype=np.int64)
+    idx_alpha_cmd   = np.array([18, 20, 22, 24], dtype=np.int64)
+    ocp.constraints.idxbx = np.concatenate([idx_rho_state, idx_alpha_state, idx_rho_cmd, idx_alpha_cmd])
+
+    lbx = np.concatenate([np.full(4, p.RHO_MIN,     dtype=np.float64),
+                          np.array(p.ALPHA_MIN,     dtype=np.float64),
+                          np.full(4, p.RHO_MIN_SLK, dtype=np.float64),
+                          np.array(p.ALPHA_MIN,     dtype=np.float64)])
+
+    ubx = np.concatenate([np.full(4, p.RHO_MAX,     dtype=np.float64),
+                          np.array(p.ALPHA_MAX,     dtype=np.float64),
+                          np.full(4, p.RHO_MAX_SLK, dtype=np.float64),
+                          np.array(p.ALPHA_MAX,     dtype=np.float64)])
+
+    ocp.constraints.lbx = lbx
+    ocp.constraints.ubx = ubx
+    ocp.dims.nbx = ocp.constraints.idxbx.size
+
     # ---------- h_expr constraints ----------
-    r_min_sq = p.R_MIN * p.R_MIN
-    r_max_sq = p.R_MAX * p.R_MAX
-    workspace_expr1_lb = np.array([r_min_sq, r_min_sq, r_min_sq, r_min_sq])
-    workspace_expr1_ub = np.array([r_max_sq, r_max_sq, r_max_sq, r_max_sq])
+    col_state_lb = np.full(4, (2.0 * p.R_ROTOR)**2,     dtype=np.float64)
+    col_cmd_lb   = np.full(4, (2.0 * p.R_ROTOR_SLK)**2, dtype=np.float64)
 
-    r_min_slk_sq = p.R_MIN_SLK * p.R_MIN_SLK
-    r_max_slk_sq = p.R_MAX_SLK * p.R_MAX_SLK
-    workspace_expr11_lb = np.array([r_min_slk_sq, r_min_slk_sq, r_min_slk_sq, r_min_slk_sq])
-    workspace_expr11_ub = np.array([r_max_slk_sq, r_max_slk_sq, r_max_slk_sq, r_max_slk_sq])
+    ocp.constraints.lh = np.concatenate([c.F_MIN, col_state_lb, col_cmd_lb]).astype(np.float64)
+    ocp.constraints.uh = np.concatenate([c.F_MAX, np.full(4, 1e12), np.full(4, 1e12)]).astype(np.float64)
 
-    workspace_expr2_lb = np.array([0.0, -1e12, -1e12, -1e12, -1e12, 0.0, 0.0, 0.0], dtype=np.float64)
-    workspace_expr2_ub = np.array([1e12, 0.0, 0.0, 0.0, 0.0, 1e12, 1e12, 1e12], dtype=np.float64)
-
-    four_r_rotor_sq = 4.0 * p.R_ROTOR *p.R_ROTOR
-    collision_expr_lb = np.array([four_r_rotor_sq, four_r_rotor_sq, four_r_rotor_sq, four_r_rotor_sq], dtype=np.float64)
-    collision_expr_ub = np.array([1e12, 1e12, 1e12, 1e12], dtype=np.float64)
-
-    four_r_rotor_slk_sq = 4.0 * p.R_ROTOR_SLK *p.R_ROTOR_SLK
-    collision_expr2_lb = np.array([four_r_rotor_slk_sq, four_r_rotor_slk_sq, four_r_rotor_slk_sq, four_r_rotor_slk_sq], dtype=np.float64)
-
-    ocp.constraints.lh = np.concatenate([c.F_MIN, workspace_expr1_lb, workspace_expr2_lb, collision_expr_lb, workspace_expr11_lb, workspace_expr2_lb, collision_expr2_lb]).astype(np.float64)
-    ocp.constraints.uh = np.concatenate([c.F_MAX, workspace_expr1_ub, workspace_expr2_ub, collision_expr_ub, workspace_expr11_ub, workspace_expr2_ub, collision_expr_ub]).astype(np.float64)
-    ocp.dims.nh   = 20
+    ocp.dims.nh = 12
 
     # ---------- solver options ----------
     ocp.solver_options.qp_solver        = "PARTIAL_CONDENSING_HPIPM" # or "FULL_CONDENSING_HPIPM(5ms)" "PARTIAL_CONDENSING_HPIPM"(3ms) "FULL_CONDENSING_QPOASES(6ms)"

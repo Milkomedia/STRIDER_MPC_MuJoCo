@@ -5,9 +5,6 @@ N  = 75     # number of steps
 DT = 1.0 / 200  # [s] (of each step)
 
 # ---------- model parameters ----------
-# CoT actuator time constant
-TAU = 0.17
-
 # Inertia tensor
 J_TENSOR = np.array([
     [0.27, 0.00, 0.00],
@@ -25,14 +22,24 @@ KW = np.array([20., 20., 2.5])
 ZETA = 0.1
 
 # ---------- yes-cot parameters ----------
+# CoT actuator time constant
+TAU_BASE = 0.25
+TAU_ARM  = 0.15
+
+M_ARM  = np.array([0.8205656, 0.8205656, 0.8205656, 0.8205656])
+M_BODY = 3.5177376
+
 R_OFF_X = np.array([ 0.12, -0.12, -0.12,  0.12])/np.sqrt(2)
 R_OFF_Y = np.array([-0.12, -0.12,  0.12,  0.12])/np.sqrt(2)
 
-R_MIN = 0.1506
-R_MAX = 0.2925
-R_MIN_SLK = 0.1506 - 0.03
-R_MAX_SLK = 0.2925 + 0.03
+RHO_MIN = 0.1506
+RHO_MAX = 0.2925
+ALPHA_MIN = np.array([-105.0, -195.0,  75.0, -15.0]) * np.pi / 180.0
+ALPHA_MAX = np.array([  15.0,  -75.0, 195.0, 105.0]) * np.pi / 180.0
 R_ROTOR = 0.22
+
+RHO_MIN_SLK = 0.1506 - 0.03
+RHO_MAX_SLK = 0.2925 + 0.03
 R_ROTOR_SLK = 0.22 - 0.04
 
 # ---------- no-cot parameters ----------

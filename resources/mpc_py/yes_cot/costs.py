@@ -12,4 +12,6 @@ Q_FDEV  = 1.0 * np.array([1.0, 1.0, 1.0, 1.0])
 
 # rate cost
 R_THETA = 3.0  * np.array([1.0, 1.0, 1.0])
-R_ROTOR = 2.0 * np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+c_a = 1.0  # arm  cost (m/s scale)
+c_b = 0.1 * 0.23 # base cost (rad/s scale)
+R_ROTOR = 2.0 * np.array([c_a, c_b, c_a, c_b, c_a, c_b, c_a, c_b])
