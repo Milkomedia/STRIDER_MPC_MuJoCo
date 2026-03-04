@@ -27,6 +27,9 @@ public:
   Vector3 eV = Vector3::Zero(); /**< Velocity error */
 
   double f_total = 0.0;  /**< Total propeller thrust */
+
+  Matrix3 Rddot = Matrix3::Zero();
+  Matrix3 Rdddot = Matrix3::Zero();
    
   control(
     fdcl::state_t *&state_, /**< Pointer to the current states */
@@ -37,7 +40,7 @@ public:
   
   void load_config(void);
   void position_control(void);
-  Vector3 attitude_control(const Eigen::Matrix3d& R_d);
+  Vector3 attitude_control(const Eigen::Matrix3d& Rd, const Eigen::Vector3d& Wd, const Eigen::Vector3d& Wd_dot);
   void integral_reset();
 
 private:

@@ -22,7 +22,7 @@ KW = np.array([20., 20., 2.5])
 # control allocation
 # real model uses thrust-based yaw (sequential allocation). but mpc model uses reaction-based yaw.
 # To compensate this, mpc's allocation thinks that less thrust deviation produces more reaction torque.
-ZETA = 0.04
+ZETA = 0.1
 
 # ---------- yes-cot parameters ----------
 R_OFF_X = np.array([ 0.12, -0.12, -0.12,  0.12])/np.sqrt(2)

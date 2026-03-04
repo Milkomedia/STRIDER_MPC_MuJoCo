@@ -79,8 +79,6 @@ void fdcl::control::position_control(void){
   Vector3 b1c_dot = hat(b2c_dot) * b3c + hat(b2c) * b3c_dot;
   Vector3 b1c_ddot = hat(b2c_ddot)*b3c + 2.0*hat(b2c_dot)*b3c_dot + hat(b2c)*b3c_ddot;
 
-  Matrix3 Rddot, Rdddot;
-
   command->Rd << b1c, b2c, b3c;
   Rddot << b1c_dot, b2c_dot, b3c_dot;
   Rdddot << b1c_ddot, b2c_ddot, b3c_ddot;
@@ -89,25 +87,23 @@ void fdcl::control::position_control(void){
   command->Wd_dot = vee(command->Rd.transpose()*Rdddot - hat(command->Wd)*hat(command->Wd));
 }
 
-Vector3 fdcl::control::attitude_control(const Eigen::Matrix3d& R_d){
-  command->Rd = R_d; // use MRG calculated R_d
-
-  Matrix3 RdtR = command->Rd.transpose() * state->R;
+Vector3 fdcl::control::attitude_control(const Eigen::Matrix3d& Rd, const Eigen::Vector3d& Wd, const Eigen::Vector3d& Wd_dot) {
+  Matrix3 RdtR = Rd.transpose() * state->R;
   eR = 0.5 * vee(RdtR - RdtR.transpose());
 
   // if norm(eR) exceeds limit, scale it back
   double eR_norm = eR.norm();
   if(eR_norm > eR_norm_max_) {eR = eR * (eR_norm_max_ / eR_norm);}
 
-  eW = state->W - state->R.transpose() * command->Rd * command->Wd;
+  eW = state->W - state->R.transpose() * Rd * Wd;
 
   eIR.integrate(eW + eR, dt);
 
   M = - kR * eR \
       - kW * eW \
       - kI * eIR.error \
-      - state->J * hat(state->W) * RdtR.transpose() * command->Wd \
-      + state->J * state->R.transpose() * command->Rd * command->Wd_dot;
+      - state->J * hat(state->W) * RdtR.transpose() * Wd \
+      + state->J * state->R.transpose() * Rd * Wd_dot;
 
   return M;
 }

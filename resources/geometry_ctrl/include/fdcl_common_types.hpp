@@ -21,10 +21,9 @@ struct state_t
 
 class command_t{
 public:
+  Matrix3 Rd = Matrix3::Identity();
   Vector3 Wd = Vector3::Zero();
   Vector3 Wd_dot = Vector3::Zero();
-  Vector3 Wd_2dot = Vector3::Zero();
-  Matrix3 Rd = Matrix3::Identity();
   Vector3 xd = Vector3::Zero();
   Vector3 xd_dot = Vector3::Zero();
   Vector3 xd_2dot = Vector3::Zero();

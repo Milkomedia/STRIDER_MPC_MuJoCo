@@ -102,10 +102,11 @@ def build_model():
 
     # angular rate (omega)
     R = euler_zyx_to_R(theta)  # (body->global)
-    R_d = R_raw @ expm_hat(delta_theta_cmd)
-    RtRd = R.T @ R_d
+    Rd = R_raw @ expm_hat(delta_theta_cmd)
+    Wd = expm_hat(-delta_theta_cmd) @ omega_raw
+    RtRd = R.T @ Rd
     e_R = 0.5 * vee(RtRd.T - RtRd)
-    e_w = omega - RtRd @ omega_raw
+    e_w = omega - RtRd @ Wd
     tau_d = - KR * e_R - KW * e_w
     omega_dot = J_inv @ (tau_d - ca.cross(omega, J @ omega))
 

@@ -222,6 +222,7 @@ int main() {
       geometry_ctrl.position_control();
       const Eigen::Matrix3d R_raw = gac_cmd.Rd;
       const Eigen::Vector3d omega_raw = gac_cmd.Wd;
+      const Eigen::Vector3d alpha_raw = gac_cmd.Wd_dot;
       const double f_sum = -geometry_ctrl.f_total; // (f_total > 0)
 
       { // MPC get
@@ -318,8 +319,11 @@ int main() {
       }
 
       // --- attitude control --- 
-      const Eigen::Matrix3d R_d = R_raw * expm_hat(cmd.d_theta);
-      Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(R_d);
+      const Eigen::Matrix3d Et = expm_hat(-cmd.d_theta);
+      const Eigen::Matrix3d Rd = R_raw * Et.transpose();
+      const Eigen::Vector3d Wd = Et * omega_raw;
+      const Eigen::Vector3d Wd_dot = Et * alpha_raw;
+      const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, Wd, Wd_dot);
       
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
@@ -415,7 +419,7 @@ int main() {
           ld.rpy_raw[2] = static_cast<float>(rpy_raw(2));
         }
         {
-          const Eigen::Vector3d rpy_d = R_to_rpy(R_d);
+          const Eigen::Vector3d rpy_d = R_to_rpy(Rd);
           ld.rpy_d[0] = static_cast<float>(rpy_d(0));
           ld.rpy_d[1] = static_cast<float>(rpy_d(1));
           ld.rpy_d[2] = static_cast<float>(rpy_d(2));
@@ -457,7 +461,7 @@ int main() {
         ld.f_thrst_con[3] = static_cast<float>(smoothed_F(3));
 
         {
-          const Eigen::Vector2d tau_off(-f_sum*(s.r_cot(1)-s.r_com(1)), f_sum*(s.r_cot(0)-s.r_com(0)));
+          const Eigen::Vector2d tau_off(f_sum*(s.r_cot(1)-s.r_com(1)), -f_sum*(s.r_cot(0)-s.r_com(0)));
           ld.tau_off[0] = static_cast<float>(tau_off(0));
           ld.tau_off[1] = static_cast<float>(tau_off(1));
         }
