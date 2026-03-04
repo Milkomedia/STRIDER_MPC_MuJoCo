@@ -301,8 +301,9 @@ int main() {
             int m = 0; // fill initial parameter(p)
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
             g_mpc_input.p(m++) = omega_raw(0); g_mpc_input.p(m++) = omega_raw(1); g_mpc_input.p(m++) = omega_raw(2); // omega_raw(9~11)
-            for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = delayed_s.R(i, j);}} // R_0(12~20), column-major order to match CasADi reshape
-            g_mpc_input.p(m++) = geometry_ctrl.f_total; // f_sum(21)
+            g_mpc_input.p(m++) = alpha_raw(0); g_mpc_input.p(m++) = alpha_raw(1); g_mpc_input.p(m++) = alpha_raw(2); // alpha_raw(12~14)
+            for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = delayed_s.R(i, j);}} // R_0(15~23), column-major order to match CasADi reshape
+            g_mpc_input.p(m++) = geometry_ctrl.f_total; // f_sum(24)
 
             if (phase==Phase::MRG_YES_COT) {g_mpc_input.use_cot = true;}
             else {g_mpc_input.use_cot = false;}

@@ -27,11 +27,12 @@ def build_model():
     model.u = u_rate
 
     # Model parameter
-    R_raw = ca.SX.sym('R_raw', 3, 3) # desired attitude SO3 matrix
-    omega_raw = ca.SX.sym('omega_raw', 3) # desired angular rate [rad/s]
-    R_0   = ca.SX.sym('R_0', 3, 3)   # initial attitude SO3 matrix
-    f_0 = ca.SX.sym('f_0')           # [N]
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), omega_raw, ca.reshape(R_0, 9, 1), f_0)
+    R_raw = ca.SX.sym('R_raw', 3, 3)    # desired attitude SO3 matrix
+    W_raw = ca.SX.sym('W_raw', 3)       # desired angular rate [rad/s]
+    Wdot_raw = ca.SX.sym('Wdot_raw', 3) # desired angular accel [rad/s^2]
+    R_0   = ca.SX.sym('R_0', 3, 3)      # initial attitude SO3 matrix
+    f_0 = ca.SX.sym('f_0')              # [N]
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0)
 
     # Constants
     J = ca.DM(p.J_TENSOR)
@@ -103,12 +104,13 @@ def build_model():
     # angular rate (omega)
     R = euler_zyx_to_R(theta)  # (body->global)
     Rd = R_raw @ expm_hat(delta_theta_cmd)
-    Wd = expm_hat(-delta_theta_cmd) @ omega_raw
+    Wd = expm_hat(-delta_theta_cmd) @ W_raw
+    Wd_dot = expm_hat(-delta_theta_cmd) @ Wdot_raw
     RtRd = R.T @ Rd
     e_R = 0.5 * vee(RtRd.T - RtRd)
     e_w = omega - RtRd @ Wd
     tau_d = - KR * e_R - KW * e_w
-    omega_dot = J_inv @ (tau_d - ca.cross(omega, J @ omega))
+    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega)) + hat(omega)@RtRd@Wd + RtRd@Wd_dot
 
     # rotor position (r_rotor, 1st-order)
     r_rotor_dot = tau_inv * (r_rotor_cmd - r_rotor)
