@@ -120,7 +120,7 @@ def build_model():
     e_R = 0.5 * vee(RtRd.T - RtRd)
     e_w = omega - RtRd @ Wd
     tau_d = - KR * e_R - KW * e_w
-    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega)) + hat(omega)@RtRd@Wd + RtRd@Wd_dot
+    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))# + hat(omega)@RtRd@Wd + RtRd@Wd_dot
 
     # body->rotor pos in cartesian coordinate (state)
     r_pol = [r1, r2, r3, r4]

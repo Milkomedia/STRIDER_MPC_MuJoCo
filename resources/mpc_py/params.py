@@ -1,8 +1,8 @@
 import numpy as np
 
 # MPC horizon
-N  = 75     # number of steps
-DT = 1.0 / 200  # [s] (of each step)
+N  = 50     # number of steps
+DT = 1.0 / 75  # [s] (of each step)
 
 # ---------- model parameters ----------
 # Inertia tensor
@@ -38,9 +38,9 @@ ALPHA_MIN = np.array([-105.0, -195.0,  75.0, -15.0]) * np.pi / 180.0
 ALPHA_MAX = np.array([  15.0,  -75.0, 195.0, 105.0]) * np.pi / 180.0
 R_ROTOR = 0.22
 
-RHO_MIN_SLK = 0.1506 - 0.03
-RHO_MAX_SLK = 0.2925 + 0.03
-R_ROTOR_SLK = 0.22 - 0.04
+RHO_MIN_SLK = 0.1506 - 0.05
+RHO_MAX_SLK = 0.2925 + 0.05
+R_ROTOR_SLK = 0.22 - 0.07
 
 # ---------- no-cot parameters ----------
 # default l

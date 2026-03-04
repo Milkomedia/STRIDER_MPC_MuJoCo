@@ -343,6 +343,7 @@ static inline void FK(const double q[20], Eigen::Vector3d& bpcot, Eigen::Vector3
 
 static inline Eigen::Vector3d com_guess(const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4) {
   if (!std::isfinite(r1.x()) || !std::isfinite(r1.y()) || !std::isfinite(r2.x()) || !std::isfinite(r2.y()) || !std::isfinite(r3.x()) || !std::isfinite(r3.y()) || !std::isfinite(r4.x()) || !std::isfinite(r4.y())) {
+    std::fprintf(stdout, "[com_guess] : DETECT INF.\n"); std::fflush(stdout);
     return Eigen::Vector3d(param::COM_OFF_X, param::COM_OFF_Y, 0.0);
   }
 
