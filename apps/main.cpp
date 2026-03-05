@@ -334,7 +334,7 @@ int main() {
       const Eigen::Matrix3d Rd = R_raw * Et.transpose();
       const Eigen::Vector3d Wd = Et * omega_raw;
       const Eigen::Vector3d Wd_dot = Et * alpha_raw;
-      const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, Wd, Wd_dot);
+      const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, omega_raw, alpha_raw);
       
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
@@ -435,12 +435,19 @@ int main() {
           ld.rpy_d[1] = static_cast<float>(rpy_d(1));
           ld.rpy_d[2] = static_cast<float>(rpy_d(2));
         }
-        ld.omega_d[0] = static_cast<float>(omega_raw(0));
-        ld.omega_d[1] = static_cast<float>(omega_raw(1));
-        ld.omega_d[2] = static_cast<float>(omega_raw(2));
-        ld.alpha_d[0] = static_cast<float>(gac_cmd.Wd_dot(0));
-        ld.alpha_d[1] = static_cast<float>(gac_cmd.Wd_dot(1));
-        ld.alpha_d[2] = static_cast<float>(gac_cmd.Wd_dot(2));
+        ld.omega_raw[0] = static_cast<float>(omega_raw(0));
+        ld.omega_raw[1] = static_cast<float>(omega_raw(1));
+        ld.omega_raw[2] = static_cast<float>(omega_raw(2));
+        ld.omega_d[0] = static_cast<float>(Wd(0));
+        ld.omega_d[1] = static_cast<float>(Wd(1));
+        ld.omega_d[2] = static_cast<float>(Wd(2));
+        
+        ld.alpha_raw[0] = static_cast<float>(alpha_raw(0));
+        ld.alpha_raw[1] = static_cast<float>(alpha_raw(1));
+        ld.alpha_raw[2] = static_cast<float>(alpha_raw(2));
+        ld.alpha_d[0] = static_cast<float>(Wd_dot(0));
+        ld.alpha_d[1] = static_cast<float>(Wd_dot(1));
+        ld.alpha_d[2] = static_cast<float>(Wd_dot(2));
 
         ld.rpy[0]   = static_cast<float>(euler_rpy(0));
         ld.rpy[1]   = static_cast<float>(euler_rpy(1));

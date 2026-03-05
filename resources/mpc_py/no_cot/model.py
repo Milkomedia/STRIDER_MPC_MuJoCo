@@ -104,9 +104,9 @@ def build_model():
     Wd_dot = expm_hat(-delta_theta_cmd) @ Wdot_raw
     RtRd = R.T @ Rd
     e_R = 0.5 * vee(RtRd.T - RtRd)
-    e_w = omega - RtRd @ Wd
+    e_w = omega - RtRd @ W_raw
     tau_d = - KR * e_R - KW * e_w
-    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega)) + hat(omega)@RtRd@Wd + RtRd@Wd_dot
+    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))# + hat(omega)@RtRd@W_raw + RtRd@Wdot_raw
 
     # Augmented dynamics
     u_cmd_dot = u_rate

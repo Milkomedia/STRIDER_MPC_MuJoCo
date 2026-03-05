@@ -353,36 +353,38 @@ OFF_VEL        = 52   # float vel[3]
 OFF_ACC        = 64   # float acc[3]
 OFF_RPY_RAW    = 76   # float rpy_raw[3]
 OFF_RPY_D      = 88   # float rpy_d[3]
-OFF_OMEGA_D    = 100  # float omega_d[3]
-OFF_ALPHA_D    = 112  # float alpha_d[3]
-OFF_RPY        = 124  # float rpy[3]
-OFF_OMEGA      = 136  # float omega[3]
-OFF_ALPHA      = 148  # float alpha[3]
-OFF_F_DES      = 160  # float f_total
-OFF_TAU_D      = 164  # float tau_d[3]
-OFF_TAU_Z_T    = 176  # float tau_z_t
-OFF_TILT       = 180  # float tilt_rad[4]
-OFF_F_THRST    = 196  # float f_thrst[4]
-OFF_F_THRST_CON= 212  # float f_thrst_con[4]
-OFF_TAU_OFF    = 228  # float tau_off[2]
-OFF_TAU_THRUST = 236  # float tau_thrust[3]
-OFF_R_ROTOR1   = 248  # float r_rotor1[2]
-OFF_R_ROTOR2   = 256  # float r_rotor2[2]
-OFF_R_ROTOR3   = 264  # float r_rotor3[2]
-OFF_R_ROTOR4   = 272  # float r_rotor4[2]
-OFF_R_COT      = 280  # float r_cot[2]
-OFF_R_ROTOR1_D = 288  # float r_rotor1_d[2]
-OFF_R_ROTOR2_D = 296  # float r_rotor2_d[2]
-OFF_R_ROTOR3_D = 304  # float r_rotor3_d[2]
-OFF_R_ROTOR4_D = 312  # float r_rotor4_d[2]
-OFF_R_COT_D    = 320  # float r_cot_d[2]
-OFF_Q          = 328  # float q[20]
-OFF_Q_CMD      = 408  # float q_cmd[20]
-OFF_SOLVE_MS   = 488  # float solve_ms
-OFF_SOLVE_STATUS = 492 # int32 solve_status
-OFF_PHASE      = 496  # uint8 phase
+OFF_OMEGA_RAW  = 100  # float omega_raw[3]
+OFF_OMEGA_D    = 112  # float omega_d[3]
+OFF_ALPHA_RAW  = 124  # float alpha_raw[3]
+OFF_ALPHA_D    = 136  # float alpha_d[3]
+OFF_RPY        = 148  # float rpy[3]
+OFF_OMEGA      = 160  # float omega[3]
+OFF_ALPHA      = 172  # float alpha[3]
+OFF_F_DES      = 184  # float f_total
+OFF_TAU_D      = 188  # float tau_d[3]
+OFF_TAU_Z_T    = 200  # float tau_z_t
+OFF_TILT       = 204  # float tilt_rad[4]
+OFF_F_THRST    = 220  # float f_thrst[4]
+OFF_F_THRST_CON= 236  # float f_thrst_con[4]
+OFF_TAU_OFF    = 252  # float tau_off[2]
+OFF_TAU_THRUST = 260  # float tau_thrust[3]
+OFF_R_ROTOR1   = 272  # float r_rotor1[2]
+OFF_R_ROTOR2   = 280  # float r_rotor2[2]
+OFF_R_ROTOR3   = 288  # float r_rotor3[2]
+OFF_R_ROTOR4   = 296  # float r_rotor4[2]
+OFF_R_COT      = 304  # float r_cot[2]
+OFF_R_ROTOR1_D = 312  # float r_rotor1_d[2]
+OFF_R_ROTOR2_D = 320  # float r_rotor2_d[2]
+OFF_R_ROTOR3_D = 328  # float r_rotor3_d[2]
+OFF_R_ROTOR4_D = 336  # float r_rotor4_d[2]
+OFF_R_COT_D    = 344  # float r_cot_d[2]
+OFF_Q          = 352  # float q[20]
+OFF_Q_CMD      = 432  # float q_cmd[20]
+OFF_SOLVE_MS   = 512  # float solve_ms
+OFF_SOLVE_STATUS = 516 # int32 solve_status
+OFF_PHASE      = 520  # uint8 phase
 
-LOGDATA_SIZE = 497  # sizeof(LogData) with #pragma pack(1)
+LOGDATA_SIZE = 521  # sizeof(LogData) with #pragma pack(1)
 HEADER_SIZE = 64
 _SLOT_PAD = (8 - (LOGDATA_SIZE % 8)) % 8
 SLOT_SIZE = 8 + LOGDATA_SIZE + _SLOT_PAD  # seq(u64)=8 + LogData + pad -> multiple of 8
@@ -479,7 +481,7 @@ class MMapReader:
       seq_a = self._u64(slot_off + 0)
       if seq_a & 1: continue
 
-      # NOTE: zero-copy view (avoid allocating/copying 497 bytes per slot)
+      # NOTE: zero-copy view (avoid allocating/copying LOGDATA_SIZE bytes per slot)
       dbuf = self._mv[slot_off + 8: slot_off + 8 + LOGDATA_SIZE]
 
       seq_b = self._u64(slot_off + 0)
@@ -496,8 +498,10 @@ class MMapReader:
       out_ch["rpy"][i, :] = _S_FFF.unpack_from(dbuf, OFF_RPY)
       out_ch["rpy_raw"][i, :] = _S_FFF.unpack_from(dbuf, OFF_RPY_RAW)
       out_ch["rpy_d"][i, :] = _S_FFF.unpack_from(dbuf, OFF_RPY_D)
+      out_ch["omega_raw"][i, :] = _S_FFF.unpack_from(dbuf, OFF_OMEGA_RAW)
       out_ch["omega_d"][i, :] = _S_FFF.unpack_from(dbuf, OFF_OMEGA_D)
       out_ch["omega"][i, :]   = _S_FFF.unpack_from(dbuf, OFF_OMEGA)
+      out_ch["alpha_raw"][i, :] = _S_FFF.unpack_from(dbuf, OFF_ALPHA_RAW)
       out_ch["alpha_d"][i, :] = _S_FFF.unpack_from(dbuf, OFF_ALPHA_D)
       out_ch["alpha"][i, :]   = _S_FFF.unpack_from(dbuf, OFF_ALPHA)
 
@@ -574,8 +578,10 @@ class MMapReader:
       "rpy": np.empty((n, 3), dtype=np.float32),
       "rpy_raw": np.empty((n, 3), dtype=np.float32),
       "rpy_d": np.empty((n, 3), dtype=np.float32),
+      "omega_raw": np.empty((n, 3), dtype=np.float32),
       "omega_d": np.empty((n, 3), dtype=np.float32),
       "omega": np.empty((n, 3), dtype=np.float32),
+      "alpha_raw": np.empty((n, 3), dtype=np.float32),
       "alpha_d": np.empty((n, 3), dtype=np.float32),
       "alpha": np.empty((n, 3), dtype=np.float32),
       "tau_d": np.empty((n, 3), dtype=np.float32),
@@ -1402,11 +1408,14 @@ class LoggerWindow(QtWidgets.QMainWindow):
     p3r2c2 = _mk_plot(self.glw3, 1, 1, "omega_y [deg/s]", y_range=(-150.0, 150.0))
     p3r2c3 = _mk_plot(self.glw3, 1, 2, "omega_z [deg/s]", y_range=( -10.0,  10.0))
 
-    self._curves["t3_omega_x_des"] = p3r2c1.plot(pen=pen_des, name="des")
+    self._curves["t3_omega_x_raw"] = p3r2c1.plot(pen=pen_raw, name="raw")
+    self._curves["t3_omega_x_mrg"] = p3r2c1.plot(pen=pen_mrg, name="mrg")
     self._curves["t3_omega_x_act"] = p3r2c1.plot(pen=pen_act, name="act")
-    self._curves["t3_omega_y_des"] = p3r2c2.plot(pen=pen_des, name="des")
+    self._curves["t3_omega_y_raw"] = p3r2c2.plot(pen=pen_raw, name="raw")
+    self._curves["t3_omega_y_mrg"] = p3r2c2.plot(pen=pen_mrg, name="mrg")
     self._curves["t3_omega_y_act"] = p3r2c2.plot(pen=pen_act, name="act")
-    self._curves["t3_omega_z_des"] = p3r2c3.plot(pen=pen_des, name="des")
+    self._curves["t3_omega_z_raw"] = p3r2c3.plot(pen=pen_raw, name="raw")
+    self._curves["t3_omega_z_mrg"] = p3r2c3.plot(pen=pen_mrg, name="mrg")
     self._curves["t3_omega_z_act"] = p3r2c3.plot(pen=pen_act, name="act")
 
     # ========== 3-Row 3 ==========
@@ -1414,11 +1423,14 @@ class LoggerWindow(QtWidgets.QMainWindow):
     p3r3c2 = _mk_plot(self.glw3, 2, 1, "alpha_y [deg/s^2]", y_range=(-700.0, 700.0))
     p3r3c3 = _mk_plot(self.glw3, 2, 2, "alpha_z [deg/s^2]", y_range=( -20.0,  20.0))
 
-    self._curves["t3_alpha_x_des"] = p3r3c1.plot(pen=pen_des, name="des")
+    self._curves["t3_alpha_x_raw"] = p3r3c1.plot(pen=pen_raw, name="raw")
+    self._curves["t3_alpha_x_mrg"] = p3r3c1.plot(pen=pen_mrg, name="mrg")
     self._curves["t3_alpha_x_act"] = p3r3c1.plot(pen=pen_act, name="act")
-    self._curves["t3_alpha_y_des"] = p3r3c2.plot(pen=pen_des, name="des")
+    self._curves["t3_alpha_y_raw"] = p3r3c2.plot(pen=pen_raw, name="raw")
+    self._curves["t3_alpha_y_mrg"] = p3r3c2.plot(pen=pen_mrg, name="mrg")
     self._curves["t3_alpha_y_act"] = p3r3c2.plot(pen=pen_act, name="act")
-    self._curves["t3_alpha_z_des"] = p3r3c3.plot(pen=pen_des, name="des")
+    self._curves["t3_alpha_z_raw"] = p3r3c3.plot(pen=pen_raw, name="raw")
+    self._curves["t3_alpha_z_mrg"] = p3r3c3.plot(pen=pen_mrg, name="mrg")
     self._curves["t3_alpha_z_act"] = p3r3c3.plot(pen=pen_act, name="act")
 
     # ========== 3-Row 4 ==========
@@ -1640,9 +1652,11 @@ class LoggerWindow(QtWidgets.QMainWindow):
       rpy_raw_deg = ch["rpy_raw"][sl, :] * _RAD2DEG
       rpy_d_deg   = ch["rpy_d"][sl, :] * _RAD2DEG
       omega_act = ch["omega"][sl, :] * _RAD2DEG
-      omega_des = ch["omega_d"][sl, :] * _RAD2DEG
+      omega_raw = ch["omega_d"][sl, :] * _RAD2DEG
+      omega_mrg = ch["omega_raw"][sl, :] * _RAD2DEG
       alpha_act = ch["alpha"][sl, :] * _RAD2DEG
-      alpha_des = ch["alpha_d"][sl, :] * _RAD2DEG
+      alpha_raw = ch["alpha_d"][sl, :] * _RAD2DEG
+      alpha_mrg = ch["alpha_raw"][sl, :] * _RAD2DEG
 
       tau_d      = ch["tau_d"][sl, :]
       tau_z_t    = ch["tau_z_t"][sl]
@@ -1907,19 +1921,25 @@ class LoggerWindow(QtWidgets.QMainWindow):
       self._curves["t3_yaw_mrg"].setData(x,   rpy_d_deg[:, 2])
       self._curves["t3_yaw_act"].setData(x,   rpy_act_deg[:, 2])
 
+      self._curves["t3_omega_x_raw"].setData(x, omega_raw[:, 0])
+      self._curves["t3_omega_x_mrg"].setData(x, omega_mrg[:, 0])
       self._curves["t3_omega_x_act"].setData(x, omega_act[:, 0])
-      self._curves["t3_omega_x_des"].setData(x, omega_des[:, 0])
+      self._curves["t3_omega_y_raw"].setData(x, omega_raw[:, 1])
+      self._curves["t3_omega_y_mrg"].setData(x, omega_mrg[:, 1])
       self._curves["t3_omega_y_act"].setData(x, omega_act[:, 1])
-      self._curves["t3_omega_y_des"].setData(x, omega_des[:, 1])
+      self._curves["t3_omega_z_raw"].setData(x, omega_raw[:, 2])
+      self._curves["t3_omega_z_mrg"].setData(x, omega_mrg[:, 2])
       self._curves["t3_omega_z_act"].setData(x, omega_act[:, 2])
-      self._curves["t3_omega_z_des"].setData(x, omega_des[:, 2])
 
+      self._curves["t3_alpha_x_raw"].setData(x, alpha_raw[:, 0])
+      self._curves["t3_alpha_x_mrg"].setData(x, alpha_mrg[:, 0])
       self._curves["t3_alpha_x_act"].setData(x, alpha_act[:, 0])
-      self._curves["t3_alpha_x_des"].setData(x, alpha_des[:, 0])
+      self._curves["t3_alpha_y_raw"].setData(x, alpha_raw[:, 1])
+      self._curves["t3_alpha_y_mrg"].setData(x, alpha_mrg[:, 1])
       self._curves["t3_alpha_y_act"].setData(x, alpha_act[:, 1])
-      self._curves["t3_alpha_y_des"].setData(x, alpha_des[:, 1])
+      self._curves["t3_alpha_z_raw"].setData(x, alpha_raw[:, 2])
+      self._curves["t3_alpha_z_mrg"].setData(x, alpha_mrg[:, 2])
       self._curves["t3_alpha_z_act"].setData(x, alpha_act[:, 2])
-      self._curves["t3_alpha_z_des"].setData(x, alpha_des[:, 2])
 
       self._curves["t3_tau_x_des"].setData(x, tau_d[:, 0])
       self._curves["t3_tau_x_off"].setData(x, tau_off[:, 0])
@@ -2056,8 +2076,10 @@ class LoggerWindow(QtWidgets.QMainWindow):
           "rpy": data["rpy"].astype(np.float32),
           "rpy_raw": data["rpy_raw"].astype(np.float32),
           "rpy_d": data["rpy_d"].astype(np.float32),
+          "omega_raw": data["omega_raw"].astype(np.float32),
           "omega_d": data["omega_d"].astype(np.float32),
           "omega": data["omega"].astype(np.float32),
+          "alpha_raw": data["alpha_raw"].astype(np.float32),
           "alpha_d": data["alpha_d"].astype(np.float32),
           "alpha": data["alpha"].astype(np.float32),
           "tau_d": data["tau_d"].astype(np.float32),
