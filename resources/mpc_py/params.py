@@ -1,8 +1,8 @@
 import numpy as np
 
 # MPC horizon
-N  = 50     # number of steps
-DT = 1.0 / 75  # [s] (of each step)
+N  = 200     # number of steps
+DT = 1.0 / 400  # [s] (of each step)
 
 # ---------- model parameters ----------
 # Inertia tensor

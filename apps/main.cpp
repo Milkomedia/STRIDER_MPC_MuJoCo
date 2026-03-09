@@ -334,7 +334,7 @@ int main() {
       const Eigen::Matrix3d Rd = R_raw * Et.transpose();
       const Eigen::Vector3d Wd = Et * omega_raw;
       const Eigen::Vector3d Wd_dot = Et * alpha_raw;
-      const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, omega_raw, alpha_raw);
+      const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, Wd, Wd_dot);
       
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)

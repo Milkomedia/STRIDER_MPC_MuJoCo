@@ -97,8 +97,8 @@ inline constexpr double COT_DELAY_TAU   = 0.17; // MuJoCo actuator delay [sec]
 inline const     double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); // not a tunable parameter
 inline const     double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;              // not a tunable parameter
 
-inline constexpr double      MPC_STEP_DT = 1.0 / 75.0; // This value must be same as >> DT << on params.py
-inline constexpr std::size_t N_STEPS_REQ = 40; // This value must be less than >> N << on params.py
+inline constexpr double      MPC_STEP_DT = 1.0 / 400.0; // This value must be same as >> DT << on params.py
+inline constexpr std::size_t N_STEPS_REQ = 150; // This value must be less than >> N << on params.py
 inline constexpr std::size_t MPC_NX      = 25; // This value must be same as >> self.yes_cot_nx << on solver.py
 inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.yes_cot_nu << on solver.py
 inline constexpr std::size_t MPC_NP      = 25; // This value must be same as >> self.yes_cot_np << on solver.py
