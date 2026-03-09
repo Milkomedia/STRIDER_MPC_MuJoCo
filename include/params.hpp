@@ -42,8 +42,8 @@ inline constexpr double kIX = 0.3;  /**< Position integral gains */
 
 // ===== UAV Parameters =====
 inline constexpr double J[9] = {0.27, 0.00, 0.00,
-                                0.00, 0.77, 0.00,
-                                0.00, 0.00, 1.04};
+                                0.00, 0.62, 0.00,
+                                0.00, 0.00, 0.89};
 inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
 

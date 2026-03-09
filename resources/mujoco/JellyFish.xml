@@ -50,7 +50,7 @@
       <geom class="collision" size="0.12 0.12 .02" pos="0 0 0" contype="1" conaffinity="2"/>
 
       <body name="bong" pos="0.0 0.0 -0.05">
-       <inertial pos="0 0 0" mass="2" diaginertia="1e-06 0.5 0.5"/>
+       <inertial pos="0 0 0" mass="2" diaginertia="1e-06 0.35 0.35"/>
        <geom type="box" size="0.5 0.01 0.01" rgba="0.8 0.2 0.2 1" contype="0" conaffinity="0"/>
        </body>
 

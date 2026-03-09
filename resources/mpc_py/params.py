@@ -8,8 +8,8 @@ DT = 1.0 / 400  # [s] (of each step)
 # Inertia tensor
 J_TENSOR = np.array([
     [0.27, 0.00, 0.00],
-    [0.00, 0.77, 0.00],
-    [0.00, 0.00, 1.04]
+    [0.00, 0.62, 0.00],
+    [0.00, 0.00, 0.89]
 ], dtype=np.float64)
 
 # GAC controller gain
