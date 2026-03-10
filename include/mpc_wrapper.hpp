@@ -15,7 +15,7 @@ struct MPCInput {
   Eigen::Matrix<double, param::MPC_NX, 1> x_0;
   Eigen::Matrix<double, param::MPC_NU, 1> u_0;
   Eigen::Matrix<double, param::MPC_NP, 1> p;
-  bool use_cot = false;
+  bool use_arm = false;
   bool use_delta = false;
   uint16_t steps_req = param::N_STEPS_REQ;
   std::chrono::steady_clock::time_point t;

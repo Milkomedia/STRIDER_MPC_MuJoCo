@@ -65,7 +65,6 @@ int main() {
 
     while (!g_stop.load()) {
       strider_mpc::MPCInput in_local;
-      // std::printf(" [mpc]->waiting   ");
       {
         std::unique_lock<std::mutex> lk(mpc_mtx);
         mpc_cv.wait(lk, [&]{
@@ -80,12 +79,15 @@ int main() {
           g_mpc_busy = true;
         }
       }
-      // std::printf(" [mpc]->get   ");
 
       strider_mpc::MPCOutput out_local;
       try { out_local = mpc.compute(in_local); }
-      catch (const std::exception&) { out_local.solve_ms = 0.0; out_local.state = 99; std::printf("OH SHIT");}
-      // std::printf("[mpc]->solved:%f  ", out_local.solve_ms);
+      catch (const std::exception& e) {
+        out_local.solve_ms = 0.0;
+        out_local.state = 99;
+        std::fprintf(stderr, "[MPC EXCEPTION] %s\n", e.what());
+        std::fflush(stderr);
+      }
 
       {
         std::lock_guard<std::mutex> lk(mpc_mtx);
@@ -306,10 +308,10 @@ int main() {
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = delayed_s.R(i, j);}} // R_0(15~23), column-major order to match CasADi reshape
             g_mpc_input.p(m++) = -f_sum; // positive, f_sum(24)
 
-            if (phase==Phase::USE_BOTH)        {g_mpc_input.use_delta = true;  g_mpc_input.use_cot = true; }
-            else if (phase==Phase::USE_DTHETA) {g_mpc_input.use_delta = true;  g_mpc_input.use_cot = false;}
-            else if (phase==Phase::USE_ARM)    {g_mpc_input.use_delta = false; g_mpc_input.use_cot = true; }
-            else                               {g_mpc_input.use_delta = false; g_mpc_input.use_cot = false;}
+            if (phase==Phase::USE_FULL)        {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = true; }
+            else if (phase==Phase::USE_DTHETA) {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = false;}
+            else if (phase==Phase::USE_ARM)    {g_mpc_input.use_delta = false; g_mpc_input.use_arm = true; }
+            else                               {g_mpc_input.use_delta = false; g_mpc_input.use_arm = false;}
 
             g_mpc_input.steps_req = param::N_STEPS_REQ;
             g_mpc_input.t = now;

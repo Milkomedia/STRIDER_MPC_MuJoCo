@@ -88,7 +88,7 @@ MPCOutput acados_wrapper::compute(const MPCInput& in) {
   mpci["u_0"]   = in.u_0;
   mpci["p"]     = in.p;
   mpci["use_delta"] = pybind11::bool_(in.use_delta);
-  mpci["use_cot"] = pybind11::bool_(in.use_cot);
+  mpci["use_arm"] = pybind11::bool_(in.use_arm);
   mpci["steps_req"] = pybind11::int_(in.steps_req);
 
   pybind11::object ret = impl_->solver.attr("compute_MPC")(mpci);

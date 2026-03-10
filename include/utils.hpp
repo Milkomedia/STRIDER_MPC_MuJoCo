@@ -17,7 +17,7 @@ enum class Phase : uint8_t {
   GAC_ONLY       = 4,  // flight with only geometry controller
   USE_DTHETA     = 5,  // flight with delta-theta filtering
   USE_ARM        = 6,  // flight with arm-moving
-  USE_BOTH       = 7,  // flight with arm-moving and delta-theta filtering
+  USE_FULL       = 7,  // flight with arm-moving and delta-theta filtering
   KILLED         = 99, // killed; (It's not used as a trigger, just a state representation)
 };
 

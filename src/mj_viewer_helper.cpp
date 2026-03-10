@@ -69,7 +69,7 @@ void cb_key(GLFWwindow* win, int key, int /*scancode*/, int action, int /*mods*/
       switch (cur) {
         case 4:  next = 5; break;  // GAC_ONLY   -> USE_DTHETA
         case 5:  next = 6; break;  // USE_DTHETA -> USE_ARM
-        case 6:  next = 7; break;  // USE_ARM    -> USE_BOTH
+        case 6:  next = 7; break;  // USE_ARM    -> USE_FULL
         case 7:  next = 4; break;  // USE_BOTH   -> GAC_ONLY
         default: next = 4; break;
       }
@@ -81,7 +81,7 @@ void cb_key(GLFWwindow* win, int key, int /*scancode*/, int action, int /*mods*/
           case 4:  std::printf("GAC_ONLY\n");   break;
           case 5:  std::printf("USE_DTHETA\n"); break;
           case 6:  std::printf("USE_ARM\n");    break;
-          case 7:  std::printf("USE_BOTH\n");   break;
+          case 7:  std::printf("USE_FULL\n");   break;
           default: std::printf("UNKNOWN\n");    break;
       }
     }

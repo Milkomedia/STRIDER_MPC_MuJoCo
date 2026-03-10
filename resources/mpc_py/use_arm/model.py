@@ -9,7 +9,7 @@ from pathlib import Path
 
 def build_model():
     model = AcadosModel()
-    model.name = "yes_cot_MRG"
+    model.name = "use_arm"
 
     # Model state
     theta           = ca.SX.sym('theta',  3) # [rad]

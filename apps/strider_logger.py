@@ -828,7 +828,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
       4: ("GAC_ONLY",   "flight with only geometry controller"),
       5: ("USE_DTHETA", "flight with delta-theta filtering"),
       6: ("USE_ARM",    "flight with arm-moving"),
-      7: ("USE_BOTH",   "flight with arm-moving and delta-theta filtering"),
+      7: ("USE_FULL",   "flight with arm-moving and delta-theta filtering"),
       99: ("KILLED",    "killed"),
     }
     # code -> RGBA (distinct colors)

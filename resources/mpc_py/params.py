@@ -21,7 +21,7 @@ KW = np.array([15., 15., 2.5])
 # To compensate this, mpc's allocation thinks that less thrust deviation produces more reaction torque.
 ZETA = 0.1
 
-# ---------- yes-cot parameters ----------
+# ---------- use_full parameters ----------
 # CoT actuator time constant
 TAU_BASE = 0.25
 TAU_ARM  = 0.15
@@ -42,6 +42,6 @@ RHO_MIN_SLK = 0.1506 - 0.05
 RHO_MAX_SLK = 0.2925 + 0.05
 R_ROTOR_SLK = 0.22 - 0.07
 
-# ---------- no-cot parameters ----------
+# ---------- use_delta parameters ----------
 # default l
 L_DIST = 0.5 * 0.48
