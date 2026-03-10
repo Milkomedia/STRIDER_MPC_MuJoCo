@@ -37,19 +37,31 @@ void saturate(Vector3 &x, const double x_min, const double x_max){
   }
 }
 
-void deriv_unit_vector( \
-    const Vector3 &A, const Vector3 &A_dot, const Vector3 &A_ddot, \
-    Vector3 &q, Vector3 &q_dot, Vector3 &q_ddot){
+void deriv_unit_vector(const Vector3& A, const Vector3& A_dot, const Vector3& A_ddot, Vector3& q, Vector3& q_dot, Vector3& q_ddot) {
+  constexpr double eps2 = 0.05;
 
-  double nA = A.norm();
-  double nA3 = pow(nA, 3);
-  double nA5 = pow(nA, 5);
+  const double nA2 = A.squaredNorm();
+  if (nA2 < eps2) {
+    std::cout << "DERIV_UNIT_VECTOR: A.norm() = " << nA2 << std::endl;
+    return;
+  }
 
-  q = A / nA;
-  q_dot = A_dot / nA - A * A.dot(A_dot) / nA3;
+  const double nA = std::sqrt(nA2);
+  const double inv_nA = 1.0 / nA;
+  const double inv_nA3 = inv_nA / nA2;
+  const double inv_nA5 = inv_nA3 / nA2;
 
-  q_ddot = A_ddot / nA \
-           - A_dot / nA3 * (2 * A.dot(A_dot)) \
-           - A / nA3 * (A_dot.dot(A_dot) + A.dot(A_ddot)) \
-           + 3 * A / nA5 * pow(A.dot(A_dot), 2);
+  const double Adot_A = A.dot(A_dot);
+  const double Adot_Adot = A_dot.dot(A_dot);
+  const double A_Addot = A.dot(A_ddot);
+
+  q = A * inv_nA;
+
+  q_dot = A_dot * inv_nA
+        - A * (Adot_A * inv_nA3);
+
+  q_ddot = A_ddot * inv_nA
+         - A_dot * (2.0 * Adot_A * inv_nA3)
+         - A * ((Adot_Adot + A_Addot) * inv_nA3)
+         + A * (3.0 * Adot_A * Adot_A * inv_nA5);
 }

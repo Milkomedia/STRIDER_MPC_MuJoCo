@@ -8,6 +8,9 @@ import time
 import os
 from .mmap_manager import MMapWriter
 
+# make silent (when model build)
+os.environ.setdefault("MAKEFLAGS", "-s")
+
 from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 

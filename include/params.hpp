@@ -30,10 +30,10 @@ inline constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-inline constexpr double kX[3] = {25.0, 25.0, 65.0}; // Position gain [x, y, z]
+inline constexpr double kX[3] = {35.0, 35.0, 65.0}; // Position gain [x, y, z]
 inline constexpr double kV[3] = {20.0, 20.0, 60.0}; // Velocity gain [x, y, z]
-inline constexpr double kR[3] = {45.0, 45.0,  5.5}; // Rotational gain [roll, pitch, yaw]
-inline constexpr double kW[3] = {20.0, 20.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
+inline constexpr double kR[3] = {75.0, 75.0, 5.5}; // Rotational gain [roll, pitch, yaw]
+inline constexpr double kW[3] = {15.0, 15.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
 
 // Integral Parameters
 inline constexpr double kI  = 0.0;  /**< Attitude integral gain for roll and pitch */
@@ -47,7 +47,8 @@ inline constexpr double J[9] = {0.27, 0.00, 0.00,
 inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
 
-inline constexpr double SATURATION_THRUST  = (0.25*M*G)/0.65;
+inline constexpr double THRUST_MARGIN     = 3.0; // thrust margin of each thruster [N]
+inline constexpr double SATURATION_THRUST = M * G / 4.0 + THRUST_MARGIN;
 
 // Allocation parameters
 inline constexpr double SERVO_DELAY_ALPHA = 0.093158;  // yaw trimming
