@@ -18,18 +18,17 @@ def build_model():
     r2              = ca.SX.sym('r2',  2)    # [m, rad]
     r3              = ca.SX.sym('r3',  2)    # [m, rad]
     r4              = ca.SX.sym('r4',  2)    # [m, rad]
-    delta_theta_cmd = ca.SX.sym('delta_theta_cmd', 3) # [rad], Augmented state(command input)
     r1_cmd          = ca.SX.sym('r1_cmd', 2) # [m, rad], Augmented state(command input)
     r2_cmd          = ca.SX.sym('r2_cmd', 2) # [m, rad], Augmented state(command input)
     r3_cmd          = ca.SX.sym('r3_cmd', 2) # [m, rad], Augmented state(command input)
     r4_cmd          = ca.SX.sym('r4_cmd', 2) # [m, rad], Augmented state(command input)
-    x     = ca.vertcat(theta, omega, r1, r2, r3, r4, delta_theta_cmd, r1_cmd, r2_cmd, r3_cmd, r4_cmd)
+    x     = ca.vertcat(theta, omega, r1, r2, r3, r4, r1_cmd, r2_cmd, r3_cmd, r4_cmd)
     x_dot = ca.SX.sym('x_dot', x.size1())
     model.x = x
     model.xdot = x_dot
 
     # Model control input(u-rate)
-    u_rate = ca.SX.sym('u_rate', 11) # 3: delta_theta_cmd_rate [rad/s] / 8: r_rotor_cmd_rate[m/s]
+    u_rate = ca.SX.sym('u_rate', 8)
     model.u = u_rate
 
     # Model parameter
@@ -93,17 +92,6 @@ def build_model():
                           ca.horzcat( w[2],   0.0, -w[0]),
                           ca.horzcat(-w[1],  w[0],  0.0))
 
-    def expm_hat(w: ca.SX) -> ca.SX:
-        th2 = ca.dot(w, w)          # theta^2
-        th  = ca.sqrt(th2 + 1e-12)  # theta
-
-        A = ca.sin(th) / th
-        B = (1.0 - ca.cos(th)) / (th2 + 1e-12)
-
-        K = hat(w)
-        I = ca.SX.eye(3)
-        return I + A*K + B*(K @ K)
-    
     def vee(R: ca.SX) -> ca.SX:
         return ca.vertcat(R[2, 1], R[0, 2], R[1, 0])
     
@@ -113,12 +101,9 @@ def build_model():
 
     # angular rate (omega)
     R = euler_zyx_to_R(theta)  # (body->global)
-    Rd = R_raw @ expm_hat(delta_theta_cmd)
-    Wd = expm_hat(-delta_theta_cmd) @ W_raw
-    Wd_dot = expm_hat(-delta_theta_cmd) @ Wdot_raw
-    RtRd = R.T @ Rd
-    e_R = 0.5 * vee(RtRd.T - RtRd)
-    e_w = omega - RtRd @ Wd
+    RtRraw = R.T @ R_raw
+    e_R = 0.5 * vee(RtRraw.T - RtRraw)
+    e_w = omega - RtRraw @ W_raw
     tau_d = - KR * e_R - KW * e_w
     omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))# + hat(omega)@RtRd@Wd + RtRd@Wd_dot
 
@@ -207,19 +192,17 @@ def build_ocp():
     ocp.solver_options.tf        = p.N * p.DT
 
     # ---------- costs ----------
-    delta_theta_cmd      = model.x[14:17]
-    delta_theta_cmd_rate = model.u[0:3]
-    r_rotor_cmd_rate     = model.u[3:11]
+    r_rotor_cmd_rate     = model.u
     thrust_dev           = model.thrust_dev
     
-    model.cost_y_expr   = ca.vertcat(delta_theta_cmd, thrust_dev, delta_theta_cmd_rate, r_rotor_cmd_rate) # 1~k-1 ref
-    model.cost_y_expr_e = ca.vertcat(delta_theta_cmd, thrust_dev) # terminal(k) ref
+    model.cost_y_expr   = ca.vertcat(thrust_dev, r_rotor_cmd_rate) # 1~k-1 ref
+    model.cost_y_expr_e = ca.vertcat(thrust_dev) # terminal(k) ref
 
-    ocp.dims.ny   = 18
-    ocp.dims.ny_e = 7
+    ocp.dims.ny   = 12
+    ocp.dims.ny_e = 4
     
-    ocp.cost.W   = np.diag(np.concatenate([c.Q_THETA, c.Q_FDEV, c.R_THETA, c.R_ROTOR]).astype(np.float64))
-    ocp.cost.W_e = np.diag(np.concatenate([c.Q_THETA, c.Q_FDEV]).astype(np.float64))
+    ocp.cost.W   = np.diag(np.concatenate([c.Q_FDEV, c.R_ROTOR]).astype(np.float64))
+    ocp.cost.W_e = np.diag(np.concatenate([c.Q_FDEV]).astype(np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
     ocp.cost.cost_type_e = "NONLINEAR_LS"
@@ -233,8 +216,8 @@ def build_ocp():
     # ---- box constraints on x ----
     idx_rho_state   = np.array([6, 8, 10, 12], dtype=np.int64)
     idx_alpha_state = np.array([7, 9, 11, 13], dtype=np.int64)
-    idx_rho_cmd     = np.array([17, 19, 21, 23], dtype=np.int64)
-    idx_alpha_cmd   = np.array([18, 20, 22, 24], dtype=np.int64)
+    idx_rho_cmd     = np.array([14, 16, 18, 20], dtype=np.int64)
+    idx_alpha_cmd   = np.array([15, 17, 19, 21], dtype=np.int64)
     ocp.constraints.idxbx = np.concatenate([idx_rho_state, idx_alpha_state, idx_rho_cmd, idx_alpha_cmd])
 
     lbx = np.concatenate([np.full(4, p.RHO_MIN,     dtype=np.float64),
