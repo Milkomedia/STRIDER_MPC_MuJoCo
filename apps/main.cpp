@@ -15,7 +15,7 @@ static void sigint_handler(int) {g_stop.store(true);}
 std::mutex scene_mtx;
 static double g_pos_des[3] = {0.0, 0.0, 0.0};  // desired point for viewer
 static double g_pos_cur[3] = {0.0, 0.0, 0.0};  // current point for viewer
-static std::atomic<bool> g_mpc_activated{false};
+static std::atomic<uint8_t> g_phase_cmd{static_cast<uint8_t>(Phase::GAC_ONLY)};
 
 static std::mutex mpc_mtx;
 static std::condition_variable mpc_cv;
@@ -70,7 +70,7 @@ int main() {
         std::unique_lock<std::mutex> lk(mpc_mtx);
         mpc_cv.wait(lk, [&]{
           if (g_stop.load()) return true;
-          if (!g_mpc_activated.load(std::memory_order_relaxed)) return false;
+          if (static_cast<Phase>(g_phase_cmd.load(std::memory_order_relaxed)) == Phase::GAC_ONLY) {return false;}
           return g_mpc_input.has;
         });
         if (g_stop.load()) break;
@@ -109,7 +109,7 @@ int main() {
     fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
     // --- state definition ---
-    Phase   phase = Phase::GAC_FLIGHT;
+    Phase   phase = Phase::GAC_ONLY;
     State   s{};
     Command cmd{};
     cmd.r1 = param::r1_init;
@@ -125,8 +125,6 @@ int main() {
     l_mpc_output.u_rate.setZero();
     l_mpc_output.u_opt.setZero();
     l_mpc_output.t = std::chrono::steady_clock::time_point::max();
-    bool prev_mpc_on = false; // for ON/OFF edge detection
-    bool next_use_cot = true;
 
     // --- noise injection ---
     static NOISE::nState noise_state;
@@ -171,18 +169,12 @@ int main() {
       const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
       const double elapsed_double = std::chrono::duration<double>(now - t0).count();
 
-      // Handle MPC ON/OFF transitions
-      const bool mpc_on = g_mpc_activated.load(std::memory_order_relaxed);
-      if (mpc_on != prev_mpc_on) {
+      // Handle phase transitions
+      const Phase requested_phase = static_cast<Phase>(g_phase_cmd.load(std::memory_order_relaxed));
+      if (requested_phase != phase) {
         std::lock_guard<std::mutex> lk(mpc_mtx);
         mpc_reset_locked(mpc_key);
-        if (mpc_on) {
-          if (next_use_cot) {phase = Phase::MRG_YES_COT; std::printf("MPC->YES-COT\n");}
-          else {phase = Phase::MRG_NO_COT; std::printf("MPC->NO-COT\n");}
-          next_use_cot = !next_use_cot;
-        }
-        else {phase = Phase::GAC_FLIGHT;}
-        prev_mpc_on = mpc_on;
+        phase = requested_phase;
       }
 
       // --- mujoco measurement ---
@@ -232,15 +224,15 @@ int main() {
           const bool solve_ok = (g_mpc_output.state == 0);
 
           // l_mpc_output updated only when solve succeed.
-          if (mpc_on && epoch_ok && key_ok && solve_ok) {l_mpc_output = g_mpc_output;}
-          else if (mpc_on && epoch_ok && !key_ok) {mpc_reset_locked(mpc_key);}
+          if ((phase != Phase::GAC_ONLY) && epoch_ok && key_ok && solve_ok) {l_mpc_output = g_mpc_output;}
+          else if ((phase != Phase::GAC_ONLY) && epoch_ok && !key_ok) {mpc_reset_locked(mpc_key);}
           l_mpc_output.state = g_mpc_output.state; // *BUT l_mpc_output state indicates previous solve state(for logging)*
           g_mpc_output.has = false;
         }
       }
 
       bool mpc_applied = false;
-      if (mpc_on) { // MPC unpack
+      if (phase != Phase::GAC_ONLY) { // MPC unpack
         const bool epoch_ok = (l_mpc_output.epoch == g_mpc_epoch.load(std::memory_order_relaxed));
         const bool time_ok = ((now - l_mpc_output.t) < param::MPC_TIMEOUT_DURATUION);
         const bool solve_ok = (l_mpc_output.state == 0);
@@ -282,7 +274,7 @@ int main() {
       FK(delayed_s.arm_q, s.r_cot, s.r1, s.r2, s.r3, s.r4);
       s.r_com = com_guess(s.r1, s.r2, s.r3, s.r4);
       { // MPC send
-        if (mpc_on) {
+        if (phase != Phase::GAC_ONLY) {
           Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;
           Eigen::Vector2d c_p1, c_p2, c_p3, c_p4;
           cart2polar(s.r1, s.r2, s.r3, s.r4, s_p1, s_p2, s_p3, s_p4);
@@ -314,8 +306,10 @@ int main() {
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = delayed_s.R(i, j);}} // R_0(15~23), column-major order to match CasADi reshape
             g_mpc_input.p(m++) = -f_sum; // positive, f_sum(24)
 
-            if (phase==Phase::MRG_YES_COT) {g_mpc_input.use_cot = true;}
-            else {g_mpc_input.use_cot = false;}
+            if (phase==Phase::USE_BOTH)        {g_mpc_input.use_delta = true;  g_mpc_input.use_cot = true; }
+            else if (phase==Phase::USE_DTHETA) {g_mpc_input.use_delta = true;  g_mpc_input.use_cot = false;}
+            else if (phase==Phase::USE_ARM)    {g_mpc_input.use_delta = false; g_mpc_input.use_cot = true; }
+            else                               {g_mpc_input.use_delta = false; g_mpc_input.use_cot = false;}
 
             g_mpc_input.steps_req = param::N_STEPS_REQ;
             g_mpc_input.t = now;
@@ -536,7 +530,7 @@ int main() {
   {
     mj_viewer::ViewerCtx v;
     mj_viewer::viewer_init(v, m);
-    v.mpc_activated = &g_mpc_activated;
+    v.phase_cmd = &g_phase_cmd;
 
     std::deque<std::pair<double, Eigen::Vector3d>> path;
     std::deque<std::pair<double, Eigen::Vector3d>> dpath;

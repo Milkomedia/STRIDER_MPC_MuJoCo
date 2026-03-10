@@ -47,7 +47,7 @@ inline constexpr double J[9] = {0.27, 0.00, 0.00,
 inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
 
-inline constexpr double THRUST_MARGIN     = 3.0; // thrust margin of each thruster [N]
+inline constexpr double THRUST_MARGIN     = 1.86; // thrust margin of each thruster [N]
 inline constexpr double SATURATION_THRUST = M * G / 4.0 + THRUST_MARGIN;
 
 // Allocation parameters

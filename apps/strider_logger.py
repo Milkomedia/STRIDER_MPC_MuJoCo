@@ -818,27 +818,29 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._phase_bars_t3: Dict[int, pg.BarGraphItem] = {}
 
     # Compact display order (keeps y-range small)
-    self._phase_order = [0, 1, 2, 3, 4, 5, 6, 99]
+    self._phase_order = [0, 1, 2, 3, 4, 5, 6, 7, 99]
     # code -> (name, description)
     self._phase_info = {
-      0: ("READY",          "program started"),
-      1: ("ARMED",          "all sanity checked"),
-      2: ("IDLE",           "propellers idling"),
-      3: ("RISING",         "thrust increasing"),
-      4: ("GAC_FLIGHT",     "only geometry control"),
-      5: ("MRG_FLIGHT",     "no CoT moving"),
-      6: ("MRG_ACTIVE_COT", "yes CoT moving"),
-      99: ("KILLED",        "killed"),
+      0: ("READY",      "program started"),
+      1: ("ARMED",      "all sanity checked"),
+      2: ("IDLE",       "all propellers are idling"),
+      3: ("RISING",     "propeller thrust increasing"),
+      4: ("GAC_ONLY",   "flight with only geometry controller"),
+      5: ("USE_DTHETA", "flight with delta-theta filtering"),
+      6: ("USE_ARM",    "flight with arm-moving"),
+      7: ("USE_BOTH",   "flight with arm-moving and delta-theta filtering"),
+      99: ("KILLED",    "killed"),
     }
     # code -> RGBA (distinct colors)
     self._phase_colors = {
-      0: (120, 120, 120, 220),   # gray
-      1: (0, 120, 255, 220),     # blue
-      2: (0, 200, 0, 220),       # green
-      3: (255, 230, 0, 220),     # yellow
-      4: (255, 165, 0, 220),     # orange
-      5: (255, 0, 0, 220),       # red
-      6: (160, 0, 255, 220),     # purple
+      0:  (120, 120, 120, 220),  # gray
+      1:  (0, 120, 255, 220),    # blue
+      2:  (0, 200, 0, 220),      # green
+      3:  (255, 230, 0, 220),    # yellow
+      4:  (255, 165, 0, 220),    # orange
+      5:  (255, 0, 0, 220),      # red
+      6:  (160, 0, 255, 220),    # purple
+      7:  (0, 200, 200, 220),    # cyan
       99: (0, 0, 0, 220),        # black
     }
     # LUT: uint8 phase -> compact idx (or -1)

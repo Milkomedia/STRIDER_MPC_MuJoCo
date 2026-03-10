@@ -163,6 +163,7 @@ class StriderNMPC:
         x_0    = np.asarray(mpci.get("x_0", np.zeros(self.yes_cot_nx)), dtype=np.float64).ravel()
         u_0    = np.asarray(mpci.get("u_0", np.zeros(self.yes_cot_nu)), dtype=np.float64).ravel()
         p      = np.asarray(mpci.get("p",   np.zeros(self.yes_cot_np)), dtype=np.float64).ravel()
+        delta_using = bool(mpci.get("use_delta", False))
         cot_using = bool(mpci.get("use_cot", False))
 
         steps_req = int(mpci.get("steps_req", 1))
@@ -172,8 +173,10 @@ class StriderNMPC:
         if p.size != self.yes_cot_np: raise ValueError(f"p size mismatch: got {p.size}, expected {self.yes_cot_np}")
         if u_0.size != self.yes_cot_nu: u_0 = np.zeros(self.yes_cot_nu, dtype=np.float64)
 
-        if cot_using: u_opt_steps, u_rate_steps, solve_ms, status = self.yes_cot_solve(x_0, u_0, p, steps_req)
-        else: u_opt_steps, u_rate_steps, solve_ms, status = self.no_cot_solve(x_0, u_0, p, steps_req)
+        if delta_using and cot_using:         u_opt_steps, u_rate_steps, solve_ms, status = self.yes_cot_solve(x_0, u_0, p, steps_req)
+        elif (not delta_using) and cot_using: u_opt_steps, u_rate_steps, solve_ms, status = self.no_cot_solve(x_0, u_0, p, steps_req)
+        elif delta_using and (not cot_using): u_opt_steps, u_rate_steps, solve_ms, status = self.no_cot_solve(x_0, u_0, p, steps_req)
+        else:                                 raise ValueError("At least one of 'use_delta' or 'use_cot' must be enabled.")
 
         return {"u_opt": u_opt_steps, "u_rate": u_rate_steps, "solve_ms": float(solve_ms), "state": int(status),}
 

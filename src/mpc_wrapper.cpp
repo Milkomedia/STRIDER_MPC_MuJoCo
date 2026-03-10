@@ -87,16 +87,12 @@ MPCOutput acados_wrapper::compute(const MPCInput& in) {
   mpci["x_0"]   = in.x_0;
   mpci["u_0"]   = in.u_0;
   mpci["p"]     = in.p;
+  mpci["use_delta"] = pybind11::bool_(in.use_delta);
   mpci["use_cot"] = pybind11::bool_(in.use_cot);
   mpci["steps_req"] = pybind11::int_(in.steps_req);
 
   pybind11::object ret = impl_->solver.attr("compute_MPC")(mpci);
   return Impl::from_dict(ret.cast<pybind11::dict>());
-}
-
-void acados_wrapper::print_last_debug() {
-  pybind11::gil_scoped_acquire gil;
-  impl_->solver.attr("print_last_debug")();
 }
 
 } // namespace strider_mpc

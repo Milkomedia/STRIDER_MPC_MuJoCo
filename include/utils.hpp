@@ -14,9 +14,10 @@ enum class Phase : uint8_t {
   ARMED          = 1,  // all sanity checked
   IDLE           = 2,  // all propellers are idling
   RISING         = 3,  // propeller thrust increasing
-  GAC_FLIGHT     = 4,  // flight with geometry controller
-  MRG_NO_COT     = 5,  // flight with reference governor
-  MRG_YES_COT    = 6,  // flight with reference governor (use CoT moving)
+  GAC_ONLY       = 4,  // flight with only geometry controller
+  USE_DTHETA     = 5,  // flight with delta-theta filtering
+  USE_ARM        = 6,  // flight with arm-moving
+  USE_BOTH       = 7,  // flight with arm-moving and delta-theta filtering
   KILLED         = 99, // killed; (It's not used as a trigger, just a state representation)
 };
 
@@ -90,7 +91,7 @@ static inline void circle_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3
 static inline void l_traj_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d) {
   constexpr double lx_ = 1.5;               // width in X [m]
   constexpr double ly_ = 0.0;               // width in Y [m]
-  constexpr double T_  = 1.5;               // base period [sec]
+  constexpr double T_  = 2.5;               // base period [sec]
   constexpr double f   = 2.0 * M_PI / T_;   // [rad/s]
 
   double tau = std::fmod(t_sec, 6.0 * T_);

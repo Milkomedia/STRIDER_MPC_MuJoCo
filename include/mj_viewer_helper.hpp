@@ -1,6 +1,7 @@
 #ifndef MJ_VIEWER_HELPER_H
 #define MJ_VIEWER_HELPER_H
 
+#include <cstdint>
 #include <mujoco/mujoco.h>
 #include <GLFW/glfw3.h>
 #include <atomic>
@@ -20,7 +21,7 @@ struct ViewerCtx {
   double last_x{0.0}, last_y{0.0};
   bool btn_left{false}, btn_middle{false}, btn_right{false};
   bool dragging{false};
-  std::atomic<bool>* mpc_activated{nullptr};
+  std::atomic<uint8_t>* phase_cmd = nullptr;
 };
 
 void viewer_init(ViewerCtx& v, const mjModel* m);
