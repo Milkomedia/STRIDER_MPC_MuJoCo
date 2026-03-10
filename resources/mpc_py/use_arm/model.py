@@ -86,11 +86,6 @@ def build_model():
         return ca.vertcat(ca.horzcat(1.0, sphi*tth, cphi*tth),
                           ca.horzcat(0.0,     cphi,    -sphi),
                           ca.horzcat(0.0, sphi/cth, cphi/cth),)
-    
-    def hat(w: ca.SX) -> ca.SX:
-        return ca.vertcat(ca.horzcat(  0.0, -w[2],  w[1]),
-                          ca.horzcat( w[2],   0.0, -w[0]),
-                          ca.horzcat(-w[1],  w[0],  0.0))
 
     def vee(R: ca.SX) -> ca.SX:
         return ca.vertcat(R[2, 1], R[0, 2], R[1, 0])

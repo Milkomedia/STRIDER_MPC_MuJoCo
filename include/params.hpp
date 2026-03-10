@@ -92,8 +92,6 @@ inline constexpr double ARM_MASS[4]  = {0.8205656, 0.8205656, 0.8205656, 0.82056
 inline constexpr double INV_MASS_TOT = 1.0 / (BODY_MASS + ARM_MASS[0] + ARM_MASS[1] + ARM_MASS[2] + ARM_MASS[3]);
 
 // ===== MPC parameters  =====
-inline constexpr std::chrono::steady_clock::duration MPC_DT = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::microseconds(5000)); // 200Hz
-
 inline constexpr double COT_DELAY_TAU   = 0.17; // MuJoCo actuator delay [sec]
 inline const     double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); // not a tunable parameter
 inline const     double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;              // not a tunable parameter

@@ -38,9 +38,13 @@ ALPHA_MIN = np.array([-105.0, -195.0,  75.0, -15.0]) * np.pi / 180.0
 ALPHA_MAX = np.array([  15.0,  -75.0, 195.0, 105.0]) * np.pi / 180.0
 R_ROTOR = 0.22
 
-RHO_MIN_SLK = 0.1506 - 0.05
-RHO_MAX_SLK = 0.2925 + 0.05
-R_ROTOR_SLK = 0.22 - 0.07
+# RHO_MIN_SLK = 0.1506 - 0.05
+# RHO_MAX_SLK = 0.2925 + 0.05
+# R_ROTOR_SLK = 0.22 - 0.07
+
+RHO_MIN_SLK = 0.1506 - 0.02
+RHO_MAX_SLK = 0.2925 + 0.02
+R_ROTOR_SLK = 0.22 - 0.03
 
 # ---------- use_delta parameters ----------
 # default l
