@@ -56,6 +56,9 @@ int main() {
   const int adr_vel  = sensor_adr_check(m, "imu_linvel", 3);
   const int adr_acc  = sensor_adr_check(m, "imu_linacc", 3);
 
+  int load_act_id = -1;
+  load_act_id = mj_name2id(m, mjOBJ_ACTUATOR, "servo_load_joint");
+
   // ---------------- [ MPC thread ] ----------------
   std::thread th_mpc([&]() {
 
@@ -161,6 +164,7 @@ int main() {
         for (int k = 0; k < 3*static_cast<int>(param::SIM_HZ); ++k) {
           for (int i = 0; i < 8 && i < m->nu; ++i) {d->ctrl[i] = 0.0;}
           for (int i = 0; i < 20 && (8 + i) < m->nu; ++i) {d->ctrl[8 + i] = arm_angles[i];}
+          if (load_act_id != -1) {d->ctrl[load_act_id] = 0.0;}
           mj_step(m, d);
         }
       }
@@ -384,6 +388,7 @@ int main() {
         Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl) = smoothed_F.cast<mjtNum>();
         Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl + 4) = smoothed_Tau.cast<mjtNum>();
         for (int i = 0; i < 20; ++i) d->ctrl[8 + i] = smoothed_q_d[i];
+        if (load_act_id != -1) {d->ctrl[load_act_id] = 0.0;}
 
         for (int s = 0; s < n_sub; ++s) {mj_step(m, d);}
       }
