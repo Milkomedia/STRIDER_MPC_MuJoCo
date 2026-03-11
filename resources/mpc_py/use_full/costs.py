@@ -8,7 +8,7 @@ F_MAX   = 18.0 * np.array([1.0, 1.0, 1.0, 1.0]) # [N]
 Q_THETA = 0.5 * np.array([1.0, 1.0, 10.0])
 
 # thurst deviation cost
-Q_FDEV  = 2.0 * np.array([1.0, 1.0, 1.0, 1.0])
+Q_FDEV  = 0.01 * np.array([1.0, 1.0, 1.0, 1.0])
 
 # rate cost
 R_THETA = 1.0  * np.array([1.0, 1.0, 5.0])

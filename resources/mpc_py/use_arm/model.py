@@ -149,6 +149,7 @@ def build_model():
     w_d = ca.vertcat(tau_d, b_F[2])
     F_expr = ca.solve(A, w_d)
 
+    # ---------- Thrust deviation expression ----------
     F_mean = (ca.sum1(F_expr) / 4.0)
     model.thrust_dev  = F_expr - F_mean * ca.SX.ones(4, 1)
 
