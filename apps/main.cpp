@@ -277,8 +277,7 @@ int main() {
       }
 
       const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
-      FK(delayed_s.arm_q, s.r_cot, s.r1, s.r2, s.r3, s.r4);
-      s.r_com = com_guess(s.r1, s.r2, s.r3, s.r4);
+      FK(delayed_s.arm_q, s.r_cot, s.r_com, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position & com position
       { // MPC send
         if (phase != Phase::GAC_ONLY) {
           Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;

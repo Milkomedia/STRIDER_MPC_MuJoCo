@@ -338,29 +338,23 @@ static inline Eigen::Matrix4d compute_DH(double a, double alpha, double d, doubl
     return T;
   }
 
-static inline void FK(const double q[20], Eigen::Vector3d& bpcot, Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
+static inline void FK(const double q[20], Eigen::Vector3d& bpcot, Eigen::Vector3d& bpc, Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
   std::array<Eigen::Vector3d*, 4> bparm = {&r1, &r2, &r3, &r4};
+  Eigen::Vector3d mass_weighted_sum = Eigen::Vector3d::Zero();
 
   for (uint8_t i = 0; i < 4; ++i) {
     Eigen::Matrix4d T_i = Eigen::Matrix4d::Identity();
     T_i *= compute_DH(param::B2BASE_A[i], param::B2BASE_ALPHA[i], 0.0, param::B2BASE_THETA[i]);
-    for (int j = 0; j < 5; ++j) {T_i *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, q[5*i+j]);}
+
+    for (int j = 0; j < 5; ++j) {
+      T_i *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, q[5*i+j]);
+      mass_weighted_sum += param::LINK_MASS[j] * (T_i.block<3,1>(0,3) + param::LINK_COM_DIST[j] * T_i.block<3,1>(0,0));
+    }
     *(bparm[i]) = T_i.block<3,1>(0,3);
     bpcot += *(bparm[i]);
   }
   bpcot *= 0.25;
-}
-
-static inline Eigen::Vector3d com_guess(const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4) {
-  if (!std::isfinite(r1.x()) || !std::isfinite(r1.y()) || !std::isfinite(r2.x()) || !std::isfinite(r2.y()) || !std::isfinite(r3.x()) || !std::isfinite(r3.y()) || !std::isfinite(r4.x()) || !std::isfinite(r4.y())) {
-    std::fprintf(stderr, "[com_guess] : DETECT NAN or INF.\n"); std::fflush(stderr);
-    return Eigen::Vector3d(param::COM_OFF_X, param::COM_OFF_Y, 0.0);
-  }
-
-  const double com_x = param::INV_MASS_TOT * (param::ARM_MASS[0]*r1.x() + param::ARM_MASS[1]*r2.x() + param::ARM_MASS[2]*r3.x() + param::ARM_MASS[3]*r4.x());
-  const double com_y = param::INV_MASS_TOT * (param::ARM_MASS[0]*r1.y() + param::ARM_MASS[1]*r2.y() + param::ARM_MASS[2]*r3.y() + param::ARM_MASS[3]*r4.y());
-
-  return Eigen::Vector3d(com_x + param::COM_OFF_X, com_y + param::COM_OFF_Y, 0.0);
+  bpc = mass_weighted_sum / param::TOTAL_MASS;
 }
 
 static inline double spin_360(double a, double amin, double amax) {
