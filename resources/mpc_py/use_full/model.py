@@ -55,6 +55,18 @@ def build_model():
     r_off_y = ca.DM(p.R_OFF_Y).reshape((4, 1))
     b_F0 = ca.vertcat(0.0, 0.0, -f_0)
     g_F0 = R_0 @ b_F0
+
+    m_link = ca.DM(p.M_LINK).reshape((5, 1))
+    m_arm_eq = ca.sum1(m_link)
+    m_tot = ca.DM(p.M_CENTER) + 4.0 * m_arm_eq
+    inv_m_tot = 1.0 / m_tot
+    a1 = float(p.A_LINK[0])
+    a2 = float(p.A_LINK[1])
+    a3 = float(p.A_LINK[2])
+    d1 = float(p.D_LINK[0])
+    d2 = float(p.D_LINK[1])
+    d3 = float(p.D_LINK[2])
+    rz = float(p.R_Z)
     
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -140,11 +152,6 @@ def build_model():
             r_off_y[a] + r_pol_cmd[a][0] * ca.sin(r_pol_cmd[a][1]))
         r_cmd.append(ra_cmd)
 
-    # CoM position
-    pc = ca.SX.zeros(2, 1)
-    for a in range(4): pc += m_arm[a] * r[a]
-    pc = inv_m_tot * pc
-
     # rotor position (r, 1st-order)
     r_dot = ca.SX.zeros(8, 1)
     r_dot[0] = t_arm_inv  * (r1_cmd[0] - r1[0]); r_dot[1] = t_base_inv * (r1_cmd[1] - r1[1])
@@ -158,6 +165,24 @@ def build_model():
     f_expl = ca.vertcat(theta_dot, omega_dot, r_dot, u_cmd_dot)
     model.f_expl_expr = f_expl
     model.f_impl_expr = x_dot - f_expl
+
+    # ---------- CoM position ----------
+    pc = ca.SX.zeros(2, 1)
+    for a in range(4):
+        x_a = r_pol[a][0] - a1
+        D_a = (x_a * x_a + rz * rz - a2 * a2 - a3 * a3) / (2.0 * a2 * a3)
+
+        # IK - elbow-up solution
+        q3 = ca.atan2(ca.sqrt(1.0 - D_a * D_a), D_a)
+        q2 = ca.atan2(rz, x_a) - ca.atan2(a3 * ca.sin(q3), a2 + a3 * ca.cos(q3))
+
+        rho_c_a = ( m_link[0] * (a1 + d1)
+                  + m_link[1] * (a1 + (a2 + d2) * ca.cos(q2))
+                  + m_link[2] * (a1 + a2 * ca.cos(q2) + (a3 + d3) * ca.cos(q2 + q3))
+                  + (m_link[3] + m_link[4]) * r_pol[a][0])
+
+        pc += ca.vertcat(m_arm_eq*r_off_x[a] + rho_c_a*ca.cos(r_pol[a][1]), m_arm_eq*r_off_y[a] + rho_c_a*ca.sin(r_pol[a][1]))
+    pc *= inv_m_tot
 
     # ---------- Propeller thrust expression ----------
     A = ca.vertcat(ca.horzcat(-(r[0][1]-pc[1]), -(r[1][1]-pc[1]), -(r[2][1]-pc[1]), -(r[3][1]-pc[1])),
