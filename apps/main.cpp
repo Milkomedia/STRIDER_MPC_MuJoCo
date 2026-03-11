@@ -254,7 +254,7 @@ int main() {
           p3 << l_mpc_output.u_opt(7, idx),  l_mpc_output.u_opt(8, idx);
           p4 << l_mpc_output.u_opt(9, idx),  l_mpc_output.u_opt(10, idx);
           polar2cart(p1, p2, p3, p4, opt_r[0], opt_r[1], opt_r[2], opt_r[3]);
-          const bool is_feasible = make_feasible(opt_r); // check workspace & collision 
+          const bool is_feasible = make_feasible(opt_r); // check workspace & collision
 
           if (is_feasible) {
             cmd.d_theta = l_mpc_output.u_opt.col(idx).head<3>();

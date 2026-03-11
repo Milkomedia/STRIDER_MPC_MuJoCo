@@ -9,5 +9,5 @@ Q_FDEV  = 1.0 * np.array([1.0, 1.0, 1.0, 1.0])
 
 # rate cost
 c_a = 1.0  # arm cost (m/s scale)
-c_b = 0.05 # base cost (rad/s scale)
+c_b = 0.035 # base cost (rad/s scale)
 R_ROTOR = 0.85 * np.array([c_a, c_b, c_a, c_b, c_a, c_b, c_a, c_b])

@@ -439,7 +439,7 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
 
         // Hard-fail if stretch is too far outside
         double sqd_r = rx*rx + ry*ry;
-        if (sqd_r < sq_min_stretch_fail || sqd_r > sq_max_stretch_fail) {return false;}
+        if (sqd_r < sq_min_stretch_fail || sqd_r > sq_max_stretch_fail) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: stretch too far.\n", it); std::fflush(stderr); return false;}
 
         if (sqd_r < sq_min_stretch || sqd_r > sq_max_stretch) {
           const double abs_r = std::sqrt(sqd_r);
@@ -447,6 +447,7 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
           const double scale_factor = target / abs_r;
           rx *= scale_factor;
           ry *= scale_factor;
+          std::fprintf(stderr, "[arm-cmd check] iter[%d]: rotor[%d] scaled by %f\n", it, i+1, scale_factor); std::fflush(stderr);
         }
 
         r[i].x() = param::B2BASE_X[i] + rx;
@@ -465,7 +466,7 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
         const double sqrd_bp0 = bp0.squaredNorm();
 
         // (1) collision occurred too deep -> fail
-        if (sqrd_ap0 < sq_rotor_diameter_fail || sqrd_bp0 < sq_rotor_diameter_fail) {return false;}
+        if (sqrd_ap0 < sq_rotor_diameter_fail || sqrd_bp0 < sq_rotor_diameter_fail) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: collision occured too deep.\n", it); std::fflush(stderr); return false;}
 
         // (2) both already safe -> skip
         if (sqrd_ap0 >= sq_rotor_diameter && sqrd_bp0 >= sq_rotor_diameter) {continue;}
@@ -481,7 +482,7 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
           // For equal radii D: midpoint m, offset h along perpendicular
           const Eigen::Vector2d m = 0.5 * (pa + pb);
           double h2 = sq_rotor_diameter - 0.25*d2;
-          if (h2 < 0.0) {return false;}
+          if (h2 < 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: negative h2 detected.\n", it); std::fflush(stderr); return false;}
           const double h = std::sqrt(h2);
           const Eigen::Vector2d n(-dc.y() / d, dc.x() / d); // unit perpendicular (rotate +90deg)
 
@@ -509,10 +510,12 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
         r[i].y() = p.y();
 
         { // NaN/Inf guard
-          if (!r[i].allFinite()) { return false; }
+          if (!r[i].allFinite()) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[i]=r[%d] NaN/Inf detected.\n", it, i); std::fflush(stderr); return false;}
           const int ia = nbr_a[i]; const int ib = nbr_b[i];
-          if (!r[ia].allFinite() || !r[ib].allFinite()) { return false; }
+          if (!r[ia].allFinite()) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[ia]=r[%d] NaN/Inf detected.\n", it, ia); std::fflush(stderr); return false;}
+          if (!r[ib].allFinite()) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[ib]=r[%d] NaN/Inf detected.\n", it, ib); std::fflush(stderr); return false;}
         }
+        std::fprintf(stderr, "[arm-cmd check] iter[%d]: collision removed.\n", it); std::fflush(stderr);
       }
     } // rotor 1234
   } // iter
@@ -522,14 +525,14 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
     double dx = r[i].x() - param::B2BASE_X[i];
     double dy = r[i].y() - param::B2BASE_Y[i];
 
-    if (sign_x[i] > 0.0) { if (dx < 0.0) {return false;}}
-    else { if (dx > 0.0) {return false;}}
+    if (sign_x[i] > 0.0) { if (dx < 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: sign_x[%d]<0\n", i); std::fflush(stderr); return false;}}
+    else { if (dx > 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: sign_x[%d]>0\n", i); std::fflush(stderr); return false;}}
 
-    if (sign_y[i] > 0.0) { if (dy < 0.0) {return false;}}
-    else { if (dy > 0.0) {return false;}}
+    if (sign_y[i] > 0.0) { if (dy < 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: sign_y[%d]<0\n", i); std::fflush(stderr); return false;}}
+    else { if (dy > 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: sign_y[%d]>0\n", i); std::fflush(stderr); return false;}}
 
     double n2 = dx*dx + dy*dy;
-    if (n2 < sq_min_stretch || n2 > sq_max_stretch) {return false;}
+    if (n2 < sq_min_stretch || n2 > sq_max_stretch) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: arm-%d too much stretch.\n", i); std::fflush(stderr); return false;}
   }
   
   return true;
