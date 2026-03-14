@@ -56,8 +56,39 @@ int main() {
   const int adr_vel  = sensor_adr_check(m, "imu_linvel", 3);
   const int adr_acc  = sensor_adr_check(m, "imu_linacc", 3);
 
+  std::array<int, 4> thrust_act_ids{};
+  std::array<int, 4> torque_act_ids{};
+  for (int i = 0; i < 4; ++i) {
+    const std::string thrust_name = "thrust" + std::to_string(i + 1);
+    const std::string torque_name = "torque" + std::to_string(i + 1);
+    thrust_act_ids[i] = mj_name2id(m, mjOBJ_ACTUATOR, thrust_name.c_str());
+    torque_act_ids[i] = mj_name2id(m, mjOBJ_ACTUATOR, torque_name.c_str());
+  }
+
+  std::array<int, 20> arm_act_ids{};
+  for (int arm = 0; arm < 4; ++arm) {
+    for (int joint = 0; joint < 5; ++joint) {
+      const int idx = 5 * arm + joint;
+      const std::string name = "servo_Arm" + std::to_string(arm + 1) + "_joint" + std::to_string(joint + 1);
+      arm_act_ids[idx] = mj_name2id(m, mjOBJ_ACTUATOR, name.c_str());
+    }
+  }
+
+  std::array<int, 20> arm_joint_ids{};
+  std::array<int, 20> arm_qpos_adrs{};
+  for (int arm = 0; arm < 4; ++arm) {
+    for (int joint = 0; joint < 5; ++joint) {
+      const int idx = 5 * arm + joint;
+      const std::string name = "Arm" + std::to_string(arm + 1) + "_joint" + std::to_string(joint + 1);
+      arm_joint_ids[idx] = mj_name2id(m, mjOBJ_JOINT, name.c_str());
+      arm_qpos_adrs[idx] = (arm_joint_ids[idx] != -1) ? m->jnt_qposadr[arm_joint_ids[idx]] : -1;
+    }
+  }
+
   int load_act_id = -1;
   load_act_id = mj_name2id(m, mjOBJ_ACTUATOR, "servo_load_joint");
+  const int load_joint_id = mj_name2id(m, mjOBJ_JOINT, "load_joint");
+  const int load_qpos_adr = (load_joint_id != -1) ? m->jnt_qposadr[load_joint_id] : -1;
 
   // ---------------- [ MPC thread ] ----------------
   std::thread th_mpc([&]() {
@@ -124,6 +155,10 @@ int main() {
     Eigen::Vector3d prev_omega = Eigen::Vector3d::Zero();
     double prev_elapsed_double = 0.0;
 
+    // --- com-bias inducing load param ---
+    double servo_load_angle_cmd = 0.5*M_PI;
+    double servo_load_angle = 0.5*M_PI;
+
     // --- MRG parameters ---
     uint32_t mpc_key = 1;
     strider_mpc::MPCOutput l_mpc_output;
@@ -162,8 +197,11 @@ int main() {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
         // spawn and 3 second do nothing
         for (int k = 0; k < 3*static_cast<int>(param::SIM_HZ); ++k) {
-          for (int i = 0; i < 8 && i < m->nu; ++i) {d->ctrl[i] = 0.0;}
-          for (int i = 0; i < 20 && (8 + i) < m->nu; ++i) {d->ctrl[8 + i] = arm_angles[i];}
+          for (int i = 0; i < 4; ++i) {
+            if (thrust_act_ids[i] != -1) {d->ctrl[thrust_act_ids[i]] = 0.0;}
+            if (torque_act_ids[i] != -1) {d->ctrl[torque_act_ids[i]] = 0.0;}
+          }
+          for (int i = 0; i < 20; ++i) {if (arm_act_ids[i] != -1) {d->ctrl[arm_act_ids[i]] = arm_angles[i];}}
           if (load_act_id != -1) {d->ctrl[load_act_id] = 0.0;}
           mj_step(m, d);
         }
@@ -193,7 +231,8 @@ int main() {
         const Eigen::Quaterniond q(sd[adr_quat], sd[adr_quat+1], sd[adr_quat+2], sd[adr_quat+3]);
         s.R = quat_to_R(q);
         s.omega << sd[adr_gyro], -sd[adr_gyro + 1], -sd[adr_gyro + 2];
-        for (int i = 0; i < 20; ++i) {s.arm_q[i] = d->qpos[7 + i];}
+        for (int i = 0; i < 20; ++i) {s.arm_q[i] = (arm_qpos_adrs[i] != -1) ? d->qpos[arm_qpos_adrs[i]] : 0.0;}
+        servo_load_angle = (load_qpos_adr != -1) ? d->qpos[load_qpos_adr] : 0.0;
       }
       s.alpha = diff(s.omega, prev_omega, elapsed_double, prev_elapsed_double);
       prev_omega = s.omega; prev_elapsed_double = elapsed_double;
@@ -201,10 +240,18 @@ int main() {
       // --- sensor noise injection ---
       if (param::NOISE_ON) {NOISE::apply(noise_state, now, s);}
 
+      // --- load angle cmd update ---
+      if (elapsed_double > 15.0) {
+        servo_load_angle_cmd -= 1.0/400.0 * 0.5*M_PI / 3.0;
+        if (servo_load_angle_cmd <= 0.0) {servo_load_angle_cmd = 0.0;}
+        // servo_load_angle_cmd = 0.5*M_PI*std::sin(elapsed_double / M_2_PI)+0.5*M_PI;
+      }
+
       // --- position control ---
-      if (elapsed_double >= 4.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(1.5,0.0,-1.0), elapsed_double, 2.0);}
-      else {cmd.pos = Eigen::Vector3d(1.5,0.0,-1.0);}
+      // if (elapsed_double >= 4.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      // else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(1.5,0.0,-1.0), elapsed_double, 2.0);}
+      // else {cmd.pos = Eigen::Vector3d(1.5,0.0,-1.0);}
+      cmd.pos = Eigen::Vector3d(0.0,0.0,-1.0);
       cmd.vel = Eigen::Vector3d::Zero();
       cmd.acc = Eigen::Vector3d::Zero();
 
@@ -277,7 +324,7 @@ int main() {
       }
 
       const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
-      FK(delayed_s.arm_q, s.r_cot, s.r_com, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position & com position
+      FK(delayed_s.arm_q, servo_load_angle, s.r_cot, s.r_com, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position & com position
       { // MPC send
         if (phase != Phase::GAC_ONLY) {
           Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;
@@ -310,6 +357,7 @@ int main() {
             g_mpc_input.p(m++) = alpha_raw(0); g_mpc_input.p(m++) = alpha_raw(1); g_mpc_input.p(m++) = alpha_raw(2); // alpha_raw(12~14)
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = delayed_s.R(i, j);}} // R_0(15~23), column-major order to match CasADi reshape
             g_mpc_input.p(m++) = -f_sum; // positive, f_sum(24)
+            g_mpc_input.p(m++) = (servo_load_angle); // servo_load_angle (25)
 
             if (phase==Phase::USE_FULL)        {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = true; }
             else if (phase==Phase::USE_DTHETA) {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = false;}
@@ -384,10 +432,12 @@ int main() {
         g_pos_cur[0]=d->qpos[0]; g_pos_des[0]=cmd.pos(0);
         g_pos_cur[1]=d->qpos[1]; g_pos_des[1]=-cmd.pos(1);
         g_pos_cur[2]=d->qpos[2]; g_pos_des[2]=-cmd.pos(2);
-        Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl) = smoothed_F.cast<mjtNum>();
-        Eigen::Map<Eigen::Matrix<mjtNum,4,1>>(d->ctrl + 4) = smoothed_Tau.cast<mjtNum>();
-        for (int i = 0; i < 20; ++i) d->ctrl[8 + i] = smoothed_q_d[i];
-        if (load_act_id != -1) {d->ctrl[load_act_id] = 0.0;}
+        for (int i = 0; i < 4; ++i) {
+          if (thrust_act_ids[i] != -1) {d->ctrl[thrust_act_ids[i]] = static_cast<mjtNum>(smoothed_F(i));}
+          if (torque_act_ids[i] != -1) {d->ctrl[torque_act_ids[i]] = static_cast<mjtNum>(smoothed_Tau(i));}
+        }
+        for (int i = 0; i < 20; ++i) {if (arm_act_ids[i] != -1) {d->ctrl[arm_act_ids[i]] = static_cast<mjtNum>(smoothed_q_d[i]);}}
+        if (load_act_id != -1) {d->ctrl[load_act_id] = servo_load_angle_cmd;}
 
         for (int s = 0; s < n_sub; ++s) {mj_step(m, d);}
       }
@@ -483,7 +533,7 @@ int main() {
           ld.tau_off[1] = static_cast<float>(tau_off(1));
         }
         {
-          const Eigen::Vector3d tau_thrust = Forward_Allocate(smoothed_F, s.r1, s.r2, s.r3, s.r4, s.r_com);
+          const Eigen::Vector3d tau_thrust = Forward_Allocate(smoothed_F, s.r1, s.r2, s.r3, s.r4, s.r_cot);
           ld.tau_thrust[0] = static_cast<float>(tau_thrust(0));
           ld.tau_thrust[1] = static_cast<float>(tau_thrust(1));
           ld.tau_thrust[2] = static_cast<float>(tau_thrust(2));

@@ -30,17 +30,22 @@ def build_model():
     Wdot_raw = ca.SX.sym('Wdot_raw', 3) # desired angular accel [rad/s^2]
     R_0   = ca.SX.sym('R_0', 3, 3)      # initial attitude SO3 matrix
     f_0 = ca.SX.sym('f_0')              # [N]
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0)
+    load_angle = ca.SX.sym('load_angle') # [rad]
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, load_angle)
 
     # Constants
     J = ca.DM(p.J_TENSOR)
     J_inv = ca.inv(J)
-    zeta = p.ZETA
-    KR = ca.DM(p.KR).reshape((3, 1))
-    KW = ca.DM(p.KW).reshape((3, 1))
-    l = p.L_DIST
+    zeta = float(p.ZETA)
+    KR = ca.reshape(ca.DM(np.asarray(p.KR, dtype=np.float64)), 3, 1)
+    KW = ca.reshape(ca.DM(np.asarray(p.KW, dtype=np.float64)), 3, 1)
+    l = float(p.L_DIST)
     b_F0 = ca.vertcat(0.0, 0.0, -f_0)
     g_F0 = R_0 @ b_F0
+
+    m_link = ca.reshape(ca.DM(np.asarray(p.M_LINK, dtype=np.float64)), 5, 1)
+    inv_m_tot = 1.0 / (ca.DM(float(p.M_CENTER)) + 4.0 * ca.sum1(m_link))
+    center_body_com = ca.vertcat(float(p.MAX_COM_BIAS_OF_LOAD) * ca.cos(load_angle), 0.0)
 
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -116,8 +121,9 @@ def build_model():
     model.f_impl_expr = x_dot - f_expl
 
     # ---------- Propeller thrust expression ----------
-    A = ca.vertcat(ca.horzcat( l,  l, -l, -l),
-                   ca.horzcat( l, -l, -l,  l),
+    pc = center_body_com * inv_m_tot
+    A = ca.vertcat(ca.horzcat( l+pc[1],  l+pc[1], -l+pc[1], -l+pc[1]),
+                   ca.horzcat( l-pc[0], -l-pc[0], -l-pc[0],  l-pc[0]),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
                    ca.horzcat( -1.0,  -1.0,  -1.0,  -1.0))
 
@@ -145,11 +151,11 @@ def build_ocp():
     model.cost_y_expr   = ca.vertcat(delta_theta_cmd, delta_theta_cmd_rate) # 1~k-1 ref
     model.cost_y_expr_e = ca.vertcat(delta_theta_cmd) # terminal(k) ref
 
-    ocp.dims.ny   = 13
-    ocp.dims.ny_e = 10
+    ocp.dims.ny   = 6
+    ocp.dims.ny_e = 3
     
     ocp.cost.W = np.diag(np.concatenate([c.Q_THETA, c.R_THETA]).astype(np.float64))
-    ocp.cost.W_e = np.diag(np.concatenate([c.Q_THETA]).astype(np.float64))
+    ocp.cost.W_e = np.diag(np.asarray(c.Q_THETA, dtype=np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
     ocp.cost.cost_type_e = "NONLINEAR_LS"
@@ -160,9 +166,24 @@ def build_ocp():
     ocp.parameter_values = np.zeros((model.p.size()[0],))
     ocp.constraints.x0 = np.zeros(model.x.size()[0])
 
+    # ---- box constraints on u ----
+    ocp.constraints.idxbu = np.array([0, 1, 2], dtype=np.int64)
+
+    ocp.constraints.lbu = np.array([
+        c.DTHETA_DOT_MIN[0],
+        c.DTHETA_DOT_MIN[1],
+        c.DTHETA_DOT_MIN[2],
+    ], dtype=np.float64)
+    ocp.constraints.ubu = np.array([
+        c.DTHETA_DOT_MAX[0],
+        c.DTHETA_DOT_MAX[1],
+        c.DTHETA_DOT_MAX[2],
+    ], dtype=np.float64)
+    ocp.dims.nbu = ocp.constraints.idxbu.size
+
     # ---------- h_expr constraints ----------
-    ocp.constraints.lh   = c.F_MIN
-    ocp.constraints.uh   = c.F_MAX
+    ocp.constraints.lh   = np.asarray(c.F_MIN, dtype=np.float64)
+    ocp.constraints.uh   = np.asarray(c.F_MAX, dtype=np.float64)
     ocp.dims.nh   = 4
 
     # ---------- solver options ----------

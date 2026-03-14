@@ -338,9 +338,11 @@ static inline Eigen::Matrix4d compute_DH(double a, double alpha, double d, doubl
     return T;
   }
 
-static inline void FK(const double q[20], Eigen::Vector3d& bpcot, Eigen::Vector3d& bpc, Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
+static inline void FK(const double q[20], const double& load_angle, Eigen::Vector3d& bpcot, Eigen::Vector3d& bpc, Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
   std::array<Eigen::Vector3d*, 4> bparm = {&r1, &r2, &r3, &r4};
   Eigen::Vector3d mass_weighted_sum = Eigen::Vector3d::Zero();
+  bpc = Eigen::Vector3d::Zero();
+  bpcot = Eigen::Vector3d::Zero();
 
   for (uint8_t i = 0; i < 4; ++i) {
     Eigen::Matrix4d T_i = Eigen::Matrix4d::Identity();
@@ -354,6 +356,7 @@ static inline void FK(const double q[20], Eigen::Vector3d& bpcot, Eigen::Vector3
     bpcot += *(bparm[i]);
   }
   bpcot *= 0.25;
+  mass_weighted_sum += param::BIAS_WEIGHT_MAX_COM * Eigen::Vector3d(std::cos(load_angle), 0.0, std::sin(load_angle)); // x-axis center mass com position
   bpc = mass_weighted_sum / param::TOTAL_MASS;
 }
 
@@ -646,16 +649,16 @@ static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& 
   else {F1234 = (A_d.transpose()*A_d + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A_d.transpose()*Wrench);}
 }
 
-static inline Eigen::Vector3d Forward_Allocate(const Eigen::Vector4d& F1234, const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& Pc) {
+static inline Eigen::Vector3d Forward_Allocate(const Eigen::Vector4d& F1234, const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& Pcot) {
   Eigen::Matrix<double, 3, 4> A;
-  A(0,0) = -r1(1) + Pc(1);
-  A(0,1) = -r2(1) + Pc(1);
-  A(0,2) = -r3(1) + Pc(1);
-  A(0,3) = -r4(1) + Pc(1);
-  A(1,0) =  r1(0) - Pc(0);
-  A(1,1) =  r2(0) - Pc(0);
-  A(1,2) =  r3(0) - Pc(0);
-  A(1,3) =  r4(0) - Pc(0);
+  A(0,0) = -r1(1) + Pcot(1);
+  A(0,1) = -r2(1) + Pcot(1);
+  A(0,2) = -r3(1) + Pcot(1);
+  A(0,3) = -r4(1) + Pcot(1);
+  A(1,0) =  r1(0) - Pcot(0);
+  A(1,1) =  r2(0) - Pcot(0);
+  A(1,2) =  r3(0) - Pcot(0);
+  A(1,3) =  r4(0) - Pcot(0);
   A(2,0) = -param::PWM_ZETA;
   A(2,1) =  param::PWM_ZETA;
   A(2,2) = -param::PWM_ZETA;
