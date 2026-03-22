@@ -37,7 +37,7 @@ def build_model():
     Wdot_raw = ca.SX.sym('Wdot_raw', 3) # desired angular accel [rad/s^2]
     R_0   = ca.SX.sym('R_0', 3, 3)      # initial attitude SO3 matrix
     f_0 = ca.SX.sym('f_0')              # [N]
-    load_angle = ca.SX.sym('load_angle') # [rad]
+    load_angle = ca.SX.sym('load_angle')
     model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, load_angle)
 
     # Constants
@@ -56,7 +56,7 @@ def build_model():
     m_link = ca.reshape(ca.DM(np.asarray(p.M_LINK, dtype=np.float64)), 5, 1)
     m_link_sum = ca.sum1(m_link)
     inv_m_tot = 1.0 / (ca.DM(float(p.M_CENTER)) + 4.0 * m_link_sum)
-    center_body_com = ca.vertcat(float(p.MAX_COM_BIAS_OF_LOAD) * ca.cos(load_angle), 0.0)
+    center_body_com = ca.vertcat(ca.cos(load_angle)*float(p.MAX_COM_BIAS_OF_LOAD), 0.0)
     a1 = float(p.A_LINK[0])
     a2 = float(p.A_LINK[1])
     a3 = float(p.A_LINK[2])

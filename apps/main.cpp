@@ -156,8 +156,12 @@ int main() {
     double prev_elapsed_double = 0.0;
 
     // --- com-bias inducing load param ---
-    double servo_load_angle_cmd = 0.5*M_PI;
-    double servo_load_angle = 0.5*M_PI;
+    double servo_load_angle_cmd = 0.0; // 0.5*M_PI; 0.0;
+    double servo_load_angle = 0.0; // 0.5*M_PI; 0.0;
+
+    // --- auto-phase start ---
+    bool auto_phase_started = false;
+    constexpr Phase AUTO_PHASE = Phase::GAC_ONLY;   // GAC_ONLY or USE_ARM or USE_DTHETA or USE_FULL
 
     // --- MRG parameters ---
     uint32_t mpc_key = 1;
@@ -213,8 +217,17 @@ int main() {
       const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
       const double elapsed_double = std::chrono::duration<double>(now - t0).count();
 
-      // Handle phase transitions
-      const Phase requested_phase = static_cast<Phase>(g_phase_cmd.load(std::memory_order_relaxed));
+      Phase requested_phase = static_cast<Phase>(g_phase_cmd.load(std::memory_order_relaxed));
+
+      if (!auto_phase_started && elapsed_double >= 15.1) {
+        requested_phase = AUTO_PHASE;
+        g_phase_cmd.store(static_cast<uint8_t>(AUTO_PHASE), std::memory_order_relaxed);
+        auto_phase_started = true;
+        mpc_cv.notify_all();
+        std::printf("[AUTO PHASE] elapsed=%.3f, request=%d\n", elapsed_double, static_cast<int>(AUTO_PHASE));
+        std::fflush(stdout);
+      }
+
       if (requested_phase != phase) {
         std::lock_guard<std::mutex> lk(mpc_mtx);
         mpc_reset_locked(mpc_key);
@@ -248,10 +261,11 @@ int main() {
       }
 
       // --- position control ---
-      // if (elapsed_double >= 4.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      // else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(1.5,0.0,-1.0), elapsed_double, 2.0);}
-      // else {cmd.pos = Eigen::Vector3d(1.5,0.0,-1.0);}
-      cmd.pos = Eigen::Vector3d(0.0,0.0,-1.0);
+      // position command starts at 17.9sec
+      if (elapsed_double >= 15.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.25,0.0,-1.3), elapsed_double, 2.0);}
+      else {cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);}
+      // cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);
       cmd.vel = Eigen::Vector3d::Zero();
       cmd.acc = Eigen::Vector3d::Zero();
 
@@ -292,7 +306,8 @@ int main() {
         
         if (epoch_ok && time_ok && solve_ok) {
           const std::size_t idx_raw = static_cast<std::size_t>(std::floor(std::chrono::duration<double>(now - l_mpc_output.t).count() / param::MPC_STEP_DT));
-          const std::size_t idx = (idx_raw < param::N_STEPS_REQ) ? idx_raw : (param::N_STEPS_REQ - 1);
+          // const std::size_t idx = (idx_raw < param::N_STEPS_REQ) ? idx_raw : (param::N_STEPS_REQ - 1);
+          const std::size_t idx = 1;
 
           Eigen::Vector2d p1, p2, p3, p4; // polar opt r_cmd
           std::array<Eigen::Vector2d, 4> opt_r; // cartesian opt r_cmd
@@ -357,7 +372,7 @@ int main() {
             g_mpc_input.p(m++) = alpha_raw(0); g_mpc_input.p(m++) = alpha_raw(1); g_mpc_input.p(m++) = alpha_raw(2); // alpha_raw(12~14)
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = delayed_s.R(i, j);}} // R_0(15~23), column-major order to match CasADi reshape
             g_mpc_input.p(m++) = -f_sum; // positive, f_sum(24)
-            g_mpc_input.p(m++) = (servo_load_angle); // servo_load_angle (25)
+            g_mpc_input.p(m++) = servo_load_angle;
 
             if (phase==Phase::USE_FULL)        {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = true; }
             else if (phase==Phase::USE_DTHETA) {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = false;}
@@ -381,7 +396,7 @@ int main() {
       const Eigen::Vector3d Wd = Et * omega_raw;
       const Eigen::Vector3d Wd_dot = Et * alpha_raw;
       const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, Wd, Wd_dot);
-      
+
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
@@ -417,8 +432,12 @@ int main() {
       // --- joint actuator delay [2.5ms one-step delay] ---
       for (uint8_t i=0; i<20; ++i) {smoothed_q_d[i] =  param::COT_DELAY_ALPHA * smoothed_q_d[i] + param::COT_DELAY_BETA * delayed_q_d[i];}
 
-      // --- virtual thrust clipping ---
-      if (elapsed_double >= 5.0) {for (uint8_t i=0; i<4; ++i) {if (smoothed_F(i) > param::SATURATION_THRUST) {smoothed_F(i) = param::SATURATION_THRUST;}}}
+      // --- virtual thrust clipping (tightening starts at 10s, finishes at 15s)---
+      double thrust_sat = 1e12;
+      if (elapsed_double >= 15.0)      {thrust_sat = param::SATURATION_THRUST;}
+      else if (elapsed_double >= 10.0) {thrust_sat = param::SATURATION_THRUST + (1.0 - 0.2*param::CTRL_DT) * param::VIRTUAL_MARGIN_MARGIN;}
+      else                             {thrust_sat = param::SATURATION_THRUST + param::VIRTUAL_MARGIN_MARGIN;}
+      for (uint8_t i=0; i<4; ++i) {smoothed_F(i) = (smoothed_F(i) > thrust_sat) ? thrust_sat : smoothed_F(i);}
 
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;

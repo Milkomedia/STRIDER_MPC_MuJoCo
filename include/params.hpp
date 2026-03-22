@@ -30,9 +30,9 @@ inline constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-inline constexpr double kX[3] = {35.0, 35.0, 65.0}; // Position gain [x, y, z]
-inline constexpr double kV[3] = {20.0, 20.0, 60.0}; // Velocity gain [x, y, z]
-inline constexpr double kR[3] = {75.0, 75.0, 5.5}; // Rotational gain [roll, pitch, yaw]
+inline constexpr double kX[3] = {55.0, 55.0, 65.0}; // Position gain [x, y, z]
+inline constexpr double kV[3] = {27.0, 27.0, 60.0}; // Velocity gain [x, y, z]
+inline constexpr double kR[3] = {85.0, 85.0, 5.5}; // Rotational gain [roll, pitch, yaw]
 inline constexpr double kW[3] = {15.0, 15.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
 
 // Integral Parameters
@@ -41,17 +41,15 @@ inline constexpr double kyI = 0.0;  /**< Attitude integral gain for yaw */
 inline constexpr double kIX = 0.3;  /**< Position integral gains */
 
 // ===== UAV Parameters =====
-// inline constexpr double J[9] = {0.27, 0.00, 0.00,
-//                                 0.00, 0.62,0.00,
-//                                 0.00, 0.00, 0.89};
 inline constexpr double J[9] = {0.27, 0.00, 0.00,
-                                0.00, 0.281,0.00,
-                                0.00, 0.00, 0.541};
+                                0.00, 0.41, 0.00,
+                                0.00, 0.00, 0.68};
 inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
 
-inline constexpr double THRUST_MARGIN     = 1.86; // thrust margin of each thruster [N]
-inline constexpr double SATURATION_THRUST = M * G / 4.0 + THRUST_MARGIN;
+inline constexpr double VIRTUAL_MARGIN        = 2.0; // thrust margin of each thruster [N]
+inline constexpr double VIRTUAL_MARGIN_MARGIN = 5.0; // starting margin of each thruster [N]
+inline constexpr double SATURATION_THRUST = M * G / 4.0 + VIRTUAL_MARGIN;
 
 // Allocation parameters
 inline constexpr double SERVO_DELAY_ALPHA = 0.093158;  // yaw trimming
@@ -91,7 +89,9 @@ inline const     double GOES_2_ZERO_B         = 1.0 - GOES_2_ZERO_A;            
 inline constexpr double LINK_MASS[5] = {0.374106, 0.13658, 0.0415148, 0.102003, 0.3734}; // link mass [kg]
 inline constexpr double CENTER_MASS  = 2.6845345;                                        // center body + load mass [kg]
 inline constexpr double TOTAL_MASS   = CENTER_MASS + 4.0*(LINK_MASS[0]+LINK_MASS[1]+LINK_MASS[2]+LINK_MASS[3]+LINK_MASS[4]); // strider mass (same as M) [kg]
-inline constexpr double BIAS_WEIGHT_MAX_COM = 0.2475;                                    // load-link length/2 * load-link weight + load-link length * load wieght [m]
+// inline constexpr double BIAS_WEIGHT_MAX_COM = 0.19375;                                   // load-link length * load wieght [kg*m]
+inline constexpr double BIAS_WEIGHT_MAX_COM = 0.2475;                                   // load-link length * load wieght [kg*m]
+// inline constexpr double BIAS_WEIGHT_MAX_COM = 0.0;                                   // load-link length * load wieght [kg*m]
 inline constexpr double LINK_COM_DIST[5] = {-0.040, -0.031, -0.055, -0.012, -0.020};     // link com distance [m]
 
 // ===== MPC parameters  =====
@@ -99,8 +99,8 @@ inline constexpr double COT_DELAY_TAU   = 0.17; // MuJoCo actuator delay [sec]
 inline const     double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); // not a tunable parameter
 inline const     double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;              // not a tunable parameter
 
-inline constexpr double      MPC_STEP_DT = 1.0 / 400.0; // This value must be same as >> DT << on params.py
-inline constexpr std::size_t N_STEPS_REQ = 150; // This value must be less than >> N << on params.py
+inline constexpr double      MPC_STEP_DT = 1.0 / 100.0; // This value must be same as >> DT << on params.py
+inline constexpr std::size_t N_STEPS_REQ = 20; // This value must be less than >> N << on params.py
 inline constexpr std::size_t MPC_NX      = 25; // This value must be same as >> self.use_full_nx << on solver.py
 inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.use_full_nu << on solver.py
 inline constexpr std::size_t MPC_NP      = 26; // This value must be same as >> self.use_full_np << on solver.py

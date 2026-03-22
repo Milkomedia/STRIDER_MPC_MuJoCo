@@ -38,7 +38,7 @@ def build_model():
     Wdot_raw = ca.SX.sym('Wdot_raw', 3) # desired angular accel [rad/s^2]
     R_0   = ca.SX.sym('R_0', 3, 3)      # initial attitude SO3 matrix
     f_0 = ca.SX.sym('f_0')              # [N]
-    load_angle = ca.SX.sym('load_angle') # [rad]
+    load_angle = ca.SX.sym('load_angle')
     model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, load_angle)
 
     # Constants
@@ -57,7 +57,7 @@ def build_model():
     m_link = ca.reshape(ca.DM(np.asarray(p.M_LINK, dtype=np.float64)), 5, 1)
     m_link_sum = ca.sum1(m_link)
     inv_m_tot = 1.0 / (ca.DM(float(p.M_CENTER)) + 4.0 * m_link_sum)
-    center_body_com = ca.vertcat(float(p.MAX_COM_BIAS_OF_LOAD) * ca.cos(load_angle), 0.0)
+    center_body_com = ca.vertcat(ca.cos(load_angle)*float(p.MAX_COM_BIAS_OF_LOAD), 0.0)
     a1 = float(p.A_LINK[0])
     a2 = float(p.A_LINK[1])
     a3 = float(p.A_LINK[2])
@@ -128,9 +128,9 @@ def build_model():
     Wd_dot = expm_hat(-delta_theta_cmd) @ Wdot_raw
     RtRd = R.T @ Rd
     e_R = 0.5 * vee(RtRd.T - RtRd)
-    e_w = omega - RtRd @ Wd
-    tau_d = - KR * e_R - KW * e_w
-    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))# + hat(omega)@RtRd@Wd + RtRd@Wd_dot
+    e_w = omega - RtRd @ W_raw
+    tau_d = - KR * e_R - KW * e_w # + hat(omega)@RtRd@Wd + RtRd@Wd_dot
+    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))
 
     # body->rotor pos in cartesian coordinate (state)
     r_pol = [r1, r2, r3, r4]
@@ -226,17 +226,16 @@ def build_ocp():
 
     # ---------- costs ----------
     delta_theta_cmd      = model.x[14:17]
-    delta_theta_cmd_rate = model.u[0:3]
     r_rotor_cmd_rate     = model.u[3:11]
     thrust_dev           = model.thrust_dev
     
-    model.cost_y_expr   = ca.vertcat(delta_theta_cmd, thrust_dev, delta_theta_cmd_rate, r_rotor_cmd_rate) # 1~k-1 ref
+    model.cost_y_expr   = ca.vertcat(delta_theta_cmd, thrust_dev, r_rotor_cmd_rate) # 1~k-1 ref
     model.cost_y_expr_e = ca.vertcat(delta_theta_cmd, thrust_dev) # terminal(k) ref
 
-    ocp.dims.ny   = 18
+    ocp.dims.ny   = 15
     ocp.dims.ny_e = 7
     
-    ocp.cost.W   = np.diag(np.concatenate([c.Q_THETA, c.Q_FDEV, c.R_THETA, c.R_ROTOR]).astype(np.float64))
+    ocp.cost.W   = np.diag(np.concatenate([c.Q_THETA, c.Q_FDEV, c.R_ROTOR]).astype(np.float64))
     ocp.cost.W_e = np.diag(np.concatenate([c.Q_THETA, c.Q_FDEV]).astype(np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
@@ -263,28 +262,22 @@ def build_ocp():
     ocp.constraints.ubx = ubx
     ocp.dims.nbx = ocp.constraints.idxbx.size
 
-    # ---- box constraints on u ----
-    ocp.constraints.idxbu = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=np.int64)
+    # # ---- box constraints on u ----
+    # ocp.constraints.idxbu = np.array([3, 4, 5, 6, 7, 8, 9, 10], dtype=np.int64)
 
-    ocp.constraints.lbu = np.array([
-        c.DTHETA_DOT_MIN[0],
-        c.DTHETA_DOT_MIN[1],
-        c.DTHETA_DOT_MIN[2],
-        c.RHO_DOT_MIN[0],   c.ALPHA_DOT_MIN[0],
-        c.RHO_DOT_MIN[1],   c.ALPHA_DOT_MIN[1],
-        c.RHO_DOT_MIN[2],   c.ALPHA_DOT_MIN[2],
-        c.RHO_DOT_MIN[3],   c.ALPHA_DOT_MIN[3],
-    ], dtype=np.float64)
-    ocp.constraints.ubu = np.array([
-        c.DTHETA_DOT_MAX[0],
-        c.DTHETA_DOT_MAX[1],
-        c.DTHETA_DOT_MAX[2],
-        c.RHO_DOT_MAX[0],   c.ALPHA_DOT_MAX[0],
-        c.RHO_DOT_MAX[1],   c.ALPHA_DOT_MAX[1],
-        c.RHO_DOT_MAX[2],   c.ALPHA_DOT_MAX[2],
-        c.RHO_DOT_MAX[3],   c.ALPHA_DOT_MAX[3],
-    ], dtype=np.float64)
-    ocp.dims.nbu = ocp.constraints.idxbu.size
+    # ocp.constraints.lbu = np.array([
+    #     c.RHO_DOT_MIN[0],   c.ALPHA_DOT_MIN[0],
+    #     c.RHO_DOT_MIN[1],   c.ALPHA_DOT_MIN[1],
+    #     c.RHO_DOT_MIN[2],   c.ALPHA_DOT_MIN[2],
+    #     c.RHO_DOT_MIN[3],   c.ALPHA_DOT_MIN[3],
+    # ], dtype=np.float64)
+    # ocp.constraints.ubu = np.array([
+    #     c.RHO_DOT_MAX[0],   c.ALPHA_DOT_MAX[0],
+    #     c.RHO_DOT_MAX[1],   c.ALPHA_DOT_MAX[1],
+    #     c.RHO_DOT_MAX[2],   c.ALPHA_DOT_MAX[2],
+    #     c.RHO_DOT_MAX[3],   c.ALPHA_DOT_MAX[3],
+    # ], dtype=np.float64)
+    # ocp.dims.nbu = ocp.constraints.idxbu.size
 
     # ---------- h_expr constraints ----------
     col_cmd_lb   = np.full(4, (2.0 * p.R_ROTOR)**2, dtype=np.float64)

@@ -30,7 +30,7 @@ def build_model():
     Wdot_raw = ca.SX.sym('Wdot_raw', 3) # desired angular accel [rad/s^2]
     R_0   = ca.SX.sym('R_0', 3, 3)      # initial attitude SO3 matrix
     f_0 = ca.SX.sym('f_0')              # [N]
-    load_angle = ca.SX.sym('load_angle') # [rad]
+    load_angle = ca.SX.sym('load_angle')
     model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, load_angle)
 
     # Constants
@@ -45,7 +45,7 @@ def build_model():
 
     m_link = ca.reshape(ca.DM(np.asarray(p.M_LINK, dtype=np.float64)), 5, 1)
     inv_m_tot = 1.0 / (ca.DM(float(p.M_CENTER)) + 4.0 * ca.sum1(m_link))
-    center_body_com = ca.vertcat(float(p.MAX_COM_BIAS_OF_LOAD) * ca.cos(load_angle), 0.0)
+    center_body_com = ca.vertcat(ca.cos(load_angle)*float(p.MAX_COM_BIAS_OF_LOAD), 0.0)
 
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -146,15 +146,14 @@ def build_ocp():
 
     # ---------- costs ----------
     delta_theta_cmd = model.x[6:9]
-    delta_theta_cmd_rate = model.u[0:3]
     
-    model.cost_y_expr   = ca.vertcat(delta_theta_cmd, delta_theta_cmd_rate) # 1~k-1 ref
+    model.cost_y_expr   = ca.vertcat(delta_theta_cmd) # 1~k-1 ref
     model.cost_y_expr_e = ca.vertcat(delta_theta_cmd) # terminal(k) ref
 
-    ocp.dims.ny   = 6
+    ocp.dims.ny   = 3
     ocp.dims.ny_e = 3
     
-    ocp.cost.W = np.diag(np.concatenate([c.Q_THETA, c.R_THETA]).astype(np.float64))
+    ocp.cost.W = np.diag(np.asarray(c.Q_THETA, dtype=np.float64))
     ocp.cost.W_e = np.diag(np.asarray(c.Q_THETA, dtype=np.float64))
 
     ocp.cost.cost_type   = "NONLINEAR_LS"
@@ -165,21 +164,6 @@ def build_ocp():
     ocp.cost.yref_e = np.zeros((model.cost_y_expr_e.size()[0],))
     ocp.parameter_values = np.zeros((model.p.size()[0],))
     ocp.constraints.x0 = np.zeros(model.x.size()[0])
-
-    # ---- box constraints on u ----
-    ocp.constraints.idxbu = np.array([0, 1, 2], dtype=np.int64)
-
-    ocp.constraints.lbu = np.array([
-        c.DTHETA_DOT_MIN[0],
-        c.DTHETA_DOT_MIN[1],
-        c.DTHETA_DOT_MIN[2],
-    ], dtype=np.float64)
-    ocp.constraints.ubu = np.array([
-        c.DTHETA_DOT_MAX[0],
-        c.DTHETA_DOT_MAX[1],
-        c.DTHETA_DOT_MAX[2],
-    ], dtype=np.float64)
-    ocp.dims.nbu = ocp.constraints.idxbu.size
 
     # ---------- h_expr constraints ----------
     ocp.constraints.lh   = np.asarray(c.F_MIN, dtype=np.float64)
