@@ -262,10 +262,10 @@ int main() {
 
       // --- position control ---
       // position command starts at 17.9sec
-      if (elapsed_double >= 15.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.25,0.0,-1.3), elapsed_double, 2.0);}
-      else {cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);}
-      // cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);
+      // if (elapsed_double >= 15.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      // else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.25,0.0,-1.3), elapsed_double, 2.0);}
+      // else {cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);}
+      cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);
       cmd.vel = Eigen::Vector3d::Zero();
       cmd.acc = Eigen::Vector3d::Zero();
 

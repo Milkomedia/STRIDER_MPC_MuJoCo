@@ -87,11 +87,9 @@ inline const     double GOES_2_ZERO_B         = 1.0 - GOES_2_ZERO_A;            
 
 // ===== CoM estimating parameter =====
 inline constexpr double LINK_MASS[5] = {0.374106, 0.13658, 0.0415148, 0.102003, 0.3734}; // link mass [kg]
-inline constexpr double CENTER_MASS  = 2.6845345;                                        // center body + load mass [kg]
+inline constexpr double CENTER_MASS  = 2.6845345;   // center body + load mass [kg]
 inline constexpr double TOTAL_MASS   = CENTER_MASS + 4.0*(LINK_MASS[0]+LINK_MASS[1]+LINK_MASS[2]+LINK_MASS[3]+LINK_MASS[4]); // strider mass (same as M) [kg]
-// inline constexpr double BIAS_WEIGHT_MAX_COM = 0.19375;                                   // load-link length * load wieght [kg*m]
-inline constexpr double BIAS_WEIGHT_MAX_COM = 0.2475;                                   // load-link length * load wieght [kg*m]
-// inline constexpr double BIAS_WEIGHT_MAX_COM = 0.0;                                   // load-link length * load wieght [kg*m]
+inline constexpr double BIAS_WEIGHT_MAX_COM = 0.18; // load-link length * load wieght [kg*m]
 inline constexpr double LINK_COM_DIST[5] = {-0.040, -0.031, -0.055, -0.012, -0.020};     // link com distance [m]
 
 // ===== MPC parameters  =====

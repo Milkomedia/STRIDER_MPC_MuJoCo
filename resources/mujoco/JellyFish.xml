@@ -64,10 +64,10 @@
       <inertial pos="0 0 0" mass="1.4" diaginertia="2.24e-04 2.24e-04 2.24e-04"/>
       <geom type="sphere" size="0.02" rgba="0.8 0.2 0.2 1" contype="0" conaffinity="0"/>
       <body name="load_link" pos="0 0 0">
-        <inertial pos="0.225 0 0" quat="0.707107 0 0.707107 0" mass="0.1" diaginertia="1.25e-06 1.688125e-03 1.688125e-03"/>
-        <geom type="cylinder" pos="0.225 0 0" quat="0.707107 0 0.707107 0" size="0.005 0.225" rgba="0.4 0.4 0.4 1" contype="0" conaffinity="0"/>
-        <body name="load_tip_sphere" pos="0.45 0 0">
-          <inertial pos="0 0 0" mass="0.5" diaginertia="8.0e-05 8.0e-05 8.0e-05"/>
+        <inertial pos="0.2 0 0" quat="0.707107 0 0.707107 0" mass="0.1" diaginertia="1.25e-06 1.688125e-03 1.688125e-03"/>
+        <geom type="cylinder" pos="0.2 0 0" quat="0.707107 0 0.707107 0" size="0.005 0.2" rgba="0.4 0.4 0.4 1" contype="0" conaffinity="0"/>
+        <body name="load_tip_sphere" pos="0.4 0 0">
+          <inertial pos="0 0 0" mass="0.4" diaginertia="8.0e-05 8.0e-05 8.0e-05"/>
           <geom type="sphere" size="0.02" rgba="0.2 0.2 0.8 1" contype="0" conaffinity="0"/>
         </body>
       </body>
