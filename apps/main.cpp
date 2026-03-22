@@ -166,7 +166,7 @@ int main() {
     // --- MRG parameters ---
     uint32_t mpc_key = 1;
     strider_mpc::MPCOutput l_mpc_output;
-    l_mpc_output.u_rate.setZero();
+    l_mpc_output.u_stage.setZero();
     l_mpc_output.u_opt.setZero();
     l_mpc_output.t = std::chrono::steady_clock::time_point::max();
 
@@ -335,7 +335,7 @@ int main() {
         cmd.r2 = param::GOES_2_ZERO_A*cmd.r2 + param::GOES_2_ZERO_B*param::r2_init;
         cmd.r3 = param::GOES_2_ZERO_A*cmd.r3 + param::GOES_2_ZERO_B*param::r3_init;
         cmd.r4 = param::GOES_2_ZERO_A*cmd.r4 + param::GOES_2_ZERO_B*param::r4_init;
-        l_mpc_output.u_rate.setZero();
+        l_mpc_output.u_stage.setZero();
       }
 
       const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
@@ -357,14 +357,16 @@ int main() {
             g_mpc_input.x_0(k++) = s_p2(0); g_mpc_input.x_0(k++) = s_p2(1);
             g_mpc_input.x_0(k++) = s_p3(0); g_mpc_input.x_0(k++) = s_p3(1);
             g_mpc_input.x_0(k++) = s_p4(0); g_mpc_input.x_0(k++) = s_p4(1); // r_rotor(6~13)
-            g_mpc_input.x_0(k++) = cmd.d_theta(0); g_mpc_input.x_0(k++) = cmd.d_theta(1); g_mpc_input.x_0(k++) = cmd.d_theta(2); // delta_theta(14,15,16)
             g_mpc_input.x_0(k++) = c_p1(0); g_mpc_input.x_0(k++) = c_p1(1);
             g_mpc_input.x_0(k++) = c_p2(0); g_mpc_input.x_0(k++) = c_p2(1);
             g_mpc_input.x_0(k++) = c_p3(0); g_mpc_input.x_0(k++) = c_p3(1);
-            g_mpc_input.x_0(k++) = c_p4(0); g_mpc_input.x_0(k++) = c_p4(1); // r_rotor_cmd_x(17~24)
+            g_mpc_input.x_0(k++) = c_p4(0); g_mpc_input.x_0(k++) = c_p4(1); // r_rotor_cmd_x(14~21)
 
-            // fill initial control input(u)
-            for (int l=0; l<11; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_rate(l, 0);}
+            // fill initial control input
+            g_mpc_input.u_0(0) = cmd.d_theta(0); // delta_theta_cmd(0:3)
+            g_mpc_input.u_0(1) = cmd.d_theta(1);
+            g_mpc_input.u_0(2) = cmd.d_theta(2);
+            for (int l=3; l<11; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_stage(l, 0);} // r_rotor_cmd_rate(3:11)
 
             int m = 0; // fill initial parameter(p)
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape

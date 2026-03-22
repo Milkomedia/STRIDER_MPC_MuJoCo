@@ -99,7 +99,7 @@ inline const     double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;              //
 
 inline constexpr double      MPC_STEP_DT = 1.0 / 100.0; // This value must be same as >> DT << on params.py
 inline constexpr std::size_t N_STEPS_REQ = 20; // This value must be less than >> N << on params.py
-inline constexpr std::size_t MPC_NX      = 25; // This value must be same as >> self.use_full_nx << on solver.py
+inline constexpr std::size_t MPC_NX      = 22; // This value must be same as >> self.use_full_nx << on solver.py
 inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.use_full_nu << on solver.py
 inline constexpr std::size_t MPC_NP      = 26; // This value must be same as >> self.use_full_np << on solver.py
 inline constexpr std::chrono::steady_clock::duration MPC_TIMEOUT_DURATUION = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(static_cast<double>(N_STEPS_REQ-1) * MPC_STEP_DT));

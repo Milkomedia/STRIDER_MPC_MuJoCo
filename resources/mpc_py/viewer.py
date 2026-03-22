@@ -39,7 +39,7 @@ from .use_full import costs as c
 
 ViewerFrame = Dict[str, np.ndarray]
 
-FULL_NX = 25
+FULL_NX = 22
 FULL_NU = 11
 FULL_NP = 26
 
@@ -260,12 +260,11 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     x = [
       theta(0:3), omega(3:6),
       r1(6:8), r2(8:10), r3(10:12), r4(12:14),
-      delta_theta_cmd(14:17),
-      r1_cmd(17:19), r2_cmd(19:21), r3_cmd(21:23), r4_cmd(23:25)
+      r1_cmd(14:16), r2_cmd(16:18), r3_cmd(18:20), r4_cmd(20:22)
     ]
 
     u = [
-      delta_theta_cmd_rate(0:3),
+      delta_theta_cmd(0:3),
       r1_cmd_rate(3:5), r2_cmd_rate(5:7), r3_cmd_rate(7:9), r4_cmd_rate(9:11)
     ]
 
@@ -321,7 +320,6 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
   pc_stage = np.full((N, 2), np.nan, dtype=np.float64)
 
   delta_theta_cmd_stage = np.full((N, 3), np.nan, dtype=np.float64)
-  delta_theta_cmd_rate_stage = np.full((N, 3), np.nan, dtype=np.float64)
   u_rate_rotor_stage = np.full((N, 8), np.nan, dtype=np.float64)
 
   for k in range(N):
@@ -332,8 +330,8 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     theta = xk[0:3]
     omega = xk[3:6]
     r_pol = xk[6:14].reshape(4, 2)
-    delta_theta_cmd = xk[14:17]
-    r_pol_cmd = xk[17:25].reshape(4, 2)
+    r_pol_cmd = xk[14:22].reshape(4, 2)
+    delta_theta_cmd = uk[0:3]
 
     R_raw = pk[0:9].reshape(3, 3, order="F")
     W_raw = pk[9:12]
@@ -402,7 +400,6 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     pc_stage[k, :] = pc_xy
 
     delta_theta_cmd_stage[k, :] = delta_theta_cmd
-    delta_theta_cmd_rate_stage[k, :] = uk[0:3]
     u_rate_rotor_stage[k, :] = uk[3:11]
 
   F_min = np.asarray(getattr(c, "F_MIN", np.full(4, np.nan)), dtype=np.float64).reshape(-1)
@@ -440,7 +437,6 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     "r_cmd_mean": r_cmd_mean_stage,
     "pc": pc_stage,
     "delta_theta_cmd": delta_theta_cmd_stage,
-    "delta_theta_cmd_rate": delta_theta_cmd_rate_stage,
     "u_rate_rotor": u_rate_rotor_stage,
   }
 
@@ -746,7 +742,6 @@ class ViewerMainWindow(QMainWindow):
     pc_mm = 1000.0 * frame["pc"]
 
     delta_theta_cmd_deg = np.rad2deg(frame["delta_theta_cmd"])
-    delta_theta_cmd_rate_deg_s = np.rad2deg(frame["delta_theta_cmd_rate"])
 
     u_rate_rotor = np.asarray(frame["u_rate_rotor"], dtype=np.float64)
     rho_mm_s = 1000.0 * u_rate_rotor[:, 0::2]
@@ -827,7 +822,6 @@ class ViewerMainWindow(QMainWindow):
     pc_now = pc_mm[0, :]
     bFz_now = float(bFz_pos[0])
     dtheta0_deg = delta_theta_cmd_deg[0, :]
-    dtheta_rate0_deg_s = delta_theta_cmd_rate_deg_s[0, :]
 
     self.info_label.setText(
       f"seq={pkt.seq}   status={pkt.status}   solve_ms={pkt.solve_ms:.3f}   "
@@ -838,7 +832,6 @@ class ViewerMainWindow(QMainWindow):
       f"tau_tot_xy0=[{tau_tot_now[0]:.3f}, {tau_tot_now[1]:.3f}]   "
       f"(-bF[2])0={bFz_now:.3f}   "
       f"delta_theta_cmd0[deg]=[{dtheta0_deg[0]:.2f}, {dtheta0_deg[1]:.2f}, {dtheta0_deg[2]:.2f}]   "
-      f"delta_theta_cmd_rate0[deg/s]=[{dtheta_rate0_deg_s[0]:.2f}, {dtheta_rate0_deg_s[1]:.2f}, {dtheta_rate0_deg_s[2]:.2f}]   "
       f"pc[mm]=[{pc_now[0]:.2f}, {pc_now[1]:.2f}]"
     )
 
