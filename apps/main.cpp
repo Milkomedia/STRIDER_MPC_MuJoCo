@@ -161,7 +161,7 @@ int main() {
 
     // --- auto-phase start ---
     bool auto_phase_started = false;
-    constexpr Phase AUTO_PHASE = Phase::GAC_ONLY;   // GAC_ONLY or USE_ARM or USE_DTHETA or USE_FULL
+    constexpr Phase AUTO_PHASE = Phase::USE_FULL; // choose GAC_ONLY or USE_ARM or USE_DTHETA or USE_FULL
 
     // --- MRG parameters ---
     uint32_t mpc_key = 1;
@@ -219,7 +219,7 @@ int main() {
 
       Phase requested_phase = static_cast<Phase>(g_phase_cmd.load(std::memory_order_relaxed));
 
-      if (!auto_phase_started && elapsed_double >= 15.1) {
+      if (!auto_phase_started && elapsed_double >= 15.05) {
         requested_phase = AUTO_PHASE;
         g_phase_cmd.store(static_cast<uint8_t>(AUTO_PHASE), std::memory_order_relaxed);
         auto_phase_started = true;
@@ -253,19 +253,18 @@ int main() {
       // --- sensor noise injection ---
       if (param::NOISE_ON) {NOISE::apply(noise_state, now, s);}
 
-      // --- load angle cmd update ---
-      if (elapsed_double > 15.0) {
-        servo_load_angle_cmd -= 1.0/400.0 * 0.5*M_PI / 3.0;
-        if (servo_load_angle_cmd <= 0.0) {servo_load_angle_cmd = 0.0;}
-        // servo_load_angle_cmd = 0.5*M_PI*std::sin(elapsed_double / M_2_PI)+0.5*M_PI;
-      }
+      // // --- load angle cmd update ---
+      // if (elapsed_double > 15.0) {
+      //   servo_load_angle_cmd -= 1.0/400.0 * 0.5*M_PI / 3.0;
+      //   if (servo_load_angle_cmd <= 0.0) {servo_load_angle_cmd = 0.0;}
+      //   // servo_load_angle_cmd = 0.5*M_PI*std::sin(elapsed_double / M_2_PI)+0.5*M_PI;
+      // }
 
       // --- position control ---
-      // position command starts at 17.9sec
-      // if (elapsed_double >= 15.0) {l_traj_pva(elapsed_double, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      // else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.25,0.0,-1.3), elapsed_double, 2.0);}
-      // else {cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);}
-      cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);
+      if (elapsed_double >= 20.0) {l_traj_pva(elapsed_double-2.05, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.25,0.0,-1.3), elapsed_double, 2.0);}
+      else {cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);}
+      // cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);
       cmd.vel = Eigen::Vector3d::Zero();
       cmd.acc = Eigen::Vector3d::Zero();
 
@@ -373,7 +372,8 @@ int main() {
             g_mpc_input.p(m++) = omega_raw(0); g_mpc_input.p(m++) = omega_raw(1); g_mpc_input.p(m++) = omega_raw(2); // omega_raw(9~11)
             g_mpc_input.p(m++) = alpha_raw(0); g_mpc_input.p(m++) = alpha_raw(1); g_mpc_input.p(m++) = alpha_raw(2); // alpha_raw(12~14)
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = delayed_s.R(i, j);}} // R_0(15~23), column-major order to match CasADi reshape
-            g_mpc_input.p(m++) = -f_sum; // positive, f_sum(24)
+            // g_mpc_input.p(m++) = -f_sum; // positive, f_sum(24)
+            g_mpc_input.p(m++) = std::clamp(-f_sum, 4.0*param::PWM_B, 4.0*(param::SATURATION_THRUST-0.3)); // positive, f_sum(24)
             g_mpc_input.p(m++) = servo_load_angle;
 
             if (phase==Phase::USE_FULL)        {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = true; }
@@ -437,8 +437,8 @@ int main() {
       // --- virtual thrust clipping (tightening starts at 10s, finishes at 15s)---
       double thrust_sat = 1e12;
       if (elapsed_double >= 15.0)      {thrust_sat = param::SATURATION_THRUST;}
-      else if (elapsed_double >= 10.0) {thrust_sat = param::SATURATION_THRUST + (1.0 - 0.2*param::CTRL_DT) * param::VIRTUAL_MARGIN_MARGIN;}
-      else                             {thrust_sat = param::SATURATION_THRUST + param::VIRTUAL_MARGIN_MARGIN;}
+      else if (elapsed_double >= 10.0) {thrust_sat = param::SATURATION_THRUST + (1.0 - 0.2*param::CTRL_DT) * 5.0;}
+      else                             {thrust_sat = param::SATURATION_THRUST + 5.0;}
       for (uint8_t i=0; i<4; ++i) {smoothed_F(i) = (smoothed_F(i) > thrust_sat) ? thrust_sat : smoothed_F(i);}
 
       // --- Step simulation at SIM_HZ using ZOH ---

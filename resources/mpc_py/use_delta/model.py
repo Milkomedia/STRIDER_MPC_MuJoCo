@@ -109,8 +109,8 @@ def build_model():
     RtRd = R.T @ Rd
     e_R = 0.5 * vee(RtRd.T - RtRd)
     e_w = omega - RtRd @ Wd
-    tau_d = - KR * e_R - KW * e_w
-    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))# + hat(omega)@RtRd@W_raw + RtRd@Wd_dot
+    tau_d = - KR * e_R - KW * e_w + J@(hat(omega)@RtRd@Wd + RtRd@Wd_dot)
+    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))
 
     f_expl = ca.vertcat(theta_dot, omega_dot)
     model.f_expl_expr = f_expl

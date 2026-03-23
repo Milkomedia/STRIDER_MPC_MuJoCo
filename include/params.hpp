@@ -30,10 +30,10 @@ inline constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-inline constexpr double kX[3] = {55.0, 55.0, 65.0}; // Position gain [x, y, z]
-inline constexpr double kV[3] = {27.0, 27.0, 60.0}; // Velocity gain [x, y, z]
-inline constexpr double kR[3] = {85.0, 85.0, 5.5}; // Rotational gain [roll, pitch, yaw]
-inline constexpr double kW[3] = {15.0, 15.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
+inline constexpr double kX[3] = {50.0, 50.0, 65.0}; // Position gain [x, y, z]
+inline constexpr double kV[3] = {27.5, 27.5, 60.0}; // Velocity gain [x, y, z]
+inline constexpr double kR[3] = {110.0, 110.0, 5.5}; // Rotational gain [roll, pitch, yaw]
+inline constexpr double kW[3] = {12.0, 12.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
 
 // Integral Parameters
 inline constexpr double kI  = 0.0;  /**< Attitude integral gain for roll and pitch */
@@ -42,13 +42,12 @@ inline constexpr double kIX = 0.3;  /**< Position integral gains */
 
 // ===== UAV Parameters =====
 inline constexpr double J[9] = {0.27, 0.00, 0.00,
-                                0.00, 0.41, 0.00,
-                                0.00, 0.00, 0.68};
+                                0.00, 0.49, 0.00,
+                                0.00, 0.00, 0.76};
 inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
 
-inline constexpr double VIRTUAL_MARGIN        = 2.0; // thrust margin of each thruster [N]
-inline constexpr double VIRTUAL_MARGIN_MARGIN = 5.0; // starting margin of each thruster [N]
+inline constexpr double VIRTUAL_MARGIN    = 2.0; // thrust margin of each thruster [N]
 inline constexpr double SATURATION_THRUST = M * G / 4.0 + VIRTUAL_MARGIN;
 
 // Allocation parameters

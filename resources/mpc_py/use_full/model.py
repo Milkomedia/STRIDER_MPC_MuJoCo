@@ -38,7 +38,7 @@ def build_model():
     W_raw = ca.SX.sym('W_raw', 3)       # desired angular rate [rad/s]
     Wdot_raw = ca.SX.sym('Wdot_raw', 3) # desired angular accel [rad/s^2]
     R_0   = ca.SX.sym('R_0', 3, 3)      # initial attitude SO3 matrix
-    f_0 = ca.SX.sym('f_0')              # [N]
+    f_0 = ca.SX.sym('f_0')              # positive [N]
     load_angle = ca.SX.sym('load_angle')
     model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, load_angle)
 
@@ -129,8 +129,8 @@ def build_model():
     Wd_dot = expm_hat(-delta_theta_cmd) @ Wdot_raw
     RtRd = R.T @ Rd
     e_R = 0.5 * vee(RtRd.T - RtRd)
-    e_w = omega - RtRd @ W_raw
-    tau_d = - KR * e_R - KW * e_w # + hat(omega)@RtRd@Wd + RtRd@Wd_dot
+    e_w = omega - RtRd @ Wd
+    tau_d = - KR * e_R - KW * e_w + J@(hat(omega)@RtRd@Wd + RtRd@Wd_dot)
     omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))
 
     # body->rotor pos in cartesian coordinate (state)

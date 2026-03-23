@@ -96,6 +96,11 @@ def build_model():
         return ca.vertcat(ca.horzcat(1.0, sphi*tth, cphi*tth),
                           ca.horzcat(0.0,     cphi,    -sphi),
                           ca.horzcat(0.0, sphi/cth, cphi/cth),)
+  
+    def hat(w: ca.SX) -> ca.SX:
+        return ca.vertcat(ca.horzcat(  0.0, -w[2],  w[1]),
+                          ca.horzcat( w[2],   0.0, -w[0]),
+                          ca.horzcat(-w[1],  w[0],  0.0))
 
     def vee(R: ca.SX) -> ca.SX:
         return ca.vertcat(R[2, 1], R[0, 2], R[1, 0])
@@ -109,8 +114,8 @@ def build_model():
     RtRraw = R.T @ R_raw
     e_R = 0.5 * vee(RtRraw.T - RtRraw)
     e_w = omega - RtRraw @ W_raw
-    tau_d = - KR * e_R - KW * e_w
-    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))# + hat(omega)@RtRd@Wd + RtRd@Wd_dot
+    tau_d = - KR * e_R - KW * e_w + J@(hat(omega)@RtRraw@W_raw + RtRraw@Wdot_raw)
+    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))
 
     # body->rotor pos in cartesian coordinate (state)
     r_pol = [r1, r2, r3, r4]
