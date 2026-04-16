@@ -18,7 +18,7 @@ KW = np.array([12.0, 12.0, 2.5])
 # control allocation
 # real model uses thrust-based yaw (sequential allocation). but mpc model uses reaction-based yaw.
 # To compensate this, mpc's allocation thinks that less thrust deviation produces more reaction torque.
-ZETA = 0.1
+ZETA = 10.0
 
 # IK & CoM estimate
 M_LINK   = np.array([0.374106, 0.13658, 0.0415148, 0.102003, 0.3734]) # each link mass [kg]
@@ -27,8 +27,8 @@ MAX_COM_BIAS_OF_LOAD = 0.1875                                         # load-lin
 
 # ---------- use_arm & use_full parameters ----------
 # CoT actuator time constant
-TAU_BASE = 0.25
-TAU_ARM  = 0.15
+TAU_BASE = 0.25 / 10.0
+TAU_ARM  = 0.15 / 10.0
 
 R_OFF_X = np.array([ 0.12, -0.12, -0.12,  0.12])/np.sqrt(2)
 R_OFF_Y = np.array([-0.12, -0.12,  0.12,  0.12])/np.sqrt(2)

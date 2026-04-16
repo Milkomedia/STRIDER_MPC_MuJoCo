@@ -92,7 +92,7 @@ inline constexpr double BIAS_WEIGHT_MAX_COM = 0.1875; // load-link length * load
 inline constexpr double LINK_COM_DIST[5] = {-0.040, -0.031, -0.055, -0.012, -0.020};     // link com distance [m]
 
 // ===== MPC parameters  =====
-inline constexpr double COT_DELAY_TAU   = 0.17; // MuJoCo actuator delay [sec]
+inline constexpr double COT_DELAY_TAU   = 0.17 / 4.0; // MuJoCo actuator delay [sec]
 inline const     double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); // not a tunable parameter
 inline const     double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;              // not a tunable parameter
 
@@ -116,20 +116,20 @@ inline constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired 
 inline constexpr bool NOISE_ON = false;
 inline constexpr std::uint64_t NOISE_SEED = 42;
 
-inline constexpr double POS_NOISE_SIGMA   = 0.006; // white noise std,  [m]
-inline constexpr double POS_BIAS_RW       = 0.00005; // bias random-walk, [m/sqrt(s)]
-inline constexpr double VEL_NOISE_SIGMA   = 0.010; // white noise std, [m/s]
-inline constexpr double ACC_NOISE_SIGMA   = 0.020; // white noise std, [m/s^2]
+inline constexpr double POS_NOISE_SIGMA   = 0.0000; // white noise std,  [m]
+inline constexpr double POS_BIAS_RW       = 0.00000; // bias random-walk, [m/sqrt(s)]
+inline constexpr double VEL_NOISE_SIGMA   = 0.000; // white noise std, [m/s]
+inline constexpr double ACC_NOISE_SIGMA   = 0.000; // white noise std, [m/s^2]
 
-inline constexpr double RP_NOISE_SIGMA    = 1.00 * M_PI/180.0;  // white noise std (roll/pitch), [rad]
-inline constexpr double YAW_NOISE_SIGMA   = 1.50 * M_PI/180.0;  // white noise std (yaw), [rad]
+inline constexpr double RP_NOISE_SIGMA    = 0.01 * M_PI/180.0;  // white noise std (roll/pitch), [rad]
+inline constexpr double YAW_NOISE_SIGMA   = 0.02 * M_PI/180.0;  // white noise std (yaw), [rad]
 inline constexpr double RP_NOISE_BIAS_RW  = 0.002 * M_PI/180.0;  // [rad/sqrt(s)]
 inline constexpr double YAW_NOISE_BIAS_RW = 0.005 * M_PI/180.0;  // [rad/sqrt(s)]
 
-inline constexpr double OMEGA_NOISE_SIGMA = 4.0 * M_PI/180.0;  // white noise std, [rad/s]
+inline constexpr double OMEGA_NOISE_SIGMA = 2.5 * M_PI/180.0;  // white noise std, [rad/s]
 
-inline constexpr double ARM_NOISE_SIGMA   = 0.40 * M_PI/180.0;  // white noise std,  [rad/s]
-inline constexpr double ARM_BIAS_RW       = 0.03 * M_PI/180.0;  // bias random-walk, [rad/s/sqrt(s)]
+inline constexpr double ARM_NOISE_SIGMA   = 0.10 * M_PI/180.0;  // white noise std,  [rad/s]
+inline constexpr double ARM_BIAS_RW       = 0.02 * M_PI/180.0;  // bias random-walk, [rad/s/sqrt(s)]
 
 } // namespace param
 

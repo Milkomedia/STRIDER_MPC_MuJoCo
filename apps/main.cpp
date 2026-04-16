@@ -3,6 +3,7 @@
 #include "mpc_wrapper.hpp"
 #include "fdcl_control.hpp"
 #include "utils.hpp"
+#include "gyro_ekf.hpp"
 
 #include <thread>
 #include <condition_variable>
@@ -144,6 +145,10 @@ int main() {
     fdcl::command_t* gac_cmd_ptr   = &gac_cmd;
     fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
+    // Gyro estimation
+    Eigen::Vector3d prev_tau_des = Eigen::Vector3d::Zero();
+    GyroEKF ekf;
+
     // --- state definition ---
     Phase   phase = Phase::GAC_ONLY;
     State   s{};
@@ -251,7 +256,12 @@ int main() {
       prev_omega = s.omega; prev_elapsed_double = elapsed_double;
 
       // --- sensor noise injection ---
+      Eigen::Vector3d omega_true = s.omega;
       if (param::NOISE_ON) {NOISE::apply(noise_state, now, s);}
+
+      // --- estimate gyro ---
+      const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
+      Eigen::Vector3d omega_hat = ekf.step(prev_tau_des, euler_rpy, delayed_s.omega);
 
       // // --- load angle cmd update ---
       // if (elapsed_double > 15.0) {
@@ -261,7 +271,7 @@ int main() {
       // }
 
       // --- position control ---
-      if (elapsed_double >= 20.0) {l_traj_pva(elapsed_double-2.05, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      if (elapsed_double >= 20.0) {l_traj_pva(elapsed_double+7.05, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
       else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.25,0.0,-1.3), elapsed_double, 2.0);}
       else {cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);}
       // cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);
@@ -275,7 +285,7 @@ int main() {
       gac_state.x = delayed_s.pos;
       gac_state.v = delayed_s.vel;
       gac_state.R = delayed_s.R;
-      gac_state.W = delayed_s.omega;
+      gac_state.W = omega_hat;
       geometry_ctrl.position_control();
       const Eigen::Matrix3d R_raw = gac_cmd.Rd;
       const Eigen::Vector3d omega_raw = gac_cmd.Wd;
@@ -337,7 +347,6 @@ int main() {
         l_mpc_output.u_stage.setZero();
       }
 
-      const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
       FK(delayed_s.arm_q, servo_load_angle, s.r_cot, s.r_com, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position & com position
       { // MPC send
         if (phase != Phase::GAC_ONLY) {
@@ -398,6 +407,7 @@ int main() {
       const Eigen::Vector3d Wd = Et * omega_raw;
       const Eigen::Vector3d Wd_dot = Et * alpha_raw;
       const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, Wd, Wd_dot);
+      prev_tau_des = tau_des;
 
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
@@ -522,9 +532,9 @@ int main() {
         ld.rpy[0]   = static_cast<float>(euler_rpy(0));
         ld.rpy[1]   = static_cast<float>(euler_rpy(1));
         ld.rpy[2]   = static_cast<float>(euler_rpy(2));
-        ld.omega[0] = static_cast<float>(s.omega(0));
-        ld.omega[1] = static_cast<float>(s.omega(1));
-        ld.omega[2] = static_cast<float>(s.omega(2));
+        ld.omega[0] = static_cast<float>(omega_hat(0));
+        ld.omega[1] = static_cast<float>(omega_hat(1));
+        ld.omega[2] = static_cast<float>(omega_hat(2));
         ld.alpha[0] = static_cast<float>(s.alpha(0));
         ld.alpha[1] = static_cast<float>(s.alpha(1));
         ld.alpha[2] = static_cast<float>(s.alpha(2));
