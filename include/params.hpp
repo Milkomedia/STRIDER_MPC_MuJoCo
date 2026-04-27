@@ -11,6 +11,7 @@
 #include <mujoco/mujoco.h>
 
 static inline constexpr double inv_sqrt2 = 0.7071067811865474617150084668537601828575;  // 1/sqrt(2)
+static inline constexpr double sqrt2 = 1.41421356237309504880168872420969807856967187537694;  // sqrt(2)
 
 namespace param {
 
@@ -30,10 +31,10 @@ inline constexpr double rotor_dir[4] = {1.0, -1.0, 1.0, -1.0}; // propeller torq
 
 // ===== SE3 controlelr gains ====
 // Control Parameters
-inline constexpr double kX[3] = {50.0, 50.0, 65.0}; // Position gain [x, y, z]
-inline constexpr double kV[3] = {27.5, 27.5, 60.0}; // Velocity gain [x, y, z]
-inline constexpr double kR[3] = {110.0, 110.0, 5.5}; // Rotational gain [roll, pitch, yaw]
-inline constexpr double kW[3] = {12.0, 12.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
+inline constexpr double kX[3] = {40.0, 40.0, 65.0}; // Position gain [x, y, z]
+inline constexpr double kV[3] = {20.0, 20.0, 60.0}; // Velocity gain [x, y, z]
+inline constexpr double kR[3] = {120., 120., 5.5}; // Rotational gain [roll, pitch, yaw]
+inline constexpr double kW[3] = {15.0, 15.0,  2.5}; // angular Velocity gain [roll, pitch, yaw]
 
 // Integral Parameters
 inline constexpr double kI  = 0.0;  /**< Attitude integral gain for roll and pitch */
@@ -47,7 +48,7 @@ inline constexpr double J[9] = {0.27, 0.00, 0.00,
 inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
 
-inline constexpr double VIRTUAL_MARGIN    = 2.0; // thrust margin of each thruster [N]
+inline constexpr double VIRTUAL_MARGIN    = 3.0; // thrust margin of each thruster [N]
 inline constexpr double SATURATION_THRUST = M * G / 4.0 + VIRTUAL_MARGIN;
 
 // Allocation parameters
@@ -75,10 +76,11 @@ inline constexpr double B2BASE_X[4]            = { 0.12*inv_sqrt2, -0.12*inv_sqr
 inline constexpr double B2BASE_Y[4]            = {-0.12*inv_sqrt2, -0.12*inv_sqrt2,  0.12*inv_sqrt2,  0.12*inv_sqrt2}; // y-distance from the body frame to each base frame [m]
 inline constexpr double ALPHA_MIN[4] = {-105.0 * M_PI/180.0, -195.0 * M_PI/180.0,  75.0 * M_PI/180.0, -15.0 * M_PI/180.0};
 inline constexpr double ALPHA_MAX[4] = {  15.0 * M_PI/180.0,  -75.0 * M_PI/180.0, 195.0 * M_PI/180.0, 105.0 * M_PI/180.0};
-inline const     Eigen::Vector3d r1_init       = Eigen::Vector3d( 0.24, -0.24, -0.24); // rotor-1 inital position
-inline const     Eigen::Vector3d r2_init       = Eigen::Vector3d(-0.24, -0.24, -0.24); // rotor-2 inital position
-inline const     Eigen::Vector3d r3_init       = Eigen::Vector3d(-0.24,  0.24, -0.24); // rotor-3 inital position
-inline const     Eigen::Vector3d r4_init       = Eigen::Vector3d( 0.24,  0.24, -0.24); // rotor-4 inital position
+inline const     Eigen::Vector2d r1_init       = Eigen::Vector2d(0.219411255, -1.0*M_PI/4.0); // rotor-1 inital position
+inline const     Eigen::Vector2d r2_init       = Eigen::Vector2d(0.219411255, -3.0*M_PI/4.0); // rotor-2 inital position
+inline const     Eigen::Vector2d r3_init       = Eigen::Vector2d(0.219411255,  3.0*M_PI/4.0); // rotor-3 inital position
+inline const     Eigen::Vector2d r4_init       = Eigen::Vector2d(0.219411255,  1.0*M_PI/4.0); // rotor-4 inital position
+inline constexpr double r_z_position           = -0.24; // rotor z position [m]
 
 inline constexpr double MPC_OFF_TIME_CONSTANT = 0.8; // [sec] each arm goes to initial position when MPC-off or Solve-failed
 inline const     double GOES_2_ZERO_A         = std::exp(-CTRL_DT / MPC_OFF_TIME_CONSTANT); // not a tunable parameter
@@ -88,20 +90,32 @@ inline const     double GOES_2_ZERO_B         = 1.0 - GOES_2_ZERO_A;            
 inline constexpr double LINK_MASS[5] = {0.374106, 0.13658, 0.0415148, 0.102003, 0.3734}; // link mass [kg]
 inline constexpr double CENTER_MASS  = 2.6845345;   // center body + load mass [kg]
 inline constexpr double TOTAL_MASS   = CENTER_MASS + 4.0*(LINK_MASS[0]+LINK_MASS[1]+LINK_MASS[2]+LINK_MASS[3]+LINK_MASS[4]); // strider mass (same as M) [kg]
-inline constexpr double BIAS_WEIGHT_MAX_COM = 0.1875; // load-link length * load wieght [kg*m]
 inline constexpr double LINK_COM_DIST[5] = {-0.040, -0.031, -0.055, -0.012, -0.020};     // link com distance [m]
 
 // ===== MPC parameters  =====
-inline constexpr double COT_DELAY_TAU   = 0.17 / 4.0; // MuJoCo actuator delay [sec]
-inline const     double COT_DELAY_ALPHA = std::exp(-CTRL_DT / COT_DELAY_TAU); // not a tunable parameter
-inline const     double COT_DELAY_BETA  = 1.0 - COT_DELAY_ALPHA;              // not a tunable parameter
+inline constexpr double ARM_DELAY_TAU    = 0.03; // MuJoCo actuator delay [sec]
+inline const     double ARM_DELAY_ALPHA  = std::exp(-CTRL_DT / ARM_DELAY_TAU); // not a tunable parameter
+inline const     double ARM_DELAY_BETA   = 1.0 - ARM_DELAY_ALPHA;              // not a tunable parameter
 
-inline constexpr double      MPC_STEP_DT = 1.0 / 100.0; // This value must be same as >> DT << on params.py
-inline constexpr std::size_t N_STEPS_REQ = 20; // This value must be less than >> N << on params.py
-inline constexpr std::size_t MPC_NX      = 22; // This value must be same as >> self.use_full_nx << on solver.py
+inline constexpr double BASE_DELAY_TAU   = 0.05; // MuJoCo actuator delay [sec]
+inline const     double BASE_DELAY_ALPHA = std::exp(-CTRL_DT / BASE_DELAY_TAU); // not a tunable parameter
+inline const     double BASE_DELAY_BETA  = 1.0 - BASE_DELAY_ALPHA;              // not a tunable parameter
+
+inline constexpr double DTHETA_LPF_CUTOFF = 60.0; // d_theta lpf cutoff [Hz]
+inline const     double DTHETA_LPF_ALPHA  = std::exp(-CTRL_DT * 2.0 * M_PI * DTHETA_LPF_CUTOFF); // not a tunable parameter
+inline const     double DTHETA_LPF_BETA   = 1.0 - DTHETA_LPF_ALPHA;                              // not a tunable parameter
+
+inline constexpr double      MPC_STEP_DT = 1.0 / 400.0; // This value must be same as >> DT << on params.py
+inline constexpr std::size_t N_STEPS_REQ = 50; // This value must be less than >> N << on params.py
+inline constexpr std::size_t MPC_NX      = 14; // This value must be same as >> self.use_full_nx << on solver.py
 inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.use_full_nu << on solver.py
-inline constexpr std::size_t MPC_NP      = 26; // This value must be same as >> self.use_full_np << on solver.py
+inline constexpr std::size_t MPC_NP      = 28; // This value must be same as >> self.use_full_np << on solver.py
 inline constexpr std::chrono::steady_clock::duration MPC_TIMEOUT_DURATUION = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(static_cast<double>(N_STEPS_REQ-1) * MPC_STEP_DT));
+
+// ===== MuJoCo added mass parameters =====
+static constexpr mjtNum BONG_TIP_LOAD_MASS = 0.4;
+static constexpr mjtNum BONG_TIP_LOAD_RADIUS = 0.03;
+static constexpr mjtNum BONG_TIP_LOAD_INERTIA = 1.44 * 1e-4;
 
 // ===== MuJoCo viewer parameters =====
 inline constexpr double PATH_SEC = 10.0;   // history length [sec]
@@ -113,7 +127,7 @@ inline constexpr float RGBA_PATH[4]  = {0.20f, 0.80f, 0.90f, 0.60f}; // current 
 inline constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired path color
 
 // ===== state noise input (sim->real validation) =====
-inline constexpr bool NOISE_ON = false;
+inline constexpr bool NOISE_ON = true;
 inline constexpr std::uint64_t NOISE_SEED = 42;
 
 inline constexpr double POS_NOISE_SIGMA   = 0.0000; // white noise std,  [m]

@@ -851,6 +851,13 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self.view_max_points = 6000  # set 0 to disable decimation
     self._last_wc_plotted: int = -1
 
+    # Display-only smoothing.
+    # 0 means raw. This must not affect mmap reading or saved logs.
+    self._smooth_level: int = 0
+    self._smooth_max_sec: float = 0.20
+    self._smooth_slider: Optional[QtWidgets.QSlider] = None
+    self._smooth_lbl: Optional[QtWidgets.QLabel] = None
+
     # recorder (live only)
     if log_dir is None:
       base_dir = Path(__file__).resolve().parent
@@ -1092,8 +1099,25 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self.lbl_path = QtWidgets.QLabel("path: " + (self.replay_path if self.replay_path else self.reader.path))
     self.lbl_stat = QtWidgets.QLabel("waiting...")
     self.lbl_stat.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+    self._smooth_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+    self._smooth_slider.setRange(0, 100)
+    self._smooth_slider.setValue(0)
+    self._smooth_slider.setFixedWidth(160)
+    self._smooth_slider.setToolTip("Display-only smoothing for tau and F1~F4 plots")
+    self._smooth_slider.valueChanged.connect(self._on_smooth_changed)
+
+    self._smooth_lbl = QtWidgets.QLabel("raw")
+    self._smooth_lbl.setMinimumWidth(55)
+    self._smooth_lbl.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+
     top.addWidget(self.lbl_path, 1)
+    top.addSpacing(8)
+    top.addWidget(QtWidgets.QLabel("smooth:"), 0)
+    top.addWidget(self._smooth_slider, 0)
+    top.addWidget(self._smooth_lbl, 0)
+    top.addSpacing(8)
     top.addWidget(self.lbl_stat, 1)
+
     layout.addLayout(top)
 
     # -------------------------
@@ -1613,6 +1637,108 @@ class LoggerWindow(QtWidgets.QMainWindow):
       _add_rotor_curves(pr3, "r3")
       _add_rotor_curves(pr4, "r4")
 
+  def _smooth_sec(self) -> float:
+    """
+    Map slider value to smoothing sigma in seconds.
+    Nonlinear mapping gives fine control near raw.
+    """
+    level = max(0, min(100, int(getattr(self, "_smooth_level", 0))))
+    if level <= 0:
+      return 0.0
+    a = float(level) / 100.0
+    return (a * a) * float(getattr(self, "_smooth_max_sec", 0.20))
+
+  @QtCore.pyqtSlot(int)
+  def _on_smooth_changed(self, value: int) -> None:
+    self._smooth_level = max(0, min(100, int(value)))
+
+    smooth_sec = self._smooth_sec()
+    if self._smooth_lbl is not None:
+      if smooth_sec <= 0.0:
+        self._smooth_lbl.setText("raw")
+      else:
+        self._smooth_lbl.setText(f"{smooth_sec * 1000.0:.0f} ms")
+
+    # Live mode updates on the next timer tick. Replay mode has no timer,
+    # so redraw the current visible replay window immediately.
+    if self.replay_path is not None and self._x_master is not None:
+      try:
+        xr = self._x_master.viewRange()[0]
+        self._apply_replay_window(float(xr[0]), float(xr[1]), source="smooth")
+      except Exception:
+        pass
+
+  def _smooth_1d_for_display(self, y: np.ndarray, sigma_samples: float) -> np.ndarray:
+    """
+    NaN-aware zero-phase Gaussian smoothing for display only.
+    The input array is never modified.
+    """
+    if sigma_samples <= 0.25:
+      return y
+
+    y0 = np.asarray(y, dtype=np.float32)
+    n = int(y0.size)
+    if n < 3:
+      return y
+
+    radius = int(math.ceil(3.0 * float(sigma_samples)))
+    radius = max(1, min(radius, max(1, n - 1)))
+
+    xx = np.arange(-radius, radius + 1, dtype=np.float32)
+    k = np.exp(-0.5 * (xx / np.float32(sigma_samples)) ** 2).astype(np.float32)
+    k /= np.sum(k, dtype=np.float32)
+
+    finite = np.isfinite(y0)
+    if np.all(finite):
+      yp = np.pad(y0, (radius, radius), mode="edge")
+      return np.convolve(yp, k, mode="valid").astype(np.float32, copy=False)
+
+    # Weighted convolution so NaNs do not contaminate nearby valid samples.
+    v = np.where(finite, y0, np.float32(0.0)).astype(np.float32, copy=False)
+    w = finite.astype(np.float32, copy=False)
+    vp = np.pad(v, (radius, radius), mode="edge")
+    wp = np.pad(w, (radius, radius), mode="edge")
+
+    num = np.convolve(vp, k, mode="valid")
+    den = np.convolve(wp, k, mode="valid")
+    out = np.full_like(y0, np.nan, dtype=np.float32)
+    ok = den > np.float32(1e-6)
+    out[ok] = (num[ok] / den[ok]).astype(np.float32, copy=False)
+    return out
+
+  def _smooth_for_display(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """
+    Smooth only rendered arrays. This is intentionally applied after
+    decimation to keep UI cost bounded.
+    """
+    smooth_sec = self._smooth_sec()
+    if smooth_sec <= 0.0:
+      return y
+
+    x0 = np.asarray(x, dtype=np.float32)
+    if x0.size < 3:
+      return y
+
+    dx = np.diff(x0)
+    dx = dx[np.isfinite(dx) & (dx > np.float32(0.0))]
+    if dx.size == 0:
+      return y
+
+    dt = float(np.median(dx))
+    if not np.isfinite(dt) or dt <= 0.0:
+      return y
+
+    sigma_samples = smooth_sec / dt
+    y0 = np.asarray(y, dtype=np.float32)
+
+    if y0.ndim == 1:
+      return self._smooth_1d_for_display(y0, sigma_samples)
+
+    out = np.empty_like(y0, dtype=np.float32)
+    for j in range(y0.shape[1]):
+      out[:, j] = self._smooth_1d_for_display(y0[:, j], sigma_samples)
+    return out
+
   def _update_plots(self, t: np.ndarray, ch: Dict[str, np.ndarray], wc: int) -> None:
     if t.size == 0:
       self.lbl_stat.setText("no data")
@@ -1670,6 +1796,17 @@ class LoggerWindow(QtWidgets.QMainWindow):
       tilt_deg    = ch["tilt"][sl, :] * _RAD2DEG
       f_des       = ch["f_des"][sl]
 
+      # Display-only smoothing is applied only to the tau plots and F1~F4 plots.
+      # Do not smooth position, attitude, phase, status, arm, or saved data.
+      tau_d_plot      = self._smooth_for_display(x, tau_d)
+      tau_z_t_plot    = self._smooth_for_display(x, tau_z_t)
+      tau_off_plot    = self._smooth_for_display(x, tau_off)
+      tau_thrust_plot = self._smooth_for_display(x, tau_thrust)
+
+      f_thrst_plot     = self._smooth_for_display(x, f_thrst)
+      f_thrst_con_plot = self._smooth_for_display(x, f_thrst_con)
+      f_tot_plot       = f_thrst_con_plot.sum(axis=1, dtype=np.float32)
+
       r_cot_d_mm   = ch["r_cot_d"][sl, :] * _M2MM
       r_cot_act_mm = ch["r_cot"][sl, :] * _M2MM
 
@@ -1724,29 +1861,29 @@ class LoggerWindow(QtWidgets.QMainWindow):
       self._curves["yaw_act"].setData(x,   rpy_act_deg[:, 2])
 
       # --- Row 3: tau ---
-      self._curves["tau_x_des"].setData(x, tau_d[:, 0])
-      self._curves["tau_x_off"].setData(x, tau_off[:, 0])
-      self._curves["tau_x_thrust"].setData(x, tau_thrust[:, 0])
-      self._curves["tau_x_total"].setData(x, tau_off[:, 0] + tau_thrust[:, 0])
+      self._curves["tau_x_des"].setData(x, tau_d_plot[:, 0])
+      self._curves["tau_x_off"].setData(x, tau_off_plot[:, 0])
+      self._curves["tau_x_thrust"].setData(x, tau_thrust_plot[:, 0])
+      self._curves["tau_x_total"].setData(x, tau_off_plot[:, 0] + tau_thrust_plot[:, 0])
 
-      self._curves["tau_y_des"].setData(x, tau_d[:, 1])
-      self._curves["tau_y_off"].setData(x, tau_off[:, 1])
-      self._curves["tau_y_thrust"].setData(x, tau_thrust[:, 1])
-      self._curves["tau_y_total"].setData(x, tau_off[:, 1] + tau_thrust[:, 1])
+      self._curves["tau_y_des"].setData(x, tau_d_plot[:, 1])
+      self._curves["tau_y_off"].setData(x, tau_off_plot[:, 1])
+      self._curves["tau_y_thrust"].setData(x, tau_thrust_plot[:, 1])
+      self._curves["tau_y_total"].setData(x, tau_off_plot[:, 1] + tau_thrust_plot[:, 1])
 
-      self._curves["tau_z_des"].setData(x, tau_d[:, 2])
-      self._curves["tau_z_total"].setData(x, tau_z_t + tau_thrust[:, 2])
-      self._curves["tau_z_thrust"].setData(x, tau_z_t)
-      self._curves["tau_z_reaction"].setData(x, tau_thrust[:, 2])
+      self._curves["tau_z_des"].setData(x, tau_d_plot[:, 2])
+      self._curves["tau_z_total"].setData(x, tau_z_t_plot + tau_thrust_plot[:, 2])
+      self._curves["tau_z_thrust"].setData(x, tau_z_t_plot)
+      self._curves["tau_z_reaction"].setData(x, tau_thrust_plot[:, 2])
 
       # --- Row 4: thrust / tilt / total thrust ---
       for i in range(4):
-        self._curves[f"F{i+1}"].setData(x, f_thrst[:, i])
-        self._curves[f"F{i+1}_con"].setData(x, f_thrst_con[:, i])
+        self._curves[f"F{i+1}"].setData(x, f_thrst_plot[:, i])
+        self._curves[f"F{i+1}_con"].setData(x, f_thrst_con_plot[:, i])
         k = f"tilt{i+1}"
         if k in self._curves: self._curves[k].setData(x, tilt_deg[:, i])
       self._curves["f_des"].setData(x, f_des)
-      self._curves["f_tot"].setData(x, f_thrst_con.sum(axis=1), dtype=np.float32)
+      self._curves["f_tot"].setData(x, f_tot_plot)
 
       # --- Row 5: r_cot / solve_ms / solve_status ---
       self._curves["rcot_x_cmd"].setData(x, r_cot_d_mm[:, 0])

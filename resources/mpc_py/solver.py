@@ -4,7 +4,7 @@ import os
 import time
 import numpy as np
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple
 
 from .mmap_manager import MMapWriter
 
@@ -12,7 +12,6 @@ from .mmap_manager import MMapWriter
 os.environ.setdefault("MAKEFLAGS", "-s")
 
 BASE_DIR = Path(__file__).resolve().parent
-
 
 class StriderNMPC:
   def __init__(self):
@@ -50,13 +49,7 @@ class StriderNMPC:
     self.N = int(p.N)
 
     mmap_path = os.environ.get("MRG_MMAP", "/tmp/MRG_debug.mmap")
-    self._mmap_writer = MMapWriter(
-      mmap_path,
-      self.N,
-      self.use_full_nx,
-      self.use_full_nu,
-      self.use_full_np,
-    )
+    self._mmap_writer = MMapWriter(mmap_path, self.N, self.use_full_nx, self.use_full_nu, self.use_full_np)
 
     # Full-layout horizon buffers for mmap/debug output.
     self._xs_full = np.zeros((self.N + 1, self.use_full_nx), dtype=np.float64)
@@ -68,8 +61,8 @@ class StriderNMPC:
     self._us_up = np.zeros((self.N, self.use_full_nu), dtype=np.float64)
     self._ps_up = np.zeros((self.N + 1, self.use_full_np), dtype=np.float64)
 
-    # Returned stage-wise outputs.
-    self._u_opt_steps = np.zeros((self.use_full_nu, self.N), dtype=np.float64, order="F")
+    # Returned full-layout stage-wise outputs.
+    self._x_stage_steps = np.zeros((self.use_full_nx, self.N), dtype=np.float64, order="F")
     self._u_stage_steps = np.zeros((self.use_full_nu, self.N), dtype=np.float64, order="F")
 
     # Reduced-model initial-condition buffers.
@@ -79,17 +72,11 @@ class StriderNMPC:
     self._x0_arm = np.zeros((self.use_arm_nx,), dtype=np.float64)
     self._u0_arm = np.zeros((self.use_arm_nu,), dtype=np.float64)
 
-    # Cached rotor states for upcasting use_delta solutions.
+    # Cached full-layout arm states for reduced solver upcasting.
     self._last_r_rotor = np.zeros(8, dtype=np.float64)
     self._last_r_rotor_cmd = np.zeros(8, dtype=np.float64)
 
-  def _set_initial_guess_all_stages(
-    self,
-    solver: AcadosOcpSolver,
-    x0: np.ndarray,
-    u0: np.ndarray,
-    p0: np.ndarray,
-  ) -> None:
+  def _set_initial_guess_all_stages(self, solver: AcadosOcpSolver, x0: np.ndarray, u0: np.ndarray, p0: np.ndarray) -> None:
     solver.set(0, "lbx", x0)
     solver.set(0, "ubx", x0)
 
@@ -100,52 +87,17 @@ class StriderNMPC:
     for k in range(self.N):
       solver.set(k, "u", u0)
 
-  def _reset_output_steps(
-    self,
-    steps_req: int,
-    u_opt_out: Optional[np.ndarray],
-    u_stage_out: Optional[np.ndarray],
-  ) -> None:
-    if steps_req < 0 or steps_req > self.N:
-      raise ValueError(f"steps_req out of range: got {steps_req}, valid=[0, {self.N}]")
-
-    if u_opt_out is not None:
-      u_opt_out.fill(0.0)
-    if u_stage_out is not None:
-      u_stage_out.fill(0.0)
-
-  def _finalize_solve(
-    self,
-    xs: np.ndarray,
-    us: np.ndarray,
-    ps: np.ndarray,
-    solve_ms: float,
-    status: int,
-    steps_req: int,
-  ) -> Tuple[np.ndarray, np.ndarray, float, int]:
-    self._mmap_writer.write(
-      x_all=xs,
-      u_all=us,
-      p_all=ps,
-      solve_ms=float(solve_ms),
-      status=int(status),
-    )
-    return (
-      self._u_opt_steps[:, 0:steps_req],
-      self._u_stage_steps[:, 0:steps_req],
-      float(solve_ms),
-      int(status),
-    )
-
   def use_delta_solve(self, x_0, u_0, p, steps_req: int):
     x_full = np.asarray(x_0, dtype=np.float64).ravel()
     u_full = np.asarray(u_0, dtype=np.float64).ravel()
     p = np.asarray(p, dtype=np.float64).ravel()
 
     # Full x layout:
-    # [theta(0:3), omega(3:6), r_rotor(6:14), r_rotor_cmd(14:22)]
+    # [theta(0:3), omega(3:6), r_rotor(6:14)]
+    # Full u layout:
+    # [delta_theta_cmd(0:3), r_rotor_cmd(3:11)]
     self._last_r_rotor[:] = x_full[6:14]
-    self._last_r_rotor_cmd[:] = x_full[14:22]
+    self._last_r_rotor_cmd[:] = u_full[3:11]
 
     # use_delta x = [theta(0:3), omega(3:6)]
     self._x0_delta[:] = x_full[0:6]
@@ -159,27 +111,30 @@ class StriderNMPC:
     status = self.use_delta_solver.solve()
     solve_ms = (time.perf_counter() - t0) * 1000.0
 
-    xs, us, ps = self._extract_all_xup(
-      full_model_using=False,
-      arm_model_using=False,
-      steps_req=steps_req,
-      u_opt_out=self._u_opt_steps,
-      u_stage_out=self._u_stage_steps,
-    )
+    xs, us, ps, x_stage, u_stage = self._extract_all_xup(full_model_using=False, arm_model_using=False, steps_req=steps_req)
 
-    return self._finalize_solve(xs, us, ps, solve_ms, status, steps_req)
+    self._mmap_writer.write(x_all=xs, u_all=us, p_all=ps, solve_ms=float(solve_ms), status=int(status))
+
+    return (
+      x_stage[:, 0:steps_req],
+      u_stage[:, 0:steps_req],
+      float(solve_ms),
+      int(status),
+    )
 
   def use_arm_solve(self, x_0, u_0, p, steps_req: int):
     x_full = np.asarray(x_0, dtype=np.float64).ravel()
     u_full = np.asarray(u_0, dtype=np.float64).ravel()
     p = np.asarray(p, dtype=np.float64).ravel()
 
-    # use_arm x = [theta(0:3), omega(3:6), r_rotor(6:14), r_rotor_cmd(14:22)]
+    # Full x layout:
+    # [theta(0:3), omega(3:6), r_rotor(6:14)]
+
+    # use_arm x = [theta(0:3), omega(3:6), r_rotor(6:14)]
     self._x0_arm[0:6] = x_full[0:6]
     self._x0_arm[6:14] = x_full[6:14]
-    self._x0_arm[14:22] = x_full[14:22]
 
-    # use_arm u = [r_rotor_cmd_rate(0:8)]
+    # use_arm u = [r_rotor_cmd(0:8)]
     self._u0_arm[:] = u_full[3:11]
 
     self._set_initial_guess_all_stages(self.use_arm_solver, self._x0_arm, self._u0_arm, p)
@@ -188,15 +143,16 @@ class StriderNMPC:
     status = self.use_arm_solver.solve()
     solve_ms = (time.perf_counter() - t0) * 1000.0
 
-    xs, us, ps = self._extract_all_xup(
-      full_model_using=False,
-      arm_model_using=True,
-      steps_req=steps_req,
-      u_opt_out=self._u_opt_steps,
-      u_stage_out=self._u_stage_steps,
-    )
+    xs, us, ps, x_stage, u_stage = self._extract_all_xup(full_model_using=False, arm_model_using=True, steps_req=steps_req)
 
-    return self._finalize_solve(xs, us, ps, solve_ms, status, steps_req)
+    self._mmap_writer.write(x_all=xs, u_all=us, p_all=ps, solve_ms=float(solve_ms), status=int(status))
+
+    return (
+      x_stage[:, 0:steps_req],
+      u_stage[:, 0:steps_req],
+      float(solve_ms),
+      int(status),
+    )
 
   def use_full_solve(self, x_0, u_0, p, steps_req: int):
     x_0 = np.asarray(x_0, dtype=np.float64).ravel()
@@ -209,15 +165,16 @@ class StriderNMPC:
     status = self.use_full_solver.solve()
     solve_ms = (time.perf_counter() - t0) * 1000.0
 
-    xs, us, ps = self._extract_all_xup(
-      full_model_using=True,
-      arm_model_using=False,
-      steps_req=steps_req,
-      u_opt_out=self._u_opt_steps,
-      u_stage_out=self._u_stage_steps,
-    )
+    xs, us, ps, x_stage, u_stage = self._extract_all_xup(full_model_using=True, arm_model_using=False, steps_req=steps_req)
 
-    return self._finalize_solve(xs, us, ps, solve_ms, status, steps_req)
+    self._mmap_writer.write(x_all=xs, u_all=us, p_all=ps, solve_ms=float(solve_ms), status=int(status))
+
+    return (
+      x_stage[:, 0:steps_req],
+      u_stage[:, 0:steps_req],
+      float(solve_ms),
+      int(status),
+    )
 
   def compute_MPC(self, mpci: Dict[str, Any]) -> Dict[str, Any]:
     x_0 = np.asarray(mpci.get("x_0", np.zeros(self.use_full_nx)), dtype=np.float64).ravel()
@@ -228,8 +185,8 @@ class StriderNMPC:
     arm_using = bool(mpci.get("use_arm", False))
 
     steps_req = int(mpci.get("steps_req", 1))
-    if steps_req > self.N:
-      raise ValueError(f"steps_req too large: got {steps_req}, solver horizon N={self.N}")
+    if steps_req < 0 or steps_req > self.N:
+      raise ValueError(f"steps_req out of range: got {steps_req}, valid=[0, {self.N}]")
 
     if x_0.size != self.use_full_nx:
       raise ValueError(f"x_0 size mismatch: got {x_0.size}, expected {self.use_full_nx}")
@@ -239,32 +196,26 @@ class StriderNMPC:
       u_0 = np.zeros(self.use_full_nu, dtype=np.float64)
 
     if delta_using and arm_using:
-      u_opt_steps, u_stage_steps, solve_ms, status = self.use_full_solve(x_0, u_0, p, steps_req)
+      x_stage, u_stage, solve_ms, status = self.use_full_solve(x_0, u_0, p, steps_req)
     elif (not delta_using) and arm_using:
-      u_opt_steps, u_stage_steps, solve_ms, status = self.use_arm_solve(x_0, u_0, p, steps_req)
+      x_stage, u_stage, solve_ms, status = self.use_arm_solve(x_0, u_0, p, steps_req)
     elif delta_using and (not arm_using):
-      u_opt_steps, u_stage_steps, solve_ms, status = self.use_delta_solve(x_0, u_0, p, steps_req)
+      x_stage, u_stage, solve_ms, status = self.use_delta_solve(x_0, u_0, p, steps_req)
     else:
       raise ValueError("At least one of 'use_delta' or 'use_arm' must be enabled.")
 
     return {
-      "u_opt": u_opt_steps,
-      "u_stage": u_stage_steps,
-      "u_rate": u_stage_steps,  # Legacy compatibility for the existing C++ wrapper.
+      "x_stage": x_stage,
+      "u_stage": u_stage,
       "solve_ms": float(solve_ms),
       "state": int(status),
     }
 
-  def _extract_all_xup(
-    self,
-    full_model_using: bool,
-    arm_model_using: bool = False,
-    steps_req: int = 0,
-    u_opt_out: Optional[np.ndarray] = None,
-    u_stage_out: Optional[np.ndarray] = None,
-  ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+  def _extract_all_xup(self, full_model_using: bool, arm_model_using: bool = False, steps_req: int = 0) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     N = self.N
-    self._reset_output_steps(steps_req, u_opt_out, u_stage_out)
+
+    self._x_stage_steps.fill(0.0)
+    self._u_stage_steps.fill(0.0)
 
     if full_model_using:
       sol = self.use_full_solver
@@ -283,19 +234,18 @@ class StriderNMPC:
         xs[k, :] = xk
         ps[k, :] = pk
 
-        if u_opt_out is not None and 1 <= k <= steps_req:
-          uk_prev = sol.get(k - 1, "u").reshape(-1)
-          u_opt_out[0:3, k - 1] = uk_prev[0:3]
-          u_opt_out[3:11, k - 1] = xk[14:22]
+        if 1 <= k <= steps_req:
+          self._x_stage_steps[:, k - 1] = xk
 
       for k in range(N):
         uk = sol.get(k, "u").reshape(-1)
+
         us[k, :] = uk
 
-        if u_stage_out is not None and k < steps_req:
-          u_stage_out[:, k] = uk
+        if k < steps_req:
+          self._u_stage_steps[:, k] = uk
 
-      return xs, us, ps
+      return xs, us, ps, self._x_stage_steps, self._u_stage_steps
 
     if arm_model_using:
       sol = self.use_arm_solver
@@ -308,36 +258,34 @@ class StriderNMPC:
       ps.fill(0.0)
 
       for k in range(N + 1):
-        xk = sol.get(k, "x").reshape(-1)   # (22,)
+        xk = sol.get(k, "x").reshape(-1)
         pk = sol.get(k, "p").reshape(-1)
 
-        # Upcast to full x:
-        # [theta, omega, r_rotor, r_rotor_cmd]
-        xs[k, 0:14] = xk[0:14]
-        xs[k, 14:22] = xk[14:22]
+        # Upcast use_arm x to full x:
+        # use_arm x = [theta, omega, r_rotor]
+        # full x    = [theta, omega, r_rotor]
+        xs[k, :] = xk
 
         m = min(pk.size, self.use_full_np)
         ps[k, 0:m] = pk[0:m]
 
-        if u_opt_out is not None and 1 <= k <= steps_req:
-          u_opt_out[0:3, k - 1] = 0.0
-          u_opt_out[3:11, k - 1] = xk[14:22]
+        if 1 <= k <= steps_req:
+          self._x_stage_steps[:, k - 1] = xs[k, :]
 
       for k in range(N):
-        uk = sol.get(k, "u").reshape(-1)   # (8,)
+        uk = sol.get(k, "u").reshape(-1)
 
-        # Upcast to full u:
-        # [delta_theta_cmd=0, r_rotor_cmd_rate]
+        # Upcast use_arm u to full u:
+        # use_arm u = [r_rotor_cmd]
+        # full u    = [delta_theta_cmd, r_rotor_cmd]
         us[k, 0:3] = 0.0
         us[k, 3:11] = uk
 
-        if u_stage_out is not None and k < steps_req:
-          u_stage_out[0:3, k] = 0.0
-          u_stage_out[3:11, k] = uk
+        if k < steps_req:
+          self._u_stage_steps[:, k] = us[k, :]
 
-      return xs, us, ps
+      return xs, us, ps, self._x_stage_steps, self._u_stage_steps
 
-    # use_delta -> upcast to full layout
     sol = self.use_delta_solver
     xs = self._xs_up
     us = self._us_up
@@ -347,36 +295,34 @@ class StriderNMPC:
     us.fill(0.0)
     ps.fill(0.0)
 
-    # Hold rotor-related states constant across the horizon.
+    # Hold arm-related states constant across the horizon.
     xs[:, 6:14] = self._last_r_rotor.reshape(1, 8)
-    xs[:, 14:22] = self._last_r_rotor_cmd.reshape(1, 8)
 
     for k in range(N + 1):
-      xk = sol.get(k, "x").reshape(-1)   # (6,)
+      xk = sol.get(k, "x").reshape(-1)
       pk = sol.get(k, "p").reshape(-1)
 
-      # Upcast to full x:
-      # [theta, omega, r_rotor=hold, r_rotor_cmd=hold]
+      # Upcast use_delta x to full x:
+      # use_delta x = [theta, omega]
+      # full x      = [theta, omega, r_rotor]
       xs[k, 0:6] = xk[0:6]
 
       m = min(pk.size, self.use_full_np)
       ps[k, 0:m] = pk[0:m]
 
-      if u_opt_out is not None and 1 <= k <= steps_req:
-        uk_prev = sol.get(k - 1, "u").reshape(-1)
-        u_opt_out[0:3, k - 1] = uk_prev[0:3]
-        u_opt_out[3:11, k - 1] = self._last_r_rotor_cmd
+      if 1 <= k <= steps_req:
+        self._x_stage_steps[:, k - 1] = xs[k, :]
 
     for k in range(N):
-      uk = sol.get(k, "u").reshape(-1)   # (3,)
+      uk = sol.get(k, "u").reshape(-1)
 
-      # Upcast to full u:
-      # [delta_theta_cmd, r_rotor_cmd_rate=0]
+      # Upcast use_delta u to full u:
+      # use_delta u = [delta_theta_cmd]
+      # full u      = [delta_theta_cmd, r_rotor_cmd]
       us[k, 0:3] = uk
-      us[k, 3:11] = 0.0
+      us[k, 3:11] = self._last_r_rotor_cmd
 
-      if u_stage_out is not None and k < steps_req:
-        u_stage_out[0:3, k] = uk
-        u_stage_out[3:11, k] = 0.0
+      if k < steps_req:
+        self._u_stage_steps[:, k] = us[k, :]
 
-    return xs, us, ps
+    return xs, us, ps, self._x_stage_steps, self._u_stage_steps

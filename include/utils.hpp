@@ -28,6 +28,7 @@ struct State {
   Eigen::Matrix3d R   = Eigen::Matrix3d::Identity();   // current Rotation matrix [SO3]
   Eigen::Vector3d omega = Eigen::Vector3d::Zero();     // current angular velocity [rad/s]
   Eigen::Vector3d alpha = Eigen::Vector3d::Zero();     // current angular acceleration [rad/s^2] (not used, just logging)
+  Eigen::Vector3d d_hat = Eigen::Vector3d::Zero();     // estimated torque disturbance [N.m]
   Eigen::Vector3d r_cot = Eigen::Vector3d::Zero();     // current b_p_Cot position [m]
   Eigen::Vector3d r1  = Eigen::Vector3d::Zero();       // current rotor1 position [m]
   Eigen::Vector3d r2  = Eigen::Vector3d::Zero();       // current rotor2 position [m]
@@ -46,11 +47,77 @@ struct Command {
   double tauz_bar  = 0.0;                               // current yaw thrust torque [N.m] (Sequential control allocation)
   // These can only be changed by MRG
   Eigen::Vector3d d_theta = Eigen::Vector3d::Zero();    // desired delta theta [rad]
-  Eigen::Vector3d r1 = Eigen::Vector3d::Zero();         // desired rotor1 position [m], z-element is not updated
-  Eigen::Vector3d r2 = Eigen::Vector3d::Zero();         // desired rotor2 position [m], z-element is not updated
-  Eigen::Vector3d r3 = Eigen::Vector3d::Zero();         // desired rotor3 position [m], z-element is not updated
-  Eigen::Vector3d r4 = Eigen::Vector3d::Zero();         // desired rotor4 position [m], z-element is not updated
+  Eigen::Vector2d r1 = Eigen::Vector2d::Zero();         // desired rotor1 polar position [m, rad], z-element is not updated
+  Eigen::Vector2d r2 = Eigen::Vector2d::Zero();         // desired rotor2 polar position [m, rad], z-element is not updated
+  Eigen::Vector2d r3 = Eigen::Vector2d::Zero();         // desired rotor3 polar position [m, rad], z-element is not updated
+  Eigen::Vector2d r4 = Eigen::Vector2d::Zero();         // desired rotor4 polar position [m, rad], z-element is not updated
 };
+
+static inline Eigen::Vector3d dob_update(const Eigen::Vector3d& rpy, const Eigen::Vector3d& tau_cmd, Eigen::Matrix<double, 3, 6>& state) {
+  constexpr double fc = 0.5;        // [Hz]
+  constexpr double d_hat_lim = 3.0; // [Nm]
+
+  constexpr int X1 = 0;
+  constexpr int X2 = 1;
+  constexpr int X3 = 2;
+  constexpr int Y1 = 3;
+  constexpr int Y2 = 4;
+  constexpr int Y3 = 5;
+
+  constexpr double wc = 2.0 * M_PI * fc;
+  constexpr double wc2 = wc * wc;
+  constexpr double wc3 = wc2 * wc;
+  constexpr double a1 = -2.0 * wc;
+  constexpr double a2 = -2.0 * wc2;
+  constexpr double a3 = -wc3;
+  constexpr int J_IDX[3] = {0, 4, 8};
+
+  const double dt = param::CTRL_DT;
+
+  Eigen::Vector3d d_hat = Eigen::Vector3d::Zero();
+
+  for (int i = 0; i < 3; ++i) {
+    double& x1 = state(i, X1);
+    double& x2 = state(i, X2);
+    double& x3 = state(i, X3);
+    double& y1 = state(i, Y1);
+    double& y2 = state(i, Y2);
+    double& y3 = state(i, Y3);
+
+    const double x1_prev = x1;
+    const double x2_prev = x2;
+    const double x3_prev = x3;
+    const double y1_prev = y1;
+    const double y2_prev = y2;
+    const double y3_prev = y3;
+
+    // Angle-driven filter
+    const double dx1 = a1 * x1_prev + a2 * x2_prev + a3 * x3_prev + rpy(i);
+    const double dx2 = x1_prev;
+    const double dx3 = x2_prev;
+
+    // Torque-driven filter
+    const double dy1 = a1 * y1_prev + a2 * y2_prev + a3 * y3_prev + tau_cmd(i);
+    const double dy2 = y1_prev;
+    const double dy3 = y2_prev;
+
+    x1 = x1_prev + dt * dx1;
+    x2 = x2_prev + dt * dx2;
+    x3 = x3_prev + dt * dx3;
+
+    y1 = y1_prev + dt * dy1;
+    y2 = y2_prev + dt * dy2;
+    y3 = y3_prev + dt * dy3;
+
+    const double tau_hat = param::J[J_IDX[i]] * wc3 * x1;
+    const double q_tau   = wc3 * y3;
+    const double d_i     = tau_hat - q_tau;
+
+    d_hat(i) = std::clamp(d_i, -d_hat_lim, d_hat_lim);
+  }
+
+  return d_hat;
+}
 
 static inline Eigen::Vector3d fig8_point(double t_sec){
   // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
@@ -89,10 +156,10 @@ static inline void circle_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3
 }
 
 static inline void l_traj_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d) {
-  constexpr double lx_ = 1.25;              // width in X [m]
-  constexpr double ly_ = 0.0;               // width in Y [m]
-  constexpr double T_  = 2.85;              // base period [sec]
-  constexpr double f   = 2.0 * M_PI / T_;   // [rad/s]
+  constexpr double lx_ = 1.2;              // width in X [m]
+  constexpr double ly_ = 0.0;              // width in Y [m]
+  constexpr double T_  = 2.5;             // base period [sec]
+  constexpr double f   = 2.0 * M_PI / T_;  // [rad/s]
 
   double tau = std::fmod(t_sec, 6.0 * T_);
   if (tau < 0.0) tau += 6.0 * T_;
@@ -290,8 +357,8 @@ static inline void onearm_IK(const Eigen::Vector3d& pos, const Eigen::Vector3d& 
   out5[4] = th5;
 }
 
-static inline void IK(const Eigen::Vector3d& bPa1, const Eigen::Vector3d& bPa2, const Eigen::Vector3d& bPa3, const Eigen::Vector3d& bPa4, const Eigen::Vector4d& th_tvc, double q[20]) {
-  const std::array<Eigen::Vector3d, 4> bodyParm{bPa1, bPa2, bPa3, bPa4};
+static inline void IK(const Eigen::Vector2d& r1, const Eigen::Vector2d& r2, const Eigen::Vector2d& r3, const Eigen::Vector2d& r4, const Eigen::Vector4d& th_tvc, double q[20]) {
+  const std::array<Eigen::Vector2d, 4> polar_pos{r1, r2, r3, r4};
   std::array<Eigen::Vector3d, 4> bodyE3arm;
   const double s1 = std::sin(th_tvc(0)); const double c1 = std::cos(th_tvc(0));
   const double s2 = std::sin(th_tvc(1)); const double c2 = std::cos(th_tvc(1));
@@ -307,8 +374,10 @@ static inline void IK(const Eigen::Vector3d& bPa1, const Eigen::Vector3d& bPa2, 
     const double c = std::cos(param::B2BASE_THETA[i]);
     const double a = param::B2BASE_A[i];
 
-    const double px = bodyParm[i].x();
-    const double py = bodyParm[i].y();
+    const double rho = polar_pos[i].x();
+    const double alpha = polar_pos[i].y();
+    const double px = param::B2BASE_X[i] + rho * std::cos(alpha);
+    const double py = param::B2BASE_Y[i] + rho * std::sin(alpha);
     const double ezx = bodyE3arm[i].x();
     const double ezy = bodyE3arm[i].y();
 
@@ -317,7 +386,7 @@ static inline void IK(const Eigen::Vector3d& bPa1, const Eigen::Vector3d& bPa2, 
     const double ex_base = c * ezx + s * ezy;
     const double ey_base = s * ezx - c * ezy;
 
-    Eigen::Vector3d baseParm(x_base, y_base, -bodyParm[i].z());
+    Eigen::Vector3d baseParm(x_base, y_base, -param::r_z_position);
     Eigen::Vector3d baseE3arm(ex_base, ey_base, -bodyE3arm[i].z());
 
     onearm_IK(baseParm, baseE3arm, &q[5 * i]);
@@ -356,7 +425,6 @@ static inline void FK(const double q[20], const double& load_angle, Eigen::Vecto
     bpcot += *(bparm[i]);
   }
   bpcot *= 0.25;
-  mass_weighted_sum += param::BIAS_WEIGHT_MAX_COM * Eigen::Vector3d(std::cos(load_angle), 0.0, std::sin(load_angle)); // x-axis center mass com position
   bpc = mass_weighted_sum / param::TOTAL_MASS;
 }
 
@@ -422,45 +490,72 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
   constexpr double sq_min_stretch         = param::MIN_STRETCH * param::MIN_STRETCH;
   constexpr double sq_rotor_diameter      = param::ROTOR_DIAMETER * param::ROTOR_DIAMETER;
 
-  constexpr double sign_x[4] = {+1.0, -1.0, -1.0, +1.0};
-  constexpr double sign_y[4] = {-1.0, -1.0, +1.0, +1.0};
   constexpr int nbr_a[4] = {3, 0, 1, 2}; // nearby rotor a index
   constexpr int nbr_b[4] = {1, 2, 3, 0}; // nearby rotor b index
+
+  constexpr double PI = 3.14159265358979323846;
+
+  auto wrap_pi = [&](double a) -> double {
+    while (a >  PI) {a -= 2.0 * PI;}
+    while (a < -PI) {a += 2.0 * PI;}
+    return a;
+  };
+
+  auto clamp_angle_in_sector = [&](double a, int i) -> double {
+    a = spin_360(a, param::ALPHA_MIN[i], param::ALPHA_MAX[i]);
+    if (a < param::ALPHA_MIN[i]) a = param::ALPHA_MIN[i];
+    if (a > param::ALPHA_MAX[i]) a = param::ALPHA_MAX[i];
+    return a;
+  };
+
+  auto pol_to_cart = [&](double rho, double alpha, int i) -> Eigen::Vector2d {
+    return Eigen::Vector2d(
+      param::B2BASE_X[i] + rho * std::cos(alpha),
+      param::B2BASE_Y[i] + rho * std::sin(alpha)
+    );
+  };
+
+  auto cart_to_pol_from_base = [&](const Eigen::Vector2d& p, int i) -> Eigen::Vector2d {
+    const double dx = p.x() - param::B2BASE_X[i];
+    const double dy = p.y() - param::B2BASE_Y[i];
+    const double rho = std::sqrt(dx * dx + dy * dy);
+    const double alpha = std::atan2(dy, dx);
+    return Eigen::Vector2d(rho, wrap_pi(alpha));
+  };
 
   for (int it = 0; it < 3; ++it) { // A few iterations to resolve "workspace <-> collision" coupling
     for (int i = 0; i < 4; ++i) { // per each rotor
       { // ------------ [ 1. Workspace guard ] ------------
-        double rx = r[i].x() - param::B2BASE_X[i];
-        double ry = r[i].y() - param::B2BASE_Y[i];
+        double rho   = r[i].x();
+        double alpha = r[i].y();
 
-        // Sign clamp
-        if (sign_x[i] > 0.0) { if (rx < 0.0) rx = 0.0; }
-        else { if (rx > 0.0) rx = 0.0; }
-
-        if (sign_y[i] > 0.0) { if (ry < 0.0) ry = 0.0; }
-        else { if (ry > 0.0) ry = 0.0; }
+        // Angle clamp (replacing old sign clamp)
+        alpha = clamp_angle_in_sector(alpha, i);
 
         // Hard-fail if stretch is too far outside
-        double sqd_r = rx*rx + ry*ry;
-        if (sqd_r < sq_min_stretch_fail || sqd_r > sq_max_stretch_fail) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: stretch too far.\n", it); std::fflush(stderr); return false;}
-
-        if (sqd_r < sq_min_stretch || sqd_r > sq_max_stretch) {
-          const double abs_r = std::sqrt(sqd_r);
-          const double target = (sqd_r < sq_min_stretch) ? param::MIN_STRETCH : param::MAX_STRETCH;
-          const double scale_factor = target / abs_r;
-          rx *= scale_factor;
-          ry *= scale_factor;
-          std::fprintf(stderr, "[arm-cmd check] iter[%d]: rotor[%d] scaled by %f\n", it, i+1, scale_factor); std::fflush(stderr);
+        const double sqd_r = rho * rho;
+        if (sqd_r < sq_min_stretch_fail || sqd_r > sq_max_stretch_fail) {
+          std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: stretch too far.\n", it);
+          std::fflush(stderr);
+          return false;
         }
 
-        r[i].x() = param::B2BASE_X[i] + rx;
-        r[i].y() = param::B2BASE_Y[i] + ry;
+        if (sqd_r < sq_min_stretch || sqd_r > sq_max_stretch) {
+          const double target = (sqd_r < sq_min_stretch) ? param::MIN_STRETCH : param::MAX_STRETCH;
+          const double scale_factor = target / rho;
+          rho *= scale_factor;
+          std::fprintf(stderr, "[arm-cmd check] iter[%d]: rotor[%d] scaled by %f\n", it, i + 1, scale_factor);
+          std::fflush(stderr);
+        }
+
+        r[i].x() = rho;
+        r[i].y() = alpha;
       }
 
       { // ------------ [ 2. Rotor collision guard ] ------------
-        const Eigen::Vector2d p0(r[i].x(), r[i].y());
-        const Eigen::Vector2d pa(r[nbr_a[i]].x(), r[nbr_a[i]].y());
-        const Eigen::Vector2d pb(r[nbr_b[i]].x(), r[nbr_b[i]].y());
+        const Eigen::Vector2d p0 = pol_to_cart(r[i].x(), r[i].y(), i);
+        const Eigen::Vector2d pa = pol_to_cart(r[nbr_a[i]].x(), r[nbr_a[i]].y(), nbr_a[i]);
+        const Eigen::Vector2d pb = pol_to_cart(r[nbr_b[i]].x(), r[nbr_b[i]].y(), nbr_b[i]);
         Eigen::Vector2d p = p0; // new target xy to compute
 
         const Eigen::Vector2d ap0 = p0 - pa;
@@ -469,10 +564,16 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
         const double sqrd_bp0 = bp0.squaredNorm();
 
         // (1) collision occurred too deep -> fail
-        if (sqrd_ap0 < sq_rotor_diameter_fail || sqrd_bp0 < sq_rotor_diameter_fail) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: collision occured too deep.\n", it); std::fflush(stderr); return false;}
+        if (sqrd_ap0 < sq_rotor_diameter_fail || sqrd_bp0 < sq_rotor_diameter_fail) {
+          std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: collision occured too deep.\n", it);
+          std::fflush(stderr);
+          return false;
+        }
 
         // (2) both already safe -> skip
-        if (sqrd_ap0 >= sq_rotor_diameter && sqrd_bp0 >= sq_rotor_diameter) {continue;}
+        if (sqrd_ap0 >= sq_rotor_diameter && sqrd_bp0 >= sq_rotor_diameter) {
+          continue;
+        }
 
         // (3) collision occurred -> move target p
         const bool closeA = (sqrd_ap0 < sq_rotor_diameter);
@@ -482,18 +583,22 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
           const double d2 = dc.squaredNorm();
           const double d = std::sqrt(d2);
 
-          // For equal radii D: midpoint m, offset h along perpendicular
           const Eigen::Vector2d m = 0.5 * (pa + pb);
-          double h2 = sq_rotor_diameter - 0.25*d2;
-          if (h2 < 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: negative h2 detected.\n", it); std::fflush(stderr); return false;}
+          double h2 = sq_rotor_diameter - 0.25 * d2;
+          if (h2 < 0.0) {
+            std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: negative h2 detected.\n", it);
+            std::fflush(stderr);
+            return false;
+          }
           const double h = std::sqrt(h2);
           const Eigen::Vector2d n(-dc.y() / d, dc.x() / d); // unit perpendicular (rotate +90deg)
 
+          // Original code chose one branch only. Keep same style.
           p = m + n * h;
         }
         else { // only one side is closer than D
           const Eigen::Vector2d Close = closeA ? pa : pb;
-          const Eigen::Vector2d Far   = closeA ? pb : pa; 
+          const Eigen::Vector2d Far   = closeA ? pb : pa;
           const double r1_keep2 = closeA ? sqrd_bp0 : sqrd_ap0; // keep original distance to the other rotor
 
           const Eigen::Vector2d dc = Far - Close;
@@ -501,43 +606,83 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
           const double d = std::sqrt(d2);
 
           const double a = (sq_rotor_diameter + d2 - r1_keep2) / (2.0 * d);
-          double h = std::sqrt(sq_rotor_diameter - a*a);
+          const double h = std::sqrt(sq_rotor_diameter - a * a);
 
           const Eigen::Vector2d n(-dc.y() / d, dc.x() / d); // unit perpendicular (rotate +90deg)
 
           p = Close + a * dc / d + n * h;
         }
 
-        // Commit XY
-        r[i].x() = p.x();
-        r[i].y() = p.y();
+        // Commit as polar
+        Eigen::Vector2d pol = cart_to_pol_from_base(p, i);
+
+        // Re-apply polar workspace constraint after collision projection
+        pol.y() = clamp_angle_in_sector(pol.y(), i);
+
+        const double sqd_r = pol.x() * pol.x();
+        if (sqd_r < sq_min_stretch_fail || sqd_r > sq_max_stretch_fail) {
+          std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: stretch too far after collision projection.\n", it);
+          std::fflush(stderr);
+          return false;
+        }
+
+        if (sqd_r < sq_min_stretch || sqd_r > sq_max_stretch) {
+          const double target = (sqd_r < sq_min_stretch) ? param::MIN_STRETCH : param::MAX_STRETCH;
+          const double scale_factor = target / pol.x();
+          pol.x() *= scale_factor;
+          std::fprintf(stderr, "[arm-cmd check] iter[%d]: rotor[%d] scaled by %f after collision projection\n", it, i + 1, scale_factor);
+          std::fflush(stderr);
+        }
+
+        r[i] = pol;
 
         { // NaN/Inf guard
-          if (!r[i].allFinite()) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[i]=r[%d] NaN/Inf detected.\n", it, i); std::fflush(stderr); return false;}
-          const int ia = nbr_a[i]; const int ib = nbr_b[i];
-          if (!r[ia].allFinite()) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[ia]=r[%d] NaN/Inf detected.\n", it, ia); std::fflush(stderr); return false;}
-          if (!r[ib].allFinite()) {std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[ib]=r[%d] NaN/Inf detected.\n", it, ib); std::fflush(stderr); return false;}
+          if (!r[i].allFinite()) {
+            std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[i]=r[%d] NaN/Inf detected.\n", it, i);
+            std::fflush(stderr);
+            return false;
+          }
+          const int ia = nbr_a[i];
+          const int ib = nbr_b[i];
+          if (!r[ia].allFinite()) {
+            std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[ia]=r[%d] NaN/Inf detected.\n", it, ia);
+            std::fflush(stderr);
+            return false;
+          }
+          if (!r[ib].allFinite()) {
+            std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[ib]=r[%d] NaN/Inf detected.\n", it, ib);
+            std::fflush(stderr);
+            return false;
+          }
         }
-        std::fprintf(stderr, "[arm-cmd check] iter[%d]: collision removed.\n", it); std::fflush(stderr);
+
+        std::fprintf(stderr, "[arm-cmd check] iter[%d]: collision removed.\n", it);
+        std::fflush(stderr);
       }
     } // rotor 1234
   } // iter
 
   // ------------ [ 3. Final pass check (just check) ] ------------
   for (int i = 0; i < 4; ++i) {
-    double dx = r[i].x() - param::B2BASE_X[i];
-    double dy = r[i].y() - param::B2BASE_Y[i];
+    const double rho   = r[i].x();
+    const double alpha = wrap_pi(r[i].y());
 
-    if (sign_x[i] > 0.0) { if (dx < 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: sign_x[%d]<0\n", i); std::fflush(stderr); return false;}}
-    else { if (dx > 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: sign_x[%d]>0\n", i); std::fflush(stderr); return false;}}
+    // Angle-sector check
+    const double alpha_clamped = clamp_angle_in_sector(alpha, i);
+    if (std::abs(wrap_pi(alpha - alpha_clamped)) > 1e-12) {
+      std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: rotor-%d angle out of sector.\n", i);
+      std::fflush(stderr);
+      return false;
+    }
 
-    if (sign_y[i] > 0.0) { if (dy < 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: sign_y[%d]<0\n", i); std::fflush(stderr); return false;}}
-    else { if (dy > 0.0) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: sign_y[%d]>0\n", i); std::fflush(stderr); return false;}}
-
-    double n2 = dx*dx + dy*dy;
-    if (n2 < sq_min_stretch || n2 > sq_max_stretch) {std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: arm-%d too much stretch.\n", i); std::fflush(stderr); return false;}
+    const double n2 = rho * rho;
+    if (n2 < sq_min_stretch || n2 > sq_max_stretch) {
+      std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: arm-%d too much stretch.\n", i);
+      std::fflush(stderr);
+      return false;
+    }
   }
-  
+
   return true;
 }
 
@@ -768,6 +913,30 @@ static inline int sensor_adr_check(const mjModel* m, const char* name, int expec
   if (sid < 0) { std::printf("[ERROR] sensor '%s' not found\n", name); std::abort(); }
   if (m->sensor_dim[sid] != expect_dim) {std::printf("[ERROR] sensor '%s' dim mismatch: got %d expect %d\n", name, m->sensor_dim[sid], expect_dim); std::abort();}
   return m->sensor_adr[sid];
+}
+
+static inline void set_bong_tip_load_enabled(mjModel* m, mjData* d, int body_id, int geom_id, bool enabled) {
+  if (body_id < 0) {return;}
+
+  const mjtNum mass = enabled ? param::BONG_TIP_LOAD_MASS : 1e-9;
+  const mjtNum inertia = enabled ? param::BONG_TIP_LOAD_INERTIA : 1e-12;
+
+  m->body_mass[body_id] = mass;
+  m->body_inertia[3 * body_id + 0] = inertia;
+  m->body_inertia[3 * body_id + 1] = inertia;
+  m->body_inertia[3 * body_id + 2] = inertia;
+
+  if (geom_id >= 0) {m->geom_rgba[4 * geom_id + 3] = enabled ? 1.0 : 0.0;}
+
+  // Recompute mjModel derived constants using scratch mjData.
+  // Do not pass live mjData here: mj_setConst works around qpos0 and may disturb d->qpos.
+  mjData* d_scratch = mj_makeData(m);
+  if (d_scratch != nullptr) {
+    mj_setConst(m, d_scratch);
+    mj_deleteData(d_scratch);
+  }
+
+  mj_forward(m, d); // Refresh live mjData using the current qpos/qvel.
 }
 
 inline std::filesystem::path get_executable_path() {

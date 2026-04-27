@@ -18,20 +18,19 @@ def build_model():
     r2              = ca.SX.sym('r2',  2)    # [m, rad]
     r3              = ca.SX.sym('r3',  2)    # [m, rad]
     r4              = ca.SX.sym('r4',  2)    # [m, rad]
-    r1_cmd          = ca.SX.sym('r1_cmd', 2) # [m, rad], Augmented state(command input)
-    r2_cmd          = ca.SX.sym('r2_cmd', 2) # [m, rad], Augmented state(command input)
-    r3_cmd          = ca.SX.sym('r3_cmd', 2) # [m, rad], Augmented state(command input)
-    r4_cmd          = ca.SX.sym('r4_cmd', 2) # [m, rad], Augmented state(command input)
-    x     = ca.vertcat(theta, omega, r1, r2, r3, r4, r1_cmd, r2_cmd, r3_cmd, r4_cmd)
+    x     = ca.vertcat(theta, omega, r1, r2, r3, r4)
     x_dot = ca.SX.sym('x_dot', x.size1())
     model.x = x
     model.xdot = x_dot
 
     # Model control input(u)
-    u_cmd = ca.SX.sym('u_cmd', 11) # 3: delta_theta_cmd [rad] / 8: r_rotor_cmd_rate
+    u_cmd = ca.SX.sym('u_cmd', 11) # 3: delta_theta_cmd [rad] / 8: r_rotor_cmd [m, rad]
     model.u = u_cmd
     delta_theta_cmd = u_cmd[0:3]
-    r_rotor_cmd_rate = u_cmd[3:11]
+    r1_cmd = u_cmd[3:5]
+    r2_cmd = u_cmd[5:7]
+    r3_cmd = u_cmd[7:9]
+    r4_cmd = u_cmd[9:11]
 
     # Model parameter
     R_raw = ca.SX.sym('R_raw', 3, 3)    # desired attitude SO3 matrix
@@ -39,8 +38,8 @@ def build_model():
     Wdot_raw = ca.SX.sym('Wdot_raw', 3) # desired angular accel [rad/s^2]
     R_0   = ca.SX.sym('R_0', 3, 3)      # initial attitude SO3 matrix
     f_0 = ca.SX.sym('f_0')              # positive [N]
-    load_angle = ca.SX.sym('load_angle')
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, load_angle)
+    d_hat = ca.SX.sym('d_hat', 3)       # torque disturbance [N.m]
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, d_hat)
 
     # Constants
     J = ca.DM(p.J_TENSOR)
@@ -58,7 +57,6 @@ def build_model():
     m_link = ca.reshape(ca.DM(np.asarray(p.M_LINK, dtype=np.float64)), 5, 1)
     m_link_sum = ca.sum1(m_link)
     inv_m_tot = 1.0 / (ca.DM(float(p.M_CENTER)) + 4.0 * m_link_sum)
-    center_body_com = ca.vertcat(ca.cos(load_angle)*float(p.MAX_COM_BIAS_OF_LOAD), 0.0)
     a1 = float(p.A_LINK[0])
     a2 = float(p.A_LINK[1])
     a3 = float(p.A_LINK[2])
@@ -131,7 +129,7 @@ def build_model():
     e_R = 0.5 * vee(RtRd.T - RtRd)
     e_w = omega - RtRd @ Wd
     tau_d = - KR * e_R - KW * e_w + J@(hat(omega)@RtRd@Wd + RtRd@Wd_dot)
-    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))
+    omega_dot = J_inv@(tau_d + d_hat - ca.cross(omega, J@omega))
 
     # body->rotor pos in cartesian coordinate (state)
     r_pol = [r1, r2, r3, r4]
@@ -157,11 +155,9 @@ def build_model():
     r_dot[2] = t_arm_inv  * (r2_cmd[0] - r2[0]); r_dot[3] = t_base_inv * (r2_cmd[1] - r2[1])
     r_dot[4] = t_arm_inv  * (r3_cmd[0] - r3[0]); r_dot[5] = t_base_inv * (r3_cmd[1] - r3[1])
     r_dot[6] = t_arm_inv  * (r4_cmd[0] - r4[0]); r_dot[7] = t_base_inv * (r4_cmd[1] - r4[1])
+    model.r_dot = r_dot
 
-    # Command-state dynamics for rotor modules only
-    r_cmd_dot = r_rotor_cmd_rate
-
-    f_expl = ca.vertcat(theta_dot, omega_dot, r_dot, r_cmd_dot)
+    f_expl = ca.vertcat(theta_dot, omega_dot, r_dot)
     model.f_expl_expr = f_expl
     model.f_impl_expr = x_dot - f_expl
 
@@ -182,7 +178,7 @@ def build_model():
           + (m_link[3, 0] + m_link[4, 0]) * r_pol[a][0]
         )
         pc = pc + ca.vertcat(m_link_sum * (r_off_x[a, 0] + rho_c_a * ca.cos(r_pol[a][1])), m_link_sum * (r_off_y[a, 0] + rho_c_a * ca.sin(r_pol[a][1])))
-    pc = (pc + center_body_com) * inv_m_tot
+    pc = pc * inv_m_tot
 
     # ---------- Propeller thrust expression ----------
     A = ca.vertcat(ca.horzcat(-(r[0][1]-pc[1]), -(r[1][1]-pc[1]), -(r[2][1]-pc[1]), -(r[3][1]-pc[1])),
@@ -211,7 +207,7 @@ def build_model():
         dist2_cart(r_cmd, 3, 0),
     )
 
-    model.con_h_expr = ca.vertcat(F_expr, collision_cmd)
+    model.con_h_expr = ca.vertcat(F_expr, collision_cmd, r_dot)
 
     return model
 
@@ -227,10 +223,10 @@ def build_ocp():
 
     # ---------- costs ----------
     delta_theta_cmd      = model.u[0:3]
-    r_rotor_cmd_rate     = model.u[3:11]
     thrust_dev           = model.thrust_dev
+    r_dot                = model.r_dot
     
-    model.cost_y_expr   = ca.vertcat(delta_theta_cmd, thrust_dev, r_rotor_cmd_rate) # 1~k-1 ref
+    model.cost_y_expr   = ca.vertcat(delta_theta_cmd, thrust_dev, r_dot) # 1~k-1 ref
 
     ocp.dims.ny   = 15
     
@@ -243,43 +239,41 @@ def build_ocp():
     ocp.parameter_values = np.zeros((model.p.size()[0],))
     ocp.constraints.x0 = np.zeros(model.x.size()[0])
 
-    # ---- box constraints on x ----
-    idx_rho_cmd     = np.array([14, 16, 18, 20], dtype=np.int64)
-    idx_alpha_cmd   = np.array([15, 17, 19, 21], dtype=np.int64)
-    ocp.constraints.idxbx = np.concatenate([idx_rho_cmd, idx_alpha_cmd])
+    idx_delta_theta_cmd = np.array([0, 1, 2], dtype=np.int64)
+    idx_rho_cmd     = np.array([3, 5, 7, 9], dtype=np.int64)
+    idx_alpha_cmd   = np.array([4, 6, 8, 10], dtype=np.int64)
+    ocp.constraints.idxbu = np.concatenate([idx_delta_theta_cmd, idx_rho_cmd, idx_alpha_cmd])
 
-    lbx = np.concatenate([np.full(4, p.RHO_MIN,     dtype=np.float64),
-                          np.array(p.ALPHA_MIN,     dtype=np.float64)])
+    ocp.constraints.lbu = np.concatenate([c.DTHETA_MIN,
+                                          np.full(4, p.RHO_MIN,     dtype=np.float64),
+                                          np.array(p.ALPHA_MIN,     dtype=np.float64)])
 
-    ubx = np.concatenate([np.full(4, p.RHO_MAX,     dtype=np.float64),
-                          np.array(p.ALPHA_MAX,     dtype=np.float64)])
+    ocp.constraints.ubu = np.concatenate([c.DTHETA_MAX,
+                                          np.full(4, p.RHO_MAX,     dtype=np.float64),
+                                          np.array(p.ALPHA_MAX,     dtype=np.float64)])
+    ocp.dims.nbu = ocp.constraints.idxbu.size
+    ocp.dims.nbu = ocp.constraints.idxbu.size
 
-    ocp.constraints.lbx = lbx
-    ocp.constraints.ubx = ubx
-    ocp.dims.nbx = ocp.constraints.idxbx.size
+    # ---------- h_expr constraints ----------
+    col_cmd_lb = np.full(4, (2.0 * p.R_ROTOR)**2, dtype=np.float64)
 
-    # ---- box constraints on u ----
-    ocp.constraints.idxbu = np.array([3, 4, 5, 6, 7, 8, 9, 10], dtype=np.int64)
-
-    ocp.constraints.lbu = np.array([
+    r_dot_lb = np.array([
         c.RHO_DOT_MIN[0],   c.ALPHA_DOT_MIN[0],
         c.RHO_DOT_MIN[1],   c.ALPHA_DOT_MIN[1],
         c.RHO_DOT_MIN[2],   c.ALPHA_DOT_MIN[2],
         c.RHO_DOT_MIN[3],   c.ALPHA_DOT_MIN[3],
     ], dtype=np.float64)
-    ocp.constraints.ubu = np.array([
+
+    r_dot_ub = np.array([
         c.RHO_DOT_MAX[0],   c.ALPHA_DOT_MAX[0],
         c.RHO_DOT_MAX[1],   c.ALPHA_DOT_MAX[1],
         c.RHO_DOT_MAX[2],   c.ALPHA_DOT_MAX[2],
         c.RHO_DOT_MAX[3],   c.ALPHA_DOT_MAX[3],
     ], dtype=np.float64)
-    ocp.dims.nbu = ocp.constraints.idxbu.size
 
-    # ---------- h_expr constraints ----------
-    col_cmd_lb   = np.full(4, (2.0 * p.R_ROTOR)**2, dtype=np.float64)
-    ocp.constraints.lh = np.concatenate([c.F_MIN, col_cmd_lb]).astype(np.float64)
-    ocp.constraints.uh = np.concatenate([c.F_MAX, np.full(4, 1e12)]).astype(np.float64)
-    ocp.dims.nh = 8
+    ocp.constraints.lh = np.concatenate([c.F_MIN, col_cmd_lb, r_dot_lb]).astype(np.float64)
+    ocp.constraints.uh = np.concatenate([c.F_MAX, np.full(4, 1e12), r_dot_ub]).astype(np.float64)
+    ocp.dims.nh = ocp.constraints.lh.size
 
     # ---------- solver options ----------
     ocp.solver_options.qp_solver        = "PARTIAL_CONDENSING_HPIPM" # or "FULL_CONDENSING_HPIPM(5ms)" "PARTIAL_CONDENSING_HPIPM"(3ms) "FULL_CONDENSING_QPOASES(6ms)"

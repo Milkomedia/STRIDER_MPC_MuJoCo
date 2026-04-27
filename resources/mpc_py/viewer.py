@@ -39,9 +39,9 @@ from .use_full import costs as c
 
 ViewerFrame = Dict[str, np.ndarray]
 
-FULL_NX = 22
+FULL_NX = 14
 FULL_NU = 11
-FULL_NP = 26
+FULL_NP = 29
 
 
 def _gain3(x: Any) -> np.ndarray:
@@ -259,13 +259,12 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
 
     x = [
       theta(0:3), omega(3:6),
-      r1(6:8), r2(8:10), r3(10:12), r4(12:14),
-      r1_cmd(14:16), r2_cmd(16:18), r3_cmd(18:20), r4_cmd(20:22)
+      r1(6:8), r2(8:10), r3(10:12), r4(12:14)
     ]
 
     u = [
       delta_theta_cmd(0:3),
-      r1_cmd_rate(3:5), r2_cmd_rate(5:7), r3_cmd_rate(7:9), r4_cmd_rate(9:11)
+      r1_cmd(3:5), r2_cmd(5:7), r3_cmd(7:9), r4_cmd(9:11)
     ]
 
     p = [
@@ -320,7 +319,7 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
   pc_stage = np.full((N, 2), np.nan, dtype=np.float64)
 
   delta_theta_cmd_stage = np.full((N, 3), np.nan, dtype=np.float64)
-  u_rate_rotor_stage = np.full((N, 8), np.nan, dtype=np.float64)
+  u_cmd_rotor_stage = np.full((N, 8), np.nan, dtype=np.float64)
 
   for k in range(N):
     xk = x_all[k, :]
@@ -330,7 +329,7 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     theta = xk[0:3]
     omega = xk[3:6]
     r_pol = xk[6:14].reshape(4, 2)
-    r_pol_cmd = xk[14:22].reshape(4, 2)
+    r_pol_cmd = uk[3:11].reshape(4, 2)
     delta_theta_cmd = uk[0:3]
 
     R_raw = pk[0:9].reshape(3, 3, order="F")
@@ -400,7 +399,7 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     pc_stage[k, :] = pc_xy
 
     delta_theta_cmd_stage[k, :] = delta_theta_cmd
-    u_rate_rotor_stage[k, :] = uk[3:11]
+    u_cmd_rotor_stage[k, :] = uk[3:11]
 
   F_min = np.asarray(getattr(c, "F_MIN", np.full(4, np.nan)), dtype=np.float64).reshape(-1)
   F_max = np.asarray(getattr(c, "F_MAX", np.full(4, np.nan)), dtype=np.float64).reshape(-1)
@@ -437,7 +436,7 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     "r_cmd_mean": r_cmd_mean_stage,
     "pc": pc_stage,
     "delta_theta_cmd": delta_theta_cmd_stage,
-    "u_rate_rotor": u_rate_rotor_stage,
+    "u_cmd_rotor": u_cmd_rotor_stage,
   }
 
 
@@ -626,20 +625,20 @@ class ViewerMainWindow(QMainWindow):
       [("pitch_raw", pen_k), ("pitch_des", pen_b), ("pitch_cur", pen_r)],
     )
     self._dual_plots["u_rotor"] = DualAxisPlot(
-      title="u_rate(r1234 rho alpha)",
-      left_label="alpha [deg/s]",
-      right_label="rho [mm/s]",
+      title="u_cmd(r1234 rho alpha)",
+      left_label="alpha [deg]",
+      right_label="rho [mm]",
       left_specs=[
-        ("r1_alpha_dot", pen_r_d),
-        ("r2_alpha_dot", pen_g_d),
-        ("r3_alpha_dot", pen_b_d),
-        ("r4_alpha_dot", pen_p_d),
+        ("r1_alpha_cmd", pen_r_d),
+        ("r2_alpha_cmd", pen_g_d),
+        ("r3_alpha_cmd", pen_b_d),
+        ("r4_alpha_cmd", pen_p_d),
       ],
       right_specs=[
-        ("r1_rho_dot", pen_r),
-        ("r2_rho_dot", pen_g),
-        ("r3_rho_dot", pen_b),
-        ("r4_rho_dot", pen_p),
+        ("r1_rho_cmd", pen_r),
+        ("r2_rho_cmd", pen_g),
+        ("r3_rho_cmd", pen_b),
+        ("r4_rho_cmd", pen_p),
       ],
     )
 
@@ -743,9 +742,9 @@ class ViewerMainWindow(QMainWindow):
 
     delta_theta_cmd_deg = np.rad2deg(frame["delta_theta_cmd"])
 
-    u_rate_rotor = np.asarray(frame["u_rate_rotor"], dtype=np.float64)
-    rho_mm_s = 1000.0 * u_rate_rotor[:, 0::2]
-    alpha_deg_s = np.rad2deg(u_rate_rotor[:, 1::2])
+    u_cmd_rotor = np.asarray(frame["u_cmd_rotor"], dtype=np.float64)
+    rho_mm_s = 1000.0 * u_cmd_rotor[:, 0::2]
+    alpha_deg_s = np.rad2deg(u_cmd_rotor[:, 1::2])
 
     if np.any(np.isfinite(F_min)):
       fmin_line = np.full_like(steps, float(np.nanmin(F_min)), dtype=np.float64)

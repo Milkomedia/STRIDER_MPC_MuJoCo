@@ -90,6 +90,9 @@ int main() {
   load_act_id = mj_name2id(m, mjOBJ_ACTUATOR, "servo_load_joint");
   const int load_joint_id = mj_name2id(m, mjOBJ_JOINT, "load_joint");
   const int load_qpos_adr = (load_joint_id != -1) ? m->jnt_qposadr[load_joint_id] : -1;
+  const int bong_tip_load_body_id = mj_name2id(m, mjOBJ_BODY, "bong_tip_load");
+  const int bong_tip_load_geom_id = mj_name2id(m, mjOBJ_GEOM, "bong_tip_load_geom");
+  set_bong_tip_load_enabled(m, d, bong_tip_load_body_id, bong_tip_load_geom_id, false);
 
   // ---------------- [ MPC thread ] ----------------
   std::thread th_mpc([&]() {
@@ -146,7 +149,7 @@ int main() {
     fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
     // Gyro estimation
-    Eigen::Vector3d prev_tau_des = Eigen::Vector3d::Zero();
+    Eigen::Vector3d prev_tau = Eigen::Vector3d::Zero();
     GyroEKF ekf;
 
     // --- state definition ---
@@ -157,8 +160,15 @@ int main() {
     cmd.r2 = param::r2_init;
     cmd.r3 = param::r3_init;
     cmd.r4 = param::r4_init;
+    Eigen::Vector2d smoothed_cmd_r1 = param::r1_init;
+    Eigen::Vector2d smoothed_cmd_r2 = param::r2_init;
+    Eigen::Vector2d smoothed_cmd_r3 = param::r3_init;
+    Eigen::Vector2d smoothed_cmd_r4 = param::r4_init;
+    Eigen::Vector3d smoothed_d_theta = Eigen::Vector3d::Zero();
     Eigen::Vector3d prev_omega = Eigen::Vector3d::Zero();
     double prev_elapsed_double = 0.0;
+
+    Eigen::Matrix<double, 3, 6> dob_state = Eigen::Matrix<double, 3, 6>::Zero();
 
     // --- com-bias inducing load param ---
     double servo_load_angle_cmd = 0.0; // 0.5*M_PI; 0.0;
@@ -171,8 +181,8 @@ int main() {
     // --- MRG parameters ---
     uint32_t mpc_key = 1;
     strider_mpc::MPCOutput l_mpc_output;
+    l_mpc_output.x_stage.setZero();
     l_mpc_output.u_stage.setZero();
-    l_mpc_output.u_opt.setZero();
     l_mpc_output.t = std::chrono::steady_clock::time_point::max();
 
     // --- noise injection ---
@@ -182,7 +192,6 @@ int main() {
     // --- timedelay ---
     State delayed_s;
     double delayed_q_d[20] = {0};
-    double smoothed_q_d[20] = {0};
     Eigen::Vector4d smoothed_F   = Eigen::Vector4d::Zero();
     Eigen::Vector4d smoothed_Tau = Eigen::Vector4d::Zero();
 
@@ -201,7 +210,7 @@ int main() {
       double arm_angles[20]; // Initial arm joint angles
       Eigen::Vector4d tvc_angle = Eigen::Vector4d::Zero();
       IK(cmd.r1, cmd.r2, cmd.r3, cmd.r4, tvc_angle, arm_angles);
-      for (uint8_t i=0; i<20; ++i) {delayed_q_d[i] = arm_angles[i]; smoothed_q_d[i] = arm_angles[i];}
+      for (uint8_t i=0; i<20; ++i) {delayed_q_d[i] = arm_angles[i];}
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
         // spawn and 3 second do nothing
@@ -225,6 +234,10 @@ int main() {
       Phase requested_phase = static_cast<Phase>(g_phase_cmd.load(std::memory_order_relaxed));
 
       if (!auto_phase_started && elapsed_double >= 15.05) {
+        {
+          std::lock_guard<std::mutex> scene_lk(scene_mtx);
+          set_bong_tip_load_enabled(m, d, bong_tip_load_body_id, bong_tip_load_geom_id, true);
+        }
         requested_phase = AUTO_PHASE;
         g_phase_cmd.store(static_cast<uint8_t>(AUTO_PHASE), std::memory_order_relaxed);
         auto_phase_started = true;
@@ -256,12 +269,11 @@ int main() {
       prev_omega = s.omega; prev_elapsed_double = elapsed_double;
 
       // --- sensor noise injection ---
-      Eigen::Vector3d omega_true = s.omega;
       if (param::NOISE_ON) {NOISE::apply(noise_state, now, s);}
 
       // --- estimate gyro ---
       const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
-      Eigen::Vector3d omega_hat = ekf.step(prev_tau_des, euler_rpy, delayed_s.omega);
+      Eigen::Vector3d omega_hat = ekf.step(prev_tau, euler_rpy, delayed_s.omega);
 
       // // --- load angle cmd update ---
       // if (elapsed_double > 15.0) {
@@ -271,12 +283,11 @@ int main() {
       // }
 
       // --- position control ---
-      if (elapsed_double >= 20.0) {l_traj_pva(elapsed_double+7.05, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.25,0.0,-1.3), elapsed_double, 2.0);}
-      else {cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);}
-      // cmd.pos = Eigen::Vector3d(-1.25,0.0,-1.3);
-      cmd.vel = Eigen::Vector3d::Zero();
-      cmd.acc = Eigen::Vector3d::Zero();
+      if (elapsed_double >= 14.0) {l_traj_pva(elapsed_double+13.05, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.2,0.0,-1.3), elapsed_double, 2.0);}
+      else {cmd.pos = Eigen::Vector3d(-1.2,0.0,-1.3);}
+      cmd.vel = Eigen::Vector3d::Zero(); // not-use velocity command
+      cmd.acc = Eigen::Vector3d::Zero(); // not-use velocity command
 
       gac_cmd.xd = cmd.pos;
       gac_cmd.xd_dot = cmd.vel;
@@ -315,24 +326,23 @@ int main() {
         
         if (epoch_ok && time_ok && solve_ok) {
           const std::size_t idx_raw = static_cast<std::size_t>(std::floor(std::chrono::duration<double>(now - l_mpc_output.t).count() / param::MPC_STEP_DT));
-          // const std::size_t idx = (idx_raw < param::N_STEPS_REQ) ? idx_raw : (param::N_STEPS_REQ - 1);
-          const std::size_t idx = 1;
+          const std::size_t idx = (idx_raw < param::N_STEPS_REQ) ? idx_raw : (param::N_STEPS_REQ+1);
 
-          Eigen::Vector2d p1, p2, p3, p4; // polar opt r_cmd
-          std::array<Eigen::Vector2d, 4> opt_r; // cartesian opt r_cmd
-          p1 << l_mpc_output.u_opt(3, idx),  l_mpc_output.u_opt(4, idx);
-          p2 << l_mpc_output.u_opt(5, idx),  l_mpc_output.u_opt(6, idx);
-          p3 << l_mpc_output.u_opt(7, idx),  l_mpc_output.u_opt(8, idx);
-          p4 << l_mpc_output.u_opt(9, idx),  l_mpc_output.u_opt(10, idx);
-          polar2cart(p1, p2, p3, p4, opt_r[0], opt_r[1], opt_r[2], opt_r[3]);
+          std::array<Eigen::Vector2d, 4> opt_r; // polar opt r_cmd
+          opt_r[0] << l_mpc_output.u_stage(3, idx),  l_mpc_output.u_stage(4, idx);
+          opt_r[1] << l_mpc_output.u_stage(5, idx),  l_mpc_output.u_stage(6, idx);
+          opt_r[2] << l_mpc_output.u_stage(7, idx),  l_mpc_output.u_stage(8, idx);
+          opt_r[3] << l_mpc_output.u_stage(9, idx),  l_mpc_output.u_stage(10, idx);
           const bool is_feasible = make_feasible(opt_r); // check workspace & collision
 
           if (is_feasible) {
-            cmd.d_theta = l_mpc_output.u_opt.col(idx).head<3>();
-            cmd.r1(0) = opt_r[0](0); cmd.r1(1) = opt_r[0](1);
-            cmd.r2(0) = opt_r[1](0); cmd.r2(1) = opt_r[1](1);
-            cmd.r3(0) = opt_r[2](0); cmd.r3(1) = opt_r[2](1);
-            cmd.r4(0) = opt_r[3](0); cmd.r4(1) = opt_r[3](1);
+            cmd.d_theta = l_mpc_output.u_stage.col(idx).segment<3>(0);
+            std::array<Eigen::Vector2d, 4> r; // cartesian opt r_cmd
+            polar2cart(opt_r[0], opt_r[1], opt_r[2], opt_r[3], r[0], r[1], r[2], r[3]);
+            cmd.r1 = opt_r[0];
+            cmd.r2 = opt_r[1];
+            cmd.r3 = opt_r[2];
+            cmd.r4 = opt_r[3];
             mpc_applied = true;
           }
         }
@@ -343,7 +353,8 @@ int main() {
         cmd.r1 = param::GOES_2_ZERO_A*cmd.r1 + param::GOES_2_ZERO_B*param::r1_init;
         cmd.r2 = param::GOES_2_ZERO_A*cmd.r2 + param::GOES_2_ZERO_B*param::r2_init;
         cmd.r3 = param::GOES_2_ZERO_A*cmd.r3 + param::GOES_2_ZERO_B*param::r3_init;
-        cmd.r4 = param::GOES_2_ZERO_A*cmd.r4 + param::GOES_2_ZERO_B*param::r4_init;
+        cmd.r4 = param::GOES_2_ZERO_A*cmd.r4 + param::GOES_2_ZERO_B*param::r4_init; 
+        l_mpc_output.x_stage.setZero();
         l_mpc_output.u_stage.setZero();
       }
 
@@ -353,28 +364,26 @@ int main() {
           Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;
           Eigen::Vector2d c_p1, c_p2, c_p3, c_p4;
           cart2polar(s.r1, s.r2, s.r3, s.r4, s_p1, s_p2, s_p3, s_p4);
-          cart2polar(cmd.r1, cmd.r2, cmd.r3, cmd.r4, c_p1, c_p2, c_p3, c_p4);
           std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
           if (!g_mpc_busy && !g_mpc_input.has && !g_mpc_output.has) { // push next solve immediately after the previous output
             mpc_key += 1;
 
             int k = 0; // fill initial state(x)
             g_mpc_input.x_0(k++) = euler_rpy(0); g_mpc_input.x_0(k++) = euler_rpy(1); g_mpc_input.x_0(k++) = euler_rpy(2); // theta(0,1,2)
-            g_mpc_input.x_0(k++) = delayed_s.omega(0); g_mpc_input.x_0(k++) = delayed_s.omega(1); g_mpc_input.x_0(k++) = delayed_s.omega(2); // omega(3,4,5)
+            g_mpc_input.x_0(k++) = omega_hat(0); g_mpc_input.x_0(k++) = omega_hat(1); g_mpc_input.x_0(k++) = omega_hat(2); // omega(3,4,5)
             g_mpc_input.x_0(k++) = s_p1(0); g_mpc_input.x_0(k++) = s_p1(1);
             g_mpc_input.x_0(k++) = s_p2(0); g_mpc_input.x_0(k++) = s_p2(1);
             g_mpc_input.x_0(k++) = s_p3(0); g_mpc_input.x_0(k++) = s_p3(1);
             g_mpc_input.x_0(k++) = s_p4(0); g_mpc_input.x_0(k++) = s_p4(1); // r_rotor(6~13)
-            g_mpc_input.x_0(k++) = c_p1(0); g_mpc_input.x_0(k++) = c_p1(1);
-            g_mpc_input.x_0(k++) = c_p2(0); g_mpc_input.x_0(k++) = c_p2(1);
-            g_mpc_input.x_0(k++) = c_p3(0); g_mpc_input.x_0(k++) = c_p3(1);
-            g_mpc_input.x_0(k++) = c_p4(0); g_mpc_input.x_0(k++) = c_p4(1); // r_rotor_cmd_x(14~21)
 
             // fill initial control input
             g_mpc_input.u_0(0) = cmd.d_theta(0); // delta_theta_cmd(0:3)
             g_mpc_input.u_0(1) = cmd.d_theta(1);
             g_mpc_input.u_0(2) = cmd.d_theta(2);
-            for (int l=3; l<11; ++l) {g_mpc_input.u_0(l) = l_mpc_output.u_stage(l, 0);} // r_rotor_cmd_rate(3:11)
+            g_mpc_input.u_0(3) = cmd.r1(0); g_mpc_input.u_0(4) = cmd.r1(1);
+            g_mpc_input.u_0(5) = cmd.r2(0); g_mpc_input.u_0(6) = cmd.r2(1);
+            g_mpc_input.u_0(7) = cmd.r3(0); g_mpc_input.u_0(8) = cmd.r3(1);
+            g_mpc_input.u_0(9) = cmd.r4(0); g_mpc_input.u_0(10) = cmd.r4(1); // r_rotor_cmd(3:11)
 
             int m = 0; // fill initial parameter(p)
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = R_raw(i, j);}} // R_raw(0~8), column-major order to match CasADi reshape
@@ -383,7 +392,7 @@ int main() {
             for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = delayed_s.R(i, j);}} // R_0(15~23), column-major order to match CasADi reshape
             // g_mpc_input.p(m++) = -f_sum; // positive, f_sum(24)
             g_mpc_input.p(m++) = std::clamp(-f_sum, 4.0*param::PWM_B, 4.0*(param::SATURATION_THRUST-0.3)); // positive, f_sum(24)
-            g_mpc_input.p(m++) = servo_load_angle;
+            g_mpc_input.p(m++) = s.d_hat(0); g_mpc_input.p(m++) = s.d_hat(1); g_mpc_input.p(m++) = s.d_hat(2); // disturbance torque(25~27)
 
             if (phase==Phase::USE_FULL)        {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = true; }
             else if (phase==Phase::USE_DTHETA) {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = false;}
@@ -402,12 +411,14 @@ int main() {
       }
 
       // --- attitude control --- 
-      const Eigen::Matrix3d Et = expm_hat(-cmd.d_theta);
+      smoothed_d_theta = param::DTHETA_LPF_ALPHA*smoothed_d_theta + param::DTHETA_LPF_BETA*cmd.d_theta;
+      const Eigen::Matrix3d Et = expm_hat(-smoothed_d_theta);
       const Eigen::Matrix3d Rd = R_raw * Et.transpose();
       const Eigen::Vector3d Wd = Et * omega_raw;
       const Eigen::Vector3d Wd_dot = Et * alpha_raw;
       const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, Wd, Wd_dot);
-      prev_tau_des = tau_des;
+      prev_tau = tau_des + s.d_hat;
+      if (auto_phase_started && elapsed_double >= 15.05) {s.d_hat = dob_update(euler_rpy, tau_des, dob_state);}
 
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
@@ -422,7 +433,11 @@ int main() {
 
       // --- resolve r_cot_d to q_d  ---
       double q_d[20] = {0};
-      IK(cmd.r1, cmd.r2, cmd.r3, cmd.r4, tilt_ang_des, q_d);
+      smoothed_cmd_r1(0) = param::ARM_DELAY_ALPHA*smoothed_cmd_r1(0) + param::ARM_DELAY_BETA*cmd.r1(0); smoothed_cmd_r1(1) = param::BASE_DELAY_ALPHA*smoothed_cmd_r1(1) + param::BASE_DELAY_BETA*cmd.r1(1);
+      smoothed_cmd_r2(0) = param::ARM_DELAY_ALPHA*smoothed_cmd_r2(0) + param::ARM_DELAY_BETA*cmd.r2(0); smoothed_cmd_r2(1) = param::BASE_DELAY_ALPHA*smoothed_cmd_r2(1) + param::BASE_DELAY_BETA*cmd.r2(1);
+      smoothed_cmd_r3(0) = param::ARM_DELAY_ALPHA*smoothed_cmd_r3(0) + param::ARM_DELAY_BETA*cmd.r3(0); smoothed_cmd_r3(1) = param::BASE_DELAY_ALPHA*smoothed_cmd_r3(1) + param::BASE_DELAY_BETA*cmd.r3(1);
+      smoothed_cmd_r4(0) = param::ARM_DELAY_ALPHA*smoothed_cmd_r4(0) + param::ARM_DELAY_BETA*cmd.r4(0); smoothed_cmd_r4(1) = param::BASE_DELAY_ALPHA*smoothed_cmd_r4(1) + param::BASE_DELAY_BETA*cmd.r4(1);
+      IK(smoothed_cmd_r1, smoothed_cmd_r2, smoothed_cmd_r3, smoothed_cmd_r4, tilt_ang_des, q_d);
 
       // --- thrust to pwm ---
       Eigen::Vector4d pwm;
@@ -440,9 +455,6 @@ int main() {
       // --- thruster force&torque smoothing [25ms-timeconstant] ---
       smoothed_F   = 0.9 * smoothed_F   + 0.1 * F;
       smoothed_Tau = 0.9 * smoothed_Tau + 0.1 * Tau;
-
-      // --- joint actuator delay [2.5ms one-step delay] ---
-      for (uint8_t i=0; i<20; ++i) {smoothed_q_d[i] =  param::COT_DELAY_ALPHA * smoothed_q_d[i] + param::COT_DELAY_BETA * delayed_q_d[i];}
 
       // --- virtual thrust clipping (tightening starts at 10s, finishes at 15s)---
       double thrust_sat = 1e12;
@@ -467,7 +479,7 @@ int main() {
           if (thrust_act_ids[i] != -1) {d->ctrl[thrust_act_ids[i]] = static_cast<mjtNum>(smoothed_F(i));}
           if (torque_act_ids[i] != -1) {d->ctrl[torque_act_ids[i]] = static_cast<mjtNum>(smoothed_Tau(i));}
         }
-        for (int i = 0; i < 20; ++i) {if (arm_act_ids[i] != -1) {d->ctrl[arm_act_ids[i]] = static_cast<mjtNum>(smoothed_q_d[i]);}}
+        for (int i = 0; i < 20; ++i) {if (arm_act_ids[i] != -1) {d->ctrl[arm_act_ids[i]] = static_cast<mjtNum>(delayed_q_d[i]);}}
         if (load_act_id != -1) {d->ctrl[load_act_id] = servo_load_angle_cmd;}
 
         for (int s = 0; s < n_sub; ++s) {mj_step(m, d);}
@@ -581,16 +593,20 @@ int main() {
         ld.r_cot[0] = static_cast<float>(s.r_cot(0));
         ld.r_cot[1] = static_cast<float>(s.r_cot(1));
 
-        ld.r_rotor1_d[0] = static_cast<float>(cmd.r1(0));
-        ld.r_rotor1_d[1] = static_cast<float>(cmd.r1(1));
-        ld.r_rotor2_d[0] = static_cast<float>(cmd.r2(0));
-        ld.r_rotor2_d[1] = static_cast<float>(cmd.r2(1));
-        ld.r_rotor3_d[0] = static_cast<float>(cmd.r3(0));
-        ld.r_rotor3_d[1] = static_cast<float>(cmd.r3(1));
-        ld.r_rotor4_d[0] = static_cast<float>(cmd.r4(0));
-        ld.r_rotor4_d[1] = static_cast<float>(cmd.r4(1));
         {
-          const Eigen::Vector3d r_cot_d = (cmd.r1 + cmd.r2 + cmd.r3 + cmd.r4) / 4.0;
+          Eigen::Vector2d r1_d_xy, r2_d_xy, r3_d_xy, r4_d_xy;
+          polar2cart(cmd.r1, cmd.r2, cmd.r3, cmd.r4, r1_d_xy, r2_d_xy, r3_d_xy, r4_d_xy);
+
+          ld.r_rotor1_d[0] = static_cast<float>(r1_d_xy(0));
+          ld.r_rotor1_d[1] = static_cast<float>(r1_d_xy(1));
+          ld.r_rotor2_d[0] = static_cast<float>(r2_d_xy(0));
+          ld.r_rotor2_d[1] = static_cast<float>(r2_d_xy(1));
+          ld.r_rotor3_d[0] = static_cast<float>(r3_d_xy(0));
+          ld.r_rotor3_d[1] = static_cast<float>(r3_d_xy(1));
+          ld.r_rotor4_d[0] = static_cast<float>(r4_d_xy(0));
+          ld.r_rotor4_d[1] = static_cast<float>(r4_d_xy(1));
+
+          const Eigen::Vector2d r_cot_d = (r1_d_xy + r2_d_xy + r3_d_xy + r4_d_xy) / 4.0;
           ld.r_cot_d[0] = static_cast<float>(r_cot_d(0));
           ld.r_cot_d[1] = static_cast<float>(r_cot_d(1));
         }

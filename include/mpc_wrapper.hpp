@@ -26,7 +26,7 @@ struct MPCInput {
 
 // MPC Output data
 struct MPCOutput {
-  Eigen::Matrix<double, param::MPC_NU, param::N_STEPS_REQ> u_opt;
+  Eigen::Matrix<double, param::MPC_NX, param::N_STEPS_REQ> x_stage;
   Eigen::Matrix<double, param::MPC_NU, param::N_STEPS_REQ> u_stage;
   double solve_ms = 0.0;
   std::uint8_t state = 255;

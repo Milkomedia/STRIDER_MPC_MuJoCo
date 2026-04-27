@@ -29,8 +29,8 @@ def build_model():
     Wdot_raw = ca.SX.sym('Wdot_raw', 3) # desired angular accel [rad/s^2]
     R_0   = ca.SX.sym('R_0', 3, 3)      # initial attitude SO3 matrix
     f_0 = ca.SX.sym('f_0')              # [N]
-    load_angle = ca.SX.sym('load_angle')
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, load_angle)
+    d_hat = ca.SX.sym('d_hat', 3)       # torque disturbance [N.m]
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, d_hat)
 
     # Constants
     J = ca.DM(p.J_TENSOR)
@@ -41,10 +41,6 @@ def build_model():
     l = float(p.L_DIST)
     b_F0 = ca.vertcat(0.0, 0.0, -f_0)
     g_F0 = R_0 @ b_F0
-
-    m_link = ca.reshape(ca.DM(np.asarray(p.M_LINK, dtype=np.float64)), 5, 1)
-    inv_m_tot = 1.0 / (ca.DM(float(p.M_CENTER)) + 4.0 * ca.sum1(m_link))
-    center_body_com = ca.vertcat(ca.cos(load_angle)*float(p.MAX_COM_BIAS_OF_LOAD), 0.0)
 
     # ---------- math utils ----------
     def euler_zyx_to_R(theta: ca.SX) -> ca.SX:
@@ -110,16 +106,15 @@ def build_model():
     e_R = 0.5 * vee(RtRd.T - RtRd)
     e_w = omega - RtRd @ Wd
     tau_d = - KR * e_R - KW * e_w + J@(hat(omega)@RtRd@Wd + RtRd@Wd_dot)
-    omega_dot = J_inv@(tau_d - ca.cross(omega, J@omega))
+    omega_dot = J_inv@(tau_d + d_hat - ca.cross(omega, J@omega))
 
     f_expl = ca.vertcat(theta_dot, omega_dot)
     model.f_expl_expr = f_expl
     model.f_impl_expr = x_dot - f_expl
 
     # ---------- Propeller thrust expression ----------
-    pc = center_body_com * inv_m_tot
-    A = ca.vertcat(ca.horzcat( l+pc[1],  l+pc[1], -l+pc[1], -l+pc[1]),
-                   ca.horzcat( l-pc[0], -l-pc[0], -l-pc[0],  l-pc[0]),
+    A = ca.vertcat(ca.horzcat(    l,     l,    -l,    -l),
+                   ca.horzcat(    l,    -l,    -l,     l),
                    ca.horzcat(-zeta,  zeta, -zeta,  zeta),
                    ca.horzcat( -1.0,  -1.0,  -1.0,  -1.0))
 

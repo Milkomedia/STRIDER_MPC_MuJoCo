@@ -1,8 +1,8 @@
 import numpy as np
 
 # MPC horizon
-N  = 150     # number of steps
-DT = 1.0 / 100  # [s] (of each step)
+N  = 75     # number of steps
+DT = 1.0 / 400.0  # [s] (of each step)
 
 # ---------- model parameters ----------
 J_TENSOR = np.array([
@@ -12,8 +12,8 @@ J_TENSOR = np.array([
 ], dtype=np.float64)
 
 # GAC controller gain
-KR = np.array([110., 110., 5.5])
-KW = np.array([12.0, 12.0, 2.5])
+KR = np.array([120., 120., 5.5])
+KW = np.array([15.0, 15.0, 2.5])
 
 # control allocation
 # real model uses thrust-based yaw (sequential allocation). but mpc model uses reaction-based yaw.
@@ -23,12 +23,11 @@ ZETA = 10.0
 # IK & CoM estimate
 M_LINK   = np.array([0.374106, 0.13658, 0.0415148, 0.102003, 0.3734]) # each link mass [kg]
 M_CENTER = 2.6845345                                                  # center body + load mass [kg]
-MAX_COM_BIAS_OF_LOAD = 0.1875                                         # load-link length * load wieght [kg*m]
 
 # ---------- use_arm & use_full parameters ----------
 # CoT actuator time constant
-TAU_BASE = 0.25 / 10.0
-TAU_ARM  = 0.15 / 10.0
+TAU_BASE = 0.03
+TAU_ARM  = 0.05
 
 R_OFF_X = np.array([ 0.12, -0.12, -0.12,  0.12])/np.sqrt(2)
 R_OFF_Y = np.array([-0.12, -0.12,  0.12,  0.12])/np.sqrt(2)
