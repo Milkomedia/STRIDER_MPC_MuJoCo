@@ -20,7 +20,7 @@ class GyroEKF {
     Q_.diagonal() << 5e-6, 5e-6, 1e-5, 2e-3, 2e-3, 2e-2;
 
     R_.setIdentity(); // Measurement Noise
-    R_.diagonal() << 5e-4, 5e-4, 2e-3, 4e-2, 4e-2, 1e-2;
+    R_.diagonal() << 5e-4, 5e-4, 2e-3, 0.1, 0.1, 0.5;
 
     J_ << param::J[0], param::J[1], param::J[2], 
           param::J[3], param::J[4], param::J[5], 

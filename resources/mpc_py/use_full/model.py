@@ -239,17 +239,14 @@ def build_ocp():
     ocp.parameter_values = np.zeros((model.p.size()[0],))
     ocp.constraints.x0 = np.zeros(model.x.size()[0])
 
-    idx_delta_theta_cmd = np.array([0, 1, 2], dtype=np.int64)
     idx_rho_cmd     = np.array([3, 5, 7, 9], dtype=np.int64)
     idx_alpha_cmd   = np.array([4, 6, 8, 10], dtype=np.int64)
-    ocp.constraints.idxbu = np.concatenate([idx_delta_theta_cmd, idx_rho_cmd, idx_alpha_cmd])
+    ocp.constraints.idxbu = np.concatenate([idx_rho_cmd, idx_alpha_cmd])
 
-    ocp.constraints.lbu = np.concatenate([c.DTHETA_MIN,
-                                          np.full(4, p.RHO_MIN,     dtype=np.float64),
+    ocp.constraints.lbu = np.concatenate([np.full(4, p.RHO_MIN,     dtype=np.float64),
                                           np.array(p.ALPHA_MIN,     dtype=np.float64)])
 
-    ocp.constraints.ubu = np.concatenate([c.DTHETA_MAX,
-                                          np.full(4, p.RHO_MAX,     dtype=np.float64),
+    ocp.constraints.ubu = np.concatenate([np.full(4, p.RHO_MAX,     dtype=np.float64),
                                           np.array(p.ALPHA_MAX,     dtype=np.float64)])
     ocp.dims.nbu = ocp.constraints.idxbu.size
     ocp.dims.nbu = ocp.constraints.idxbu.size
