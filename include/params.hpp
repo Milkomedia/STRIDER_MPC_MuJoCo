@@ -126,7 +126,7 @@ inline constexpr float RGBA_PATH[4]  = {0.20f, 0.80f, 0.90f, 0.60f}; // current 
 inline constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired path color
 
 // ===== state noise input (sim->real validation) =====
-inline constexpr bool NOISE_ON = false;
+inline constexpr bool NOISE_ON = true;
 inline constexpr std::uint64_t NOISE_SEED = 42;
 
 inline constexpr double POS_NOISE_SIGMA   = 0.0000; // white noise std,  [m]
