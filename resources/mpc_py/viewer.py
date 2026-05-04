@@ -41,7 +41,7 @@ ViewerFrame = Dict[str, np.ndarray]
 
 FULL_NX = 14
 FULL_NU = 11
-FULL_NP = 29
+FULL_NP = 28
 
 
 def _gain3(x: Any) -> np.ndarray:
@@ -143,7 +143,7 @@ def _polar_state_to_cartesian(r_pol: np.ndarray) -> np.ndarray:
   return r_xy
 
 
-def _compute_pc_exact(r_pol: np.ndarray, load_angle: float) -> np.ndarray:
+def _compute_pc_exact(r_pol: np.ndarray) -> np.ndarray:
   """
   Reconstruct pc with the same formula used in use_full/model.py.
   No clipping is applied to D_a so that the behavior matches the model.
@@ -164,11 +164,6 @@ def _compute_pc_exact(r_pol: np.ndarray, load_angle: float) -> np.ndarray:
   d2 = float(p.D_LINK[1])
   d3 = float(p.D_LINK[2])
   rz = float(p.R_Z)
-
-  center_body_com = np.array([
-    float(p.MAX_COM_BIAS_OF_LOAD) * np.cos(float(load_angle)),
-    0.0,
-  ], dtype=np.float64)
 
   pc = np.zeros(2, dtype=np.float64)
 
@@ -195,7 +190,7 @@ def _compute_pc_exact(r_pol: np.ndarray, load_angle: float) -> np.ndarray:
         m_link_sum * (r_off_y[a] + rho_c_a * np.sin(alpha)),
       ], dtype=np.float64)
 
-  pc = (pc + center_body_com) / m_tot
+  pc = pc / m_tot
   return pc
 
 
@@ -269,7 +264,7 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
 
     p = [
       R_raw(0:9), W_raw(9:12), Wdot_raw(12:15),
-      R_0(15:24), f_0(24), load_angle(25)
+      R_0(15:24), f_0(24), d_hat(25:28)
     ]
   """
   N = int(pkt.N)
@@ -291,6 +286,7 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
   KR = _gain3(p.KR)
   KW = _gain3(p.KW)
   zeta = float(p.ZETA)
+  J = np.asarray(p.J_TENSOR, dtype=np.float64).reshape(3, 3)
 
   steps = np.arange(N, dtype=np.float64)
 
@@ -337,13 +333,14 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     Wdot_raw = pk[12:15]  # kept for completeness
     R_0 = pk[15:24].reshape(3, 3, order="F")
     f_0 = float(pk[24])
-    load_angle = float(pk[25])
-
-    _ = Wdot_raw  # keep exact p-unpack symmetry with model
+    
+    d_hat = pk[25:28]
+    _ = d_hat  # d_hat affects omega_dot in the model, not F_expr reconstruction
 
     R = _euler_zyx_to_R_np(theta)
     Rd = R_raw @ _expm_hat_np(delta_theta_cmd)
     Wd = _expm_hat_np(-delta_theta_cmd) @ W_raw
+    Wd_dot = _expm_hat_np(-delta_theta_cmd) @ Wdot_raw
 
     raw_euler = _R_to_euler_zyx_np(R_raw)
     des_euler = _R_to_euler_zyx_np(Rd)
@@ -351,13 +348,13 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     RtRd = R.T @ Rd
     e_R = 0.5 * _vee_np(RtRd.T - RtRd)
     e_w = omega - RtRd @ Wd
-    tau_d = -(KR * e_R) - (KW * e_w)
+    tau_d = -(KR * e_R) - (KW * e_w) + J @ (_hat_np(omega) @ RtRd @ Wd + RtRd @ Wd_dot)
 
     r_xy = _polar_state_to_cartesian(r_pol)
     r_cmd_xy = _polar_state_to_cartesian(r_pol_cmd)
     r_cmd_mean_xy = np.mean(r_cmd_xy, axis=0)
 
-    pc_xy = _compute_pc_exact(r_pol, load_angle)
+    pc_xy = _compute_pc_exact(r_pol)
 
     b_F0 = np.array([0.0, 0.0, -f_0], dtype=np.float64)
     g_F0 = R_0 @ b_F0

@@ -29,7 +29,6 @@ struct State {
   Eigen::Vector3d omega = Eigen::Vector3d::Zero();     // current angular velocity [rad/s]
   Eigen::Vector3d alpha = Eigen::Vector3d::Zero();     // current angular acceleration [rad/s^2] (not used, just logging)
   Eigen::Vector3d d_hat = Eigen::Vector3d::Zero();     // estimated torque disturbance [N.m]
-  Eigen::Vector3d r_cot = Eigen::Vector3d::Zero();     // current b_p_Cot position [m]
   Eigen::Vector3d r1  = Eigen::Vector3d::Zero();       // current rotor1 position [m]
   Eigen::Vector3d r2  = Eigen::Vector3d::Zero();       // current rotor2 position [m]
   Eigen::Vector3d r3  = Eigen::Vector3d::Zero();       // current rotor3 position [m]
@@ -407,11 +406,10 @@ static inline Eigen::Matrix4d compute_DH(double a, double alpha, double d, doubl
     return T;
   }
 
-static inline void FK(const double q[20], const double& load_angle, Eigen::Vector3d& bpcot, Eigen::Vector3d& bpc, Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
+static inline void FK(const double q[20], Eigen::Vector3d& bpc, Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
   std::array<Eigen::Vector3d*, 4> bparm = {&r1, &r2, &r3, &r4};
   Eigen::Vector3d mass_weighted_sum = Eigen::Vector3d::Zero();
   bpc = Eigen::Vector3d::Zero();
-  bpcot = Eigen::Vector3d::Zero();
 
   for (uint8_t i = 0; i < 4; ++i) {
     Eigen::Matrix4d T_i = Eigen::Matrix4d::Identity();
@@ -422,9 +420,7 @@ static inline void FK(const double q[20], const double& load_angle, Eigen::Vecto
       mass_weighted_sum += param::LINK_MASS[j] * (T_i.block<3,1>(0,3) + param::LINK_COM_DIST[j] * T_i.block<3,1>(0,0));
     }
     *(bparm[i]) = T_i.block<3,1>(0,3);
-    bpcot += *(bparm[i]);
   }
-  bpcot *= 0.25;
   bpc = mass_weighted_sum / param::TOTAL_MASS;
 }
 
@@ -794,16 +790,16 @@ static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& 
   else {F1234 = (A_d.transpose()*A_d + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A_d.transpose()*Wrench);}
 }
 
-static inline Eigen::Vector3d Forward_Allocate(const Eigen::Vector4d& F1234, const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& Pcot) {
+static inline Eigen::Vector3d Forward_Allocate(const Eigen::Vector4d& F1234, const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& cot) {
   Eigen::Matrix<double, 3, 4> A;
-  A(0,0) = -r1(1) + Pcot(1);
-  A(0,1) = -r2(1) + Pcot(1);
-  A(0,2) = -r3(1) + Pcot(1);
-  A(0,3) = -r4(1) + Pcot(1);
-  A(1,0) =  r1(0) - Pcot(0);
-  A(1,1) =  r2(0) - Pcot(0);
-  A(1,2) =  r3(0) - Pcot(0);
-  A(1,3) =  r4(0) - Pcot(0);
+  A(0,0) = -r1(1) + cot(1);
+  A(0,1) = -r2(1) + cot(1);
+  A(0,2) = -r3(1) + cot(1);
+  A(0,3) = -r4(1) + cot(1);
+  A(1,0) =  r1(0) - cot(0);
+  A(1,1) =  r2(0) - cot(0);
+  A(1,2) =  r3(0) - cot(0);
+  A(1,3) =  r4(0) - cot(0);
   A(2,0) = -param::PWM_ZETA;
   A(2,1) =  param::PWM_ZETA;
   A(2,2) = -param::PWM_ZETA;

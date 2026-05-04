@@ -48,7 +48,7 @@ inline constexpr double J[9] = {0.27, 0.00, 0.00,
 inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
 
-inline constexpr double VIRTUAL_MARGIN    = 3.0; // thrust margin of each thruster [N]
+inline constexpr double VIRTUAL_MARGIN    = 2.3; // thrust margin of each thruster [N]
 inline constexpr double SATURATION_THRUST = M * G / 4.0 + VIRTUAL_MARGIN;
 
 // Allocation parameters
@@ -67,7 +67,7 @@ inline constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 // ===== Workspace constraint =====
 inline constexpr double MAX_STRETCH       = 0.2925; // Maximum distance arm can extend from the base [m]
 inline constexpr double MIN_STRETCH       = 0.1506; // Minimum distance arm can extend from the base [m]
-inline constexpr double ROTOR_DIAMETER    = 0.44;   // propeller diameter [m]
+inline constexpr double ROTOR_DIAMETER    = 0.4;   // propeller diameter [m]
 
 inline constexpr double STRETCH_FAIL_MARGIN    = 0.2; // [m]
 inline constexpr double COLLISION_FAIL_MARGIN  = 0.2; // [m]
@@ -106,7 +106,7 @@ inline const     double DTHETA_LPF_ALPHA  = std::exp(-CTRL_DT * 2.0 * M_PI * DTH
 inline const     double DTHETA_LPF_BETA   = 1.0 - DTHETA_LPF_ALPHA;                              // not a tunable parameter
 
 inline constexpr double      MPC_STEP_DT = 1.0 / 400.0; // This value must be same as >> DT << on params.py
-inline constexpr std::size_t N_STEPS_REQ = 50; // This value must be less than >> N << on params.py
+inline constexpr std::size_t N_STEPS_REQ = 8; // This value must be less than >> N << on params.py
 inline constexpr std::size_t MPC_NX      = 14; // This value must be same as >> self.use_full_nx << on solver.py
 inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.use_full_nu << on solver.py
 inline constexpr std::size_t MPC_NP      = 28; // This value must be same as >> self.use_full_np << on solver.py
@@ -114,7 +114,6 @@ inline constexpr std::chrono::steady_clock::duration MPC_TIMEOUT_DURATUION = std
 
 // ===== MuJoCo added mass parameters =====
 static constexpr mjtNum BONG_TIP_LOAD_MASS = 0.4;
-static constexpr mjtNum BONG_TIP_LOAD_RADIUS = 0.03;
 static constexpr mjtNum BONG_TIP_LOAD_INERTIA = 1.44 * 1e-4;
 
 // ===== MuJoCo viewer parameters =====
@@ -127,7 +126,7 @@ inline constexpr float RGBA_PATH[4]  = {0.20f, 0.80f, 0.90f, 0.60f}; // current 
 inline constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired path color
 
 // ===== state noise input (sim->real validation) =====
-inline constexpr bool NOISE_ON = true;
+inline constexpr bool NOISE_ON = false;
 inline constexpr std::uint64_t NOISE_SEED = 42;
 
 inline constexpr double POS_NOISE_SIGMA   = 0.0000; // white noise std,  [m]

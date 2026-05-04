@@ -358,7 +358,7 @@ int main() {
         l_mpc_output.u_stage.setZero();
       }
 
-      FK(delayed_s.arm_q, servo_load_angle, s.r_cot, s.r_com, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position & com position
+      FK(delayed_s.arm_q, s.r_com, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position & com position
       { // MPC send
         if (phase != Phase::GAC_ONLY) {
           Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;
@@ -417,6 +417,8 @@ int main() {
       const Eigen::Vector3d Wd = Et * omega_raw;
       const Eigen::Vector3d Wd_dot = Et * alpha_raw;
       const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, Wd, Wd_dot);
+
+      // --- torque estimated ---
       prev_tau = tau_des + s.d_hat;
       if (auto_phase_started && elapsed_double >= 15.05) {s.d_hat = dob_update(euler_rpy, tau_des, dob_state);}
 
@@ -439,10 +441,18 @@ int main() {
       smoothed_cmd_r4(0) = param::ARM_DELAY_ALPHA*smoothed_cmd_r4(0) + param::ARM_DELAY_BETA*cmd.r4(0); smoothed_cmd_r4(1) = param::BASE_DELAY_ALPHA*smoothed_cmd_r4(1) + param::BASE_DELAY_BETA*cmd.r4(1);
       IK(smoothed_cmd_r1, smoothed_cmd_r2, smoothed_cmd_r3, smoothed_cmd_r4, tilt_ang_des, q_d);
 
+      // --- virtual thrust clipping (tightening starts at 10s, finishes at 15s)---
+      double thrust_sat = 1e12;
+      Eigen::Vector4d thrust_clamped = Eigen::Vector4d::Zero(); // (f_1234 > 0)
+      if (elapsed_double >= 15.0)      {thrust_sat = param::SATURATION_THRUST;}
+      else if (elapsed_double >= 10.0) {thrust_sat = param::SATURATION_THRUST + (1.0 - 0.2*param::CTRL_DT) * 5.0;}
+      else                             {thrust_sat = param::SATURATION_THRUST + 5.0;}
+      for (uint8_t i=0; i<4; ++i) {thrust_clamped(i) = (thrust_des(i) > thrust_sat) ? thrust_sat : thrust_des(i);}
+      
       // --- thrust to pwm ---
       Eigen::Vector4d pwm;
       for (int i = 0; i < 4; ++i) {
-        pwm(i) = std::sqrt(std::max(0.0, (thrust_des(i) - param::PWM_B) / param::PWM_A));
+        pwm(i) = std::sqrt(std::max(0.0, (thrust_clamped(i) - param::PWM_B) / param::PWM_A));
         pwm(i) = std::clamp(pwm(i), 0.0, 1.0);
       }
 
@@ -455,13 +465,6 @@ int main() {
       // --- thruster force&torque smoothing [25ms-timeconstant] ---
       smoothed_F   = 0.9 * smoothed_F   + 0.1 * F;
       smoothed_Tau = 0.9 * smoothed_Tau + 0.1 * Tau;
-
-      // --- virtual thrust clipping (tightening starts at 10s, finishes at 15s)---
-      double thrust_sat = 1e12;
-      if (elapsed_double >= 15.0)      {thrust_sat = param::SATURATION_THRUST;}
-      else if (elapsed_double >= 10.0) {thrust_sat = param::SATURATION_THRUST + (1.0 - 0.2*param::CTRL_DT) * 5.0;}
-      else                             {thrust_sat = param::SATURATION_THRUST + 5.0;}
-      for (uint8_t i=0; i<4; ++i) {smoothed_F(i) = (smoothed_F(i) > thrust_sat) ? thrust_sat : smoothed_F(i);}
 
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;
@@ -571,31 +574,33 @@ int main() {
         ld.f_thrst_con[3] = static_cast<float>(smoothed_F(3));
 
         {
-          const Eigen::Vector2d tau_off(f_sum*(s.r_cot(1)-s.r_com(1)), -f_sum*(s.r_cot(0)-s.r_com(0)));
+          const Eigen::Vector3d s_cot = (s.r1 + s.r2 + s.r3 + s.r4) / 4.0;
+          const Eigen::Vector3d s_d = s_cot - s.r_com;
+          const double saturated_f_total = smoothed_F.sum();
+          
+          const Eigen::Vector2d tau_off(-saturated_f_total*s_d(1), saturated_f_total*s_d(0));
           ld.tau_off[0] = static_cast<float>(tau_off(0));
           ld.tau_off[1] = static_cast<float>(tau_off(1));
-        }
-        {
-          const Eigen::Vector3d tau_thrust = Forward_Allocate(smoothed_F, s.r1, s.r2, s.r3, s.r4, s.r_cot);
+          
+          const Eigen::Vector3d tau_thrust = Forward_Allocate(smoothed_F, s.r1, s.r2, s.r3, s.r4, s_cot);
           ld.tau_thrust[0] = static_cast<float>(tau_thrust(0));
           ld.tau_thrust[1] = static_cast<float>(tau_thrust(1));
           ld.tau_thrust[2] = static_cast<float>(tau_thrust(2));
-        }
 
-        ld.r_rotor1[0] = static_cast<float>(s.r1(0));
-        ld.r_rotor1[1] = static_cast<float>(s.r1(1));
-        ld.r_rotor2[0] = static_cast<float>(s.r2(0));
-        ld.r_rotor2[1] = static_cast<float>(s.r2(1));
-        ld.r_rotor3[0] = static_cast<float>(s.r3(0));
-        ld.r_rotor3[1] = static_cast<float>(s.r3(1));
-        ld.r_rotor4[0] = static_cast<float>(s.r4(0));
-        ld.r_rotor4[1] = static_cast<float>(s.r4(1));
-        ld.r_cot[0] = static_cast<float>(s.r_cot(0));
-        ld.r_cot[1] = static_cast<float>(s.r_cot(1));
-
-        {
+          ld.r_rotor1[0] = static_cast<float>(s.r1(0));
+          ld.r_rotor1[1] = static_cast<float>(s.r1(1));
+          ld.r_rotor2[0] = static_cast<float>(s.r2(0));
+          ld.r_rotor2[1] = static_cast<float>(s.r2(1));
+          ld.r_rotor3[0] = static_cast<float>(s.r3(0));
+          ld.r_rotor3[1] = static_cast<float>(s.r3(1));
+          ld.r_rotor4[0] = static_cast<float>(s.r4(0));
+          ld.r_rotor4[1] = static_cast<float>(s.r4(1));
+          ld.r_cot[0] = static_cast<float>(s_cot(0));
+          ld.r_cot[1] = static_cast<float>(s_cot(1));
+          
           Eigen::Vector2d r1_d_xy, r2_d_xy, r3_d_xy, r4_d_xy;
           polar2cart(cmd.r1, cmd.r2, cmd.r3, cmd.r4, r1_d_xy, r2_d_xy, r3_d_xy, r4_d_xy);
+          const Eigen::Vector2d cot_cmd = (r1_d_xy + r2_d_xy + r3_d_xy + r4_d_xy) / 4.0;
 
           ld.r_rotor1_d[0] = static_cast<float>(r1_d_xy(0));
           ld.r_rotor1_d[1] = static_cast<float>(r1_d_xy(1));
@@ -606,9 +611,8 @@ int main() {
           ld.r_rotor4_d[0] = static_cast<float>(r4_d_xy(0));
           ld.r_rotor4_d[1] = static_cast<float>(r4_d_xy(1));
 
-          const Eigen::Vector2d r_cot_d = (r1_d_xy + r2_d_xy + r3_d_xy + r4_d_xy) / 4.0;
-          ld.r_cot_d[0] = static_cast<float>(r_cot_d(0));
-          ld.r_cot_d[1] = static_cast<float>(r_cot_d(1));
+          ld.r_cot_d[0] = static_cast<float>(cot_cmd(0));
+          ld.r_cot_d[1] = static_cast<float>(cot_cmd(1));
         }
 
         for (uint8_t i=0; i<20; ++i){ld.q[i]     = static_cast<float>(s.arm_q[i]);}
