@@ -818,7 +818,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
     self._phase_bars_t3: Dict[int, pg.BarGraphItem] = {}
 
     # Compact display order (keeps y-range small)
-    self._phase_order = [0, 1, 2, 3, 4, 5, 6, 7, 99]
+    self._phase_order = [0, 1, 2, 3, 4, 5, 6, 7, 8, 99]
     # code -> (name, description)
     self._phase_info = {
       0: ("READY",      "program started"),
@@ -829,6 +829,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
       5: ("USE_DTHETA", "flight with delta-theta filtering"),
       6: ("USE_ARM",    "flight with arm-moving"),
       7: ("USE_FULL",   "flight with arm-moving and delta-theta filtering"),
+      8: ("GRADIENT_ASCENT", "flight with gradient-ascent based arm morphing"),
       99: ("KILLED",    "killed"),
     }
     # code -> RGBA (distinct colors)
@@ -841,6 +842,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
       5:  (255, 0, 0, 220),      # red
       6:  (160, 0, 255, 220),    # purple
       7:  (0, 200, 200, 220),    # cyan
+      8:  (255, 105, 180, 220),  # pink
       99: (0, 0, 0, 220),        # black
     }
     # LUT: uint8 phase -> compact idx (or -1)

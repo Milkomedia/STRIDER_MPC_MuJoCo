@@ -18,6 +18,7 @@ enum class Phase : uint8_t {
   USE_DTHETA     = 5,  // flight with delta-theta filtering
   USE_ARM        = 6,  // flight with arm-moving
   USE_FULL       = 7,  // flight with arm-moving and delta-theta filtering
+  GRADIENT_ASCENT= 8,  // flight with gradient-ascent based arm morphing
   KILLED         = 99, // killed; (It's not used as a trigger, just a state representation)
 };
 

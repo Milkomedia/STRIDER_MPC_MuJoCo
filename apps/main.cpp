@@ -4,6 +4,7 @@
 #include "fdcl_control.hpp"
 #include "utils.hpp"
 #include "gyro_ekf.hpp"
+#include "gradient_ascent.hpp"
 
 #include <thread>
 #include <condition_variable>
@@ -176,7 +177,7 @@ int main() {
 
     // --- auto-phase start ---
     bool auto_phase_started = false;
-    constexpr Phase AUTO_PHASE = Phase::USE_FULL; // choose GAC_ONLY or USE_ARM or USE_DTHETA or USE_FULL
+    constexpr Phase AUTO_PHASE = Phase::GRADIENT_ASCENT; // choose GAC_ONLY or USE_ARM or USE_DTHETA or USE_FULL or GRADIENT_ASCENT
 
     // --- MRG parameters ---
     uint32_t mpc_key = 1;
@@ -184,6 +185,10 @@ int main() {
     l_mpc_output.x_stage.setZero();
     l_mpc_output.u_stage.setZero();
     l_mpc_output.t = std::chrono::steady_clock::time_point::max();
+
+    // --- Gradient Ascent parameters ---
+    GRADIENT_ASCENT gradient_ascent;
+    gradient_ascent.reset(param::r1_init, param::r2_init, param::r3_init, param::r4_init);
 
     // --- noise injection ---
     static NOISE::nState noise_state;
@@ -319,7 +324,7 @@ int main() {
       }
 
       bool mpc_applied = false;
-      if (phase != Phase::GAC_ONLY) { // MPC unpack
+      if (phase == Phase::USE_DTHETA || phase == Phase::USE_ARM || phase == Phase::USE_FULL) { // MPC unpack
         const bool epoch_ok = (l_mpc_output.epoch == g_mpc_epoch.load(std::memory_order_relaxed));
         const bool time_ok = ((now - l_mpc_output.t) < param::MPC_TIMEOUT_DURATUION);
         const bool solve_ok = (l_mpc_output.state == 0);
@@ -360,7 +365,7 @@ int main() {
 
       FK(delayed_s.arm_q, s.r_com, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position & com position
       { // MPC send
-        if (phase != Phase::GAC_ONLY) {
+        if (phase == Phase::USE_DTHETA || phase == Phase::USE_ARM || phase == Phase::USE_FULL) {
           Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;
           Eigen::Vector2d c_p1, c_p2, c_p3, c_p4;
           cart2polar(s.r1, s.r2, s.r3, s.r4, s_p1, s_p2, s_p3, s_p4);
@@ -426,6 +431,7 @@ int main() {
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
       Sequential_Allocation(f_sum, tau_des, cmd.tauz_bar, delayed_s.arm_q, s.r_com, thrust_des, tilt_ang_des);
+      if (phase == Phase::GRADIENT_ASCENT) {gradient_ascent.arm_cmd(cmd.r1, cmd.r2, cmd.r3, cmd.r4, s.r1, s.r2, s.r3, s.r4, tilt_ang_des, thrust_des);}
 
       // // --- (Normal) Control Allocation ---
       // Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)

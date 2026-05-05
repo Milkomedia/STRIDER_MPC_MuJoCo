@@ -116,6 +116,15 @@ inline constexpr std::chrono::steady_clock::duration MPC_TIMEOUT_DURATUION = std
 static constexpr mjtNum BONG_TIP_LOAD_MASS = 0.4;
 static constexpr mjtNum BONG_TIP_LOAD_INERTIA = 1.44 * 1e-4;
 
+// ===== gradient descent parameters =====
+inline constexpr double ARM_OPT_BETA1    = 2e-2;                   // η ascent rate
+inline constexpr double ARM_OPT_BETA2    = 5e-4;                   // C ascent rate
+inline constexpr double ARM_OPT_EPS      = 1e-4;                   // finite difference step
+
+inline constexpr double POWER_GAMMA      = 1.0;                    // loss factor
+inline constexpr double AIR_DENSITY      = 1.225;                  // kg/m³ 
+inline constexpr double PROP_DISK_AREA   = M_PI * 0.1524 * 0.1524; // 12-inch prop radius = 0.1524m 
+
 // ===== MuJoCo viewer parameters =====
 inline constexpr double PATH_SEC = 10.0;   // history length [sec]
 inline constexpr float SIZE_DOT  = 0.03f;  // size(radious) of dot
