@@ -340,8 +340,8 @@ _M2MM    = np.float32(1000.0)
 # -----------------------------
 # Must match C++ mmap_manager.hpp
 # -----------------------------
-MAGIC = b"STRLOG2\x00"
-VERSION = 2
+MAGIC = b"STRLOG3\x00"
+VERSION = 3
 
 # LogData offsets (packed, little-endian) float32 = 4 bytes, int32 = 4 bytes, uint8 = 1 byte
 OFF_T          = 0    # float t
@@ -380,11 +380,13 @@ OFF_R_ROTOR4_D = 336  # float r_rotor4_d[2]
 OFF_R_COT_D    = 344  # float r_cot_d[2]
 OFF_Q          = 352  # float q[20]
 OFF_Q_CMD      = 432  # float q_cmd[20]
-OFF_SOLVE_MS   = 512  # float solve_ms
-OFF_SOLVE_STATUS = 516 # int32 solve_status
-OFF_PHASE      = 520  # uint8 phase
+OFF_D_HAT      = 512  # float d_hat[3]
+OFF_PC_HAT     = 524  # float pc_hat[3]
+OFF_SOLVE_MS   = 536  # float solve_ms
+OFF_SOLVE_STATUS = 540 # int32 solve_status
+OFF_PHASE      = 544  # uint8 phase
 
-LOGDATA_SIZE = 521  # sizeof(LogData) with #pragma pack(1)
+LOGDATA_SIZE = 545  # sizeof(LogData) with #pragma pack(1)
 HEADER_SIZE = 64
 _SLOT_PAD = (8 - (LOGDATA_SIZE % 8)) % 8
 SLOT_SIZE = 8 + LOGDATA_SIZE + _SLOT_PAD  # seq(u64)=8 + LogData + pad -> multiple of 8
@@ -531,6 +533,9 @@ class MMapReader:
       out_ch["q"][i, :]     = np.frombuffer(dbuf, dtype="<f4", count=20, offset=OFF_Q)
       out_ch["q_cmd"][i, :] = np.frombuffer(dbuf, dtype="<f4", count=20, offset=OFF_Q_CMD)
 
+      out_ch["d_hat"][i, :]  = _S_FFF.unpack_from(dbuf, OFF_D_HAT)
+      out_ch["pc_hat"][i, :] = _S_FFF.unpack_from(dbuf, OFF_PC_HAT)
+
       out_ch["solve_ms"][i] = _S_F32.unpack_from(dbuf, OFF_SOLVE_MS)[0]
       out_ch["solve_status"][i] = _S_I32.unpack_from(dbuf, OFF_SOLVE_STATUS)[0]
       
@@ -605,6 +610,8 @@ class MMapReader:
       "r_rotor4_d": np.empty((n, 2), dtype=np.float32),
       "q": np.empty((n, 20), dtype=np.float32),
       "q_cmd": np.empty((n, 20), dtype=np.float32),
+      "d_hat": np.empty((n, 3), dtype=np.float32),
+      "pc_hat": np.empty((n, 3), dtype=np.float32),
       "solve_ms": np.empty((n,), dtype=np.float32),
       "solve_status": np.empty((n,), dtype=np.int32),
       "phase": np.empty((n,), dtype=np.uint8),
@@ -1214,6 +1221,9 @@ class LoggerWindow(QtWidgets.QMainWindow):
     pen_rx_act = _mk_pen("solid", width=2, color="r")
     pen_ry_cmd = _mk_pen("dash",  width=2, color="b")
     pen_ry_act = _mk_pen("solid", width=2, color="b")
+    pen_x = _mk_pen("solid", width=2, color="r")
+    pen_y = _mk_pen("solid", width=2, color="g")
+    pen_z = _mk_pen("solid", width=2, color="b")
 
     # Helper: create plot and link X to master
     def _mk_plot(glw: pg.GraphicsLayoutWidget, row: int, col: int, title: str, add_legend: bool = True, y_range: Optional[Tuple[float, float]] = None) -> pg.PlotItem:
@@ -1308,7 +1318,6 @@ class LoggerWindow(QtWidgets.QMainWindow):
     # ========== 1-Row 5: phase / solve_ms / solve_status ==========
     p5c1 = _mk_plot(self.glw1, 4, 0, "phase", add_legend=False, y_range=(-0.5, float(len(self._phase_order) - 0.5)))
     self._phase_plot_t1 = p5c1
-    self._phase_plot_t1.setLabel("left", "phase")
     self._phase_plot_t1.getAxis("left").setTicks([[(i, str(int(code))) for i, code in enumerate(self._phase_order)]])
     p5c2 = _mk_plot(self.glw1, 4, 1, "solve_ms [ms]", y_range=(0., 40.))
     p5c3 = _mk_plot(self.glw1, 4, 2, "solve_status", add_legend=True)
@@ -1317,7 +1326,6 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
     # Status plot: fixed y ticks + legend only
     self._status_plot = p5c3
-    self._status_plot.setLabel("left", "status")
     self._status_plot.setYRange(-1.1, 4.5, padding=0.05)
     self._status_plot.getAxis("left").setTicks([[(i, str(i)) for i in range(5)]])
 
@@ -1410,9 +1418,14 @@ class LoggerWindow(QtWidgets.QMainWindow):
     # Middle cell (row=4,col=1): phase timeline plot (colored bars, no legend)
     p2_phase = _mk_plot(self.glw2, 4, 1, "phase", add_legend=False, y_range=(-0.5, float(len(self._phase_order) - 0.5)))
     self._phase_plot = p2_phase
-    self._phase_plot.setLabel("left", "phase")
     # y ticks show the original phase codes (compact indices on y)
     self._phase_plot.getAxis("left").setTicks([[(i, str(int(code))) for i, code in enumerate(self._phase_order)]])
+
+    # Right cell (row=4,col=2): estimated disturbance torque
+    p2_dhat = _mk_plot(self.glw2, 4, 2, "d_hat [N.m]", add_legend=True, y_range=(-2.5, 1.0))
+    self._curves["t2_d_hat_x"] = p2_dhat.plot(pen=pen_x, name="x")
+    self._curves["t2_d_hat_y"] = p2_dhat.plot(pen=pen_y, name="y")
+    self._curves["t2_d_hat_z"] = p2_dhat.plot(pen=pen_z, name="z")
 
     # ========== 3-Row 1 ==========
     p3r1c1 = _mk_plot(self.glw3, 0, 0, "roll [deg]", y_range=(-40., 40.))
@@ -1491,10 +1504,10 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
     for i in range(4): self._curves[f"t3_tilt{i+1}"] = p3r5c3.plot(pen=_mk_pen("solid", width=2, color=rotor_colors[i]), name=f"tilt{i+1}")
 
-    p3_phase = _mk_plot(self.glw3, 4, 1, "phase", add_legend=False, y_range=(-0.5, float(len(self._phase_order) - 0.5)))
-    self._phase_plot_t3 = p3_phase
-    self._phase_plot_t3.setLabel("left", "phase")
-    self._phase_plot_t3.getAxis("left").setTicks([[(i, str(int(code))) for i, code in enumerate(self._phase_order)]])
+    p3_pc_hat = _mk_plot(self.glw3, 4, 1, "pc_hat [mm]", add_legend=True, y_range=(-100.0, 100.0))
+    self._curves["t3_pc_hat_x"] = p3_pc_hat.plot(pen=pen_x, name="x")
+    self._curves["t3_pc_hat_y"] = p3_pc_hat.plot(pen=pen_y, name="y")
+    self._curves["t3_pc_hat_z"] = p3_pc_hat.plot(pen=pen_z, name="z")
 
     # ========== 4-Tab (arm) ==========
     joint_y_ranges = {
@@ -1529,9 +1542,6 @@ class LoggerWindow(QtWidgets.QMainWindow):
       # ---------------------------------------------------------
       pxy = self.glw4_rotor.addPlot(row=0, col=0, rowspan=2, colspan=1, title="rotor XY map [mm]")
       _style(pxy)
-      pxy.setLabel("bottom", "y [mm]")
-      pxy.setLabel("left", "x [mm]")
-      pxy.showLabel("bottom", True)
       pxy.enableAutoRange(axis="x", enable=False)
       pxy.enableAutoRange(axis="y", enable=False)
       pxy.setXRange(-400.0, 400.0, padding=0.0)
@@ -1793,6 +1803,11 @@ class LoggerWindow(QtWidgets.QMainWindow):
       tau_off    = ch["tau_off"][sl, :]
       tau_thrust = ch["tau_thrust"][sl, :]
 
+      d_hat = ch.get("d_hat", None)
+      pc_hat = ch.get("pc_hat", None)
+      if d_hat is not None: d_hat = d_hat[sl, :]
+      if pc_hat is not None: pc_hat = pc_hat[sl, :]
+
       f_thrst     = ch["f_thrst"][sl, :]
       f_thrst_con = ch["f_thrst_con"][sl, :]
       tilt_deg    = ch["tilt"][sl, :] * _RAD2DEG
@@ -1987,10 +2002,14 @@ class LoggerWindow(QtWidgets.QMainWindow):
       self._curves["t2_yaw_mrg"].setData(x,   rpy_d_deg[:, 2])
       self._curves["t2_yaw_act"].setData(x,   rpy_act_deg[:, 2])
 
-      # Phase timeline (tab2 + tab3). If phase is missing, clear bars and skip.
+      self._curves["t2_d_hat_x"].setData(x, d_hat[:, 0])
+      self._curves["t2_d_hat_y"].setData(x, d_hat[:, 1])
+      self._curves["t2_d_hat_z"].setData(x, d_hat[:, 2])
+
+      # Phase timeline (tab1 + tab2). If phase is missing, clear bars and skip.
       if phase_u8 is None:
         self._clear_phase_bars()
-      elif (x.size > 0) and (self._phase_plot is not None or self._phase_plot_t3 is not None or self._phase_plot_t1 is not None):
+      elif (x.size > 0) and (self._phase_plot is not None or self._phase_plot_t1 is not None):
         if x.size >= 2: # dt estimate for bar width
           dtp = float(x[1] - x[0])
           if not np.isfinite(dtp) or dtp <= 0.0: dtp = 0.01
@@ -2022,14 +2041,12 @@ class LoggerWindow(QtWidgets.QMainWindow):
           per_x[code].append(xc)
           per_w[code].append(w)
 
-        # Update bars in both plots (tab2 + tab3)
+        # Update bars in both plots (tab1 + tab2)
         targets = []
         if self._phase_plot_t1 is not None:
           targets.append((self._phase_plot_t1, self._phase_bars_t1))
         if self._phase_plot is not None:
           targets.append((self._phase_plot, self._phase_bars))
-        if self._phase_plot_t3 is not None:
-          targets.append((self._phase_plot_t3, self._phase_bars_t3))
 
         for plot, bars in targets:
           for ii, code in enumerate(self._phase_order):
@@ -2099,6 +2116,11 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
       self._curves["t3_f_des"].setData(x, f_des)
       self._curves["t3_f_tot"].setData(x, f_thrst_con.sum(axis=1), dtype=np.float32)
+
+      self._curves["t3_pc_hat_x"].setData(x, pc_hat[:, 0] * _M2MM)
+      self._curves["t3_pc_hat_y"].setData(x, pc_hat[:, 1] * _M2MM)
+      self._curves["t3_pc_hat_z"].setData(x, pc_hat[:, 2] * _M2MM)
+
       for i in range(4):
         k = f"t3_tilt{i+1}"
         if k in self._curves: self._curves[k].setData(x, tilt_deg[:, i])
@@ -2206,6 +2228,11 @@ class LoggerWindow(QtWidgets.QMainWindow):
       if rp.suffix.lower() == ".npz":
         data = np.load(str(rp), allow_pickle=False)
         t = data["t"].astype(np.float32)
+        n = int(t.size)
+
+        def _npz_or_nan(key: str, shape: Tuple[int, ...]) -> np.ndarray:
+          if key in data: return data[key].astype(np.float32)
+          return np.full(shape, np.nan, dtype=np.float32)
 
         ch = {
           "pos_d": data["pos_d"].astype(np.float32),
@@ -2244,6 +2271,8 @@ class LoggerWindow(QtWidgets.QMainWindow):
           "r_rotor4_d": data["r_rotor4_d"].astype(np.float32),
           "q": data["q"].astype(np.float32),
           "q_cmd": data["q_cmd"].astype(np.float32),
+          "d_hat": _npz_or_nan("d_hat", (n, 3)),
+          "pc_hat": _npz_or_nan("pc_hat", (n, 3)),
           "solve_ms": data["solve_ms"].astype(np.float32),
           "solve_status": data["solve_status"].astype(np.int32),
           "phase": data["phase"].astype(np.uint8),
@@ -2291,6 +2320,8 @@ class LoggerWindow(QtWidgets.QMainWindow):
         _bf("r_rotor4_d", (n, 2), np.float32, np.nan)
         _bf("q", (n, 20), np.float32, np.nan)
         _bf("q_cmd", (n, 20), np.float32, np.nan)
+        _bf("d_hat", (n, 3), np.float32, np.nan)
+        _bf("pc_hat", (n, 3), np.float32, np.nan)
 
         # Store full replay buffers for window slicing
         self._replay_full_t = t

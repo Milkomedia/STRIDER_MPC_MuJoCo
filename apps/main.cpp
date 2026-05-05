@@ -177,7 +177,7 @@ int main() {
 
     // --- auto-phase start ---
     bool auto_phase_started = false;
-    constexpr Phase AUTO_PHASE = Phase::GRADIENT_ASCENT; // choose GAC_ONLY or USE_ARM or USE_DTHETA or USE_FULL or GRADIENT_ASCENT
+    constexpr Phase AUTO_PHASE = Phase::USE_FULL; // choose GAC_ONLY or USE_ARM or USE_DTHETA or USE_FULL or GRADIENT_ASCENT
 
     // --- MRG parameters ---
     uint32_t mpc_key = 1;
@@ -623,6 +623,14 @@ int main() {
 
         for (uint8_t i=0; i<20; ++i){ld.q[i]     = static_cast<float>(s.arm_q[i]);}
         for (uint8_t i=0; i<20; ++i){ld.q_cmd[i] = static_cast<float>(q_d[i]);}
+
+        ld.d_hat[0] = static_cast<float>(s.d_hat(0));
+        ld.d_hat[1] = static_cast<float>(s.d_hat(1));
+        ld.d_hat[2] = static_cast<float>(s.d_hat(2));
+
+        ld.pc_hat[0] = static_cast<float>(s.r_com(0));
+        ld.pc_hat[1] = static_cast<float>(s.r_com(1));
+        ld.pc_hat[2] = static_cast<float>(s.r_com(2));
 
         ld.solve_ms = static_cast<float>(l_mpc_output.solve_ms);
         ld.solve_status = static_cast<int32_t>(l_mpc_output.state);

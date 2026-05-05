@@ -69,6 +69,9 @@ struct LogData {
   float q[20]          = {0.0f};   // current joint angle [rad]
   float q_cmd[20]      = {0.0f};   // joint angle command [rad]
 
+  float d_hat[3]       = {0.0f};   // estimated torque disturbance [N.m]
+  float pc_hat[3]      = {0.0f};   // estimated body to com position [m]
+
   float solve_ms       =  0.0f;  // acados solve time [ms]
   int32_t solve_status = -1;     // solver status (https://docs.acados.org/python_interface/index.html#acados_template.acados_ocp_options.AcadosOcpOptions.qp_solver)
   
@@ -77,7 +80,7 @@ struct LogData {
 #pragma pack(pop)
 
 // Packed size must match Python reader LOGDATA_SIZE.
-static_assert(sizeof(LogData) == 521, "LogData size changed. Update Python reader offsets/sizes.");
+static_assert(sizeof(LogData) == 545, "LogData size changed. Update Python reader offsets/sizes.");
 
 // -----------------------------
 // MMap header + ring buffer slot
@@ -85,8 +88,8 @@ static_assert(sizeof(LogData) == 521, "LogData size changed. Update Python reade
 // -----------------------------
 #pragma pack(push, 1)
 struct MMapHeader {
-  char     magic[8];      // "STRLOG2\0"
-  uint32_t version;       // 2
+  char     magic[8];      // "STRLOG3\0"
+  uint32_t version;       // 3
   uint32_t header_size;   // sizeof(MMapHeader)
   uint32_t capacity;      // number of slots
   uint32_t slot_size;     // sizeof(Slot)
@@ -165,9 +168,9 @@ public:
     if (reset_) {
       std::memset(base_, 0, map_size_);
 
-      const char kMagic[8] = {'S','T','R','L','O','G','2','\0'};
+      const char kMagic[8] = {'S','T','R','L','O','G','3','\0'};
       std::memcpy(header_->magic, kMagic, 8);
-      header_->version       = 2;
+      header_->version       = 3;
       header_->header_size   = static_cast<uint32_t>(sizeof(MMapHeader));
       header_->capacity      = k_Cap;
       header_->slot_size     = static_cast<uint32_t>(sizeof(Slot));
@@ -177,15 +180,15 @@ public:
       atomic_store_u64(&header_->write_count, 0);
     } else {
       // Validate basic compatibility; if mismatch, reset.
-      if (std::strncmp(header_->magic, "STRLOG2", 7) != 0 ||
-          header_->version != 2 ||
+      if (std::strncmp(header_->magic, "STRLOG3", 7) != 0 ||
+          header_->version != 3 ||
           header_->capacity != k_Cap ||
           header_->slot_size != sizeof(Slot) ||
           header_->header_size != sizeof(MMapHeader)) {
         std::memset(base_, 0, map_size_);
-        const char kMagic[8] = {'S','T','R','L','O','G','2','\0'};
+        const char kMagic[8] = {'S','T','R','L','O','G','3','\0'};
         std::memcpy(header_->magic, kMagic, 8);
-        header_->version       = 2;
+        header_->version       = 3;
         header_->header_size   = static_cast<uint32_t>(sizeof(MMapHeader));
         header_->capacity      = k_Cap;
         header_->slot_size     = static_cast<uint32_t>(sizeof(Slot));
