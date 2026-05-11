@@ -133,7 +133,7 @@ inline constexpr double DTHETA_LPF_CUTOFF = 25.0; // d_theta lpf cutoff [Hz]
 inline const     double DTHETA_LPF_ALPHA  = std::exp(-CTRL_DT * 2.0 * M_PI * DTHETA_LPF_CUTOFF); // not a tunable parameter
 inline const     double DTHETA_LPF_BETA   = 1.0 - DTHETA_LPF_ALPHA;                              // not a tunable parameter
 
-inline constexpr double      MPC_STEP_DT = 1.0 / 400.0; // This value must be same as >> DT << on params.py
+inline constexpr double      MPC_STEP_DT = 1.0 / 250.0; // This value must be same as >> DT << on params.py
 inline constexpr std::size_t N_STEPS_REQ = 10; // This value must be less than >> N << on params.py
 inline constexpr std::size_t MPC_NX      = 14; // This value must be same as >> self.use_full_nx << on solver.py
 inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.use_full_nu << on solver.py
@@ -146,7 +146,7 @@ static constexpr mjtNum BONG_TIP_LOAD_INERTIA = 1.44 * 1e-4;
 
 // ===== gradient descent parameters =====
 inline constexpr double ARM_OPT_BETA1    = 2e-2;                   // η ascent rate
-inline constexpr double ARM_OPT_BETA2    = 5e-4;                   // C ascent rate
+inline constexpr double ARM_OPT_BETA2    = 5e-5;                   // C ascent rate
 inline constexpr double ARM_OPT_EPS      = 1e-4;                   // finite difference step
 
 inline constexpr double POWER_GAMMA      = 1.0;                    // loss factor

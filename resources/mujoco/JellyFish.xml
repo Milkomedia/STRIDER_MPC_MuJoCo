@@ -50,7 +50,7 @@
       <geom class="collision" size="0.12 0.12 .02" pos="0 0 0" contype="1" conaffinity="2"/>
 
       <body name="bong" pos="0.1655 0.0 -0.05">
-       <inertial pos="0 0 0" mass="0.35" diaginertia="1e-06 0.22 0.22"/>
+       <inertial pos="0 0 0" mass="0.15" diaginertia="1e-06 0.22 0.22"/>
        <geom type="box" size="0.165 0.01 0.01" rgba="0.8 0.2 0.2 1" contype="0" conaffinity="0"/>
 
        <!-- Hidden payload. Runtime-enabled in main.cpp at auto phase start. -->
@@ -61,7 +61,7 @@
       </body>
 
       <body name="center_mass" pos="0.0 0.0 -0.05">
-       <inertial pos="0 0 0" mass="1.25" diaginertia="1e-05 1e-05 1e-05"/>
+       <inertial pos="0 0 0" mass="1.45" diaginertia="1e-05 1e-05 1e-05"/>
        <geom type="sphere" size="0.03 0.03 0.03" rgba="0.2 0.2 0.8 1" contype="0" conaffinity="0"/>
       </body>
 

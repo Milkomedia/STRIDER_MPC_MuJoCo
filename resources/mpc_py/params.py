@@ -1,8 +1,8 @@
 import numpy as np
 
 # MPC horizon
-N  = 30     # number of steps
-DT = 1.0 / 400.0  # [s] (of each step)
+N  = 32     # number of steps
+DT = 1.0 / 250.0  # [s] (of each step)
 
 # ---------- model parameters ----------
 
@@ -17,7 +17,7 @@ ZETA = 10.0
 
 # IK & CoM estimate
 M_LINK   = np.array([0.374106, 0.13658, 0.0415148, 0.102003, 0.3734]) # each link mass [kg]
-M_CENTER = 2.6845345                                                  # center body + load mass [kg]
+M_CENTER = 2.6845345                                                  # center body mass [kg]
 
 # ---------- use_arm & use_full parameters ----------
 # CoT actuator time constant
@@ -31,7 +31,7 @@ RHO_MIN = 0.1506 + 0.01
 RHO_MAX = 0.2925 - 0.01
 ALPHA_MIN = np.array([-105.0, -195.0,  75.0, -15.0]) * np.pi / 180.0
 ALPHA_MAX = np.array([  15.0,  -75.0, 195.0, 105.0]) * np.pi / 180.0
-R_ROTOR = 0.18 + 0.01
+R_ROTOR = 0.19 + 0.01
 
 # IK & CoM estimate
 A_LINK   = np.array([0.1395, 0.115, 0.110, 0.024, 0.070])             # link length [m]

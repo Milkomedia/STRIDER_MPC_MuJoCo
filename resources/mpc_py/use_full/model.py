@@ -55,6 +55,7 @@ def build_model():
 
     m_link = ca.reshape(ca.DM(np.asarray(p.M_LINK, dtype=np.float64)), 5, 1)
     m_link_sum = ca.sum1(m_link)
+    inv_m_link_sum = 1.0 / m_link_sum
     inv_m_tot = 1.0 / (ca.DM(float(p.M_CENTER)) + 4.0 * m_link_sum)
     a1 = float(p.A_LINK[0])
     a2 = float(p.A_LINK[1])
@@ -170,7 +171,7 @@ def build_model():
         q3 = ca.atan2(ca.sqrt(1.0 - D_a * D_a), D_a)
         q2 = ca.atan2(rz, x_a) - ca.atan2(a3 * ca.sin(q3), a2 + a3 * ca.cos(q3))
 
-        rho_c_a = (
+        rho_c_a = inv_m_link_sum * (
             m_link[0, 0] * (a1 + d1)
           + m_link[1, 0] * (a1 + (a2 + d2) * ca.cos(q2))
           + m_link[2, 0] * (a1 + a2 * ca.cos(q2) + (a3 + d3) * ca.cos(q2 + q3))

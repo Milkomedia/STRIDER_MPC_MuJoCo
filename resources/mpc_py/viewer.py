@@ -186,8 +186,8 @@ def _compute_pc_exact(r_pol: np.ndarray) -> np.ndarray:
       )
 
       pc += np.array([
-        m_link_sum * (r_off_x[a] + rho_c_a * np.cos(alpha)),
-        m_link_sum * (r_off_y[a] + rho_c_a * np.sin(alpha)),
+        m_link_sum * r_off_x[a] + rho_c_a * np.cos(alpha),
+        m_link_sum * r_off_y[a] + rho_c_a * np.sin(alpha),
       ], dtype=np.float64)
 
   pc = pc / m_tot

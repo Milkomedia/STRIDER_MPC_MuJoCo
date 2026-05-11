@@ -288,9 +288,9 @@ int main() {
       // }
 
       // --- position control ---
-      if (elapsed_double >= 14.0) {l_traj_pva(elapsed_double+13.05, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.4,0.0,-1.3), elapsed_double, 2.0);}
-      else {cmd.pos = Eigen::Vector3d(-1.4,0.0,-1.3);}
+      if (elapsed_double >= 18.0) {l_traj_pva(elapsed_double-18.0, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
+      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-2.5,0.0,-1.3), elapsed_double, 2.0);}
+      else {cmd.pos = Eigen::Vector3d(-2.5,0.0,-1.3);}
       cmd.vel = Eigen::Vector3d::Zero(); // not-use velocity command
       cmd.acc = Eigen::Vector3d::Zero(); // not-use velocity command
 
@@ -326,22 +326,28 @@ int main() {
       bool mpc_applied = false;
       if (phase == Phase::USE_DTHETA || phase == Phase::USE_ARM || phase == Phase::USE_FULL) { // MPC unpack
         const bool epoch_ok = (l_mpc_output.epoch == g_mpc_epoch.load(std::memory_order_relaxed));
-        const bool time_ok = ((now - l_mpc_output.t) < param::MPC_TIMEOUT_DURATUION);
+        const std::chrono::steady_clock::duration mpc_age = now - l_mpc_output.t;
+        const bool time_ok = (mpc_age >= std::chrono::steady_clock::duration::zero()) && (mpc_age < param::MPC_TIMEOUT_DURATUION);
         const bool solve_ok = (l_mpc_output.state == 0);
         
         if (epoch_ok && time_ok && solve_ok) {
-          const std::size_t idx_raw = static_cast<std::size_t>(std::floor(std::chrono::duration<double>(now - l_mpc_output.t).count() / param::MPC_STEP_DT));
-          const std::size_t idx = (idx_raw < param::N_STEPS_REQ) ? idx_raw : (param::N_STEPS_REQ+1);
+          // linear interpolation the optimal sol.
+          const double idx_real = std::chrono::duration<double>(mpc_age).count() / param::MPC_STEP_DT;
+          const std::size_t idx0 = static_cast<std::size_t>(std::floor(idx_real));
+          const std::size_t idx1 = idx0 + 1;
+          const double alpha = idx_real - static_cast<double>(idx0);
+
+          const Eigen::Matrix<double, param::MPC_NU, 1> u_interp = (1.0 - alpha) * l_mpc_output.u_stage.col(idx0) + alpha * l_mpc_output.u_stage.col(idx1);
 
           std::array<Eigen::Vector2d, 4> opt_r; // polar opt r_cmd
-          opt_r[0] << l_mpc_output.u_stage(3, idx),  l_mpc_output.u_stage(4, idx);
-          opt_r[1] << l_mpc_output.u_stage(5, idx),  l_mpc_output.u_stage(6, idx);
-          opt_r[2] << l_mpc_output.u_stage(7, idx),  l_mpc_output.u_stage(8, idx);
-          opt_r[3] << l_mpc_output.u_stage(9, idx),  l_mpc_output.u_stage(10, idx);
-          const bool is_feasible = make_feasible(opt_r); // check workspace & collision
+          opt_r[0] << u_interp(3),  u_interp(4);
+          opt_r[1] << u_interp(5),  u_interp(6);
+          opt_r[2] << u_interp(7),  u_interp(8);
+          opt_r[3] << u_interp(9),  u_interp(10);
+         const bool is_feasible = make_feasible(opt_r); // check workspace & collision
 
           if (is_feasible) {
-            cmd.d_theta = l_mpc_output.u_stage.col(idx).segment<3>(0);
+            cmd.d_theta = u_interp.segment<3>(0);
             std::array<Eigen::Vector2d, 4> r; // cartesian opt r_cmd
             polar2cart(opt_r[0], opt_r[1], opt_r[2], opt_r[3], r[0], r[1], r[2], r[3]);
             cmd.r1 = opt_r[0];
@@ -427,7 +433,7 @@ int main() {
 
       // --- torque estimated ---
       prev_tau = tau_des + s.d_hat;
-      if (auto_phase_started && elapsed_double >= 15.05) {s.d_hat = dob_update(euler_rpy, tau_des, dob_state);}
+      if (auto_phase_started && elapsed_double >= 15.0) {s.d_hat = dob_update(euler_rpy, tau_des, dob_state);}
 
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
