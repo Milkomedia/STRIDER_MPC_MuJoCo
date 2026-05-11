@@ -399,6 +399,7 @@ int main() {
             // g_mpc_input.p(m++) = -f_sum; // positive, f_sum(24)
             g_mpc_input.p(m++) = std::clamp(-f_sum, 4.0*param::PWM_B, 4.0*(param::SATURATION_THRUST-0.3)); // positive, f_sum(24)
             g_mpc_input.p(m++) = s.d_hat(0); g_mpc_input.p(m++) = s.d_hat(1); g_mpc_input.p(m++) = s.d_hat(2); // disturbance torque(25~27)
+            for (int j=0; j<3; ++j) {for (int i=0; i<3; ++i) {g_mpc_input.p(m++) = s.moi(i, j);}} // J(28~36), column-major order to match CasADi reshape
 
             if (phase==Phase::USE_FULL)        {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = true; }
             else if (phase==Phase::USE_DTHETA) {g_mpc_input.use_delta = true;  g_mpc_input.use_arm = false;}

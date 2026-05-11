@@ -30,10 +30,10 @@ def build_model():
     R_0   = ca.SX.sym('R_0', 3, 3)      # initial attitude SO3 matrix
     f_0 = ca.SX.sym('f_0')              # [N]
     d_hat = ca.SX.sym('d_hat', 3)       # torque disturbance [N.m]
-    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, d_hat)
+    J = ca.SX.sym('J', 3, 3)            # MoI tensor [kg.m^2]
+    model.p  = ca.vertcat(ca.reshape(R_raw, 9, 1), W_raw, Wdot_raw, ca.reshape(R_0, 9, 1), f_0, d_hat, ca.reshape(J, 9, 1))
 
     # Constants
-    J = ca.DM(p.J_TENSOR)
     J_inv = ca.inv(J)
     zeta = float(p.ZETA)
     KR = ca.reshape(ca.DM(np.asarray(p.KR, dtype=np.float64)), 3, 1)
@@ -106,7 +106,7 @@ def build_model():
     e_R = 0.5 * vee(RtRd.T - RtRd)
     e_w = omega - RtRd @ Wd
     tau_d = - KR * e_R - KW * e_w + J@(hat(omega)@RtRd@Wd + RtRd@Wd_dot)
-    omega_dot = J_inv@(tau_d + d_hat - ca.cross(omega, J@omega))
+    omega_dot = ca.solve(J, tau_d + d_hat - ca.cross(omega, J@omega))
 
     f_expl = ca.vertcat(theta_dot, omega_dot)
     model.f_expl_expr = f_expl

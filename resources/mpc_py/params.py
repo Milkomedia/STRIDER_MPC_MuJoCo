@@ -5,11 +5,6 @@ N  = 30     # number of steps
 DT = 1.0 / 400.0  # [s] (of each step)
 
 # ---------- model parameters ----------
-J_TENSOR = np.array([
-    [0.27, 0.00, 0.00],
-    [0.00, 0.49, 0.00],
-    [0.00, 0.00, 0.76]
-], dtype=np.float64)
 
 # GAC controller gain
 KR = np.array([120., 120., 5.5])

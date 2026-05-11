@@ -41,7 +41,7 @@ ViewerFrame = Dict[str, np.ndarray]
 
 FULL_NX = 14
 FULL_NU = 11
-FULL_NP = 28
+FULL_NP = 37
 
 
 def _gain3(x: Any) -> np.ndarray:
@@ -264,7 +264,8 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
 
     p = [
       R_raw(0:9), W_raw(9:12), Wdot_raw(12:15),
-      R_0(15:24), f_0(24), d_hat(25:28)
+      R_0(15:24), f_0(24), d_hat(25:28),
+      J(28:37)
     ]
   """
   N = int(pkt.N)
@@ -286,7 +287,6 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
   KR = _gain3(p.KR)
   KW = _gain3(p.KW)
   zeta = float(p.ZETA)
-  J = np.asarray(p.J_TENSOR, dtype=np.float64).reshape(3, 3)
 
   steps = np.arange(N, dtype=np.float64)
 
@@ -336,6 +336,7 @@ def _solve_viewer_frame(pkt: MMapPacket) -> ViewerFrame:
     
     d_hat = pk[25:28]
     _ = d_hat  # d_hat affects omega_dot in the model, not F_expr reconstruction
+    J = pk[28:37].reshape(3, 3, order="F")
 
     R = _euler_zyx_to_R_np(theta)
     Rd = R_raw @ _expm_hat_np(delta_theta_cmd)
