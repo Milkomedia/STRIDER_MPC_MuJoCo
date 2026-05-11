@@ -377,7 +377,7 @@ static inline void IK(const Eigen::Vector2d& r1, const Eigen::Vector2d& r2, cons
 
     const double rho = polar_pos[i].x();
     const double alpha = polar_pos[i].y();
-    const double px = param::B2BASE_X[i] + rho * std::cos(alpha)+0.0035;
+    const double px = param::B2BASE_X[i] + rho * std::cos(alpha);
     const double py = param::B2BASE_Y[i] + rho * std::sin(alpha);
     const double ezx = bodyE3arm[i].x();
     const double ezy = bodyE3arm[i].y();

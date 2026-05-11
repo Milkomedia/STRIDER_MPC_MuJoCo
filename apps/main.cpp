@@ -289,8 +289,8 @@ int main() {
 
       // --- position control ---
       if (elapsed_double >= 18.0) {l_traj_pva(elapsed_double-18.0, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-2.5,0.0,-1.3), elapsed_double, 2.0);}
-      else {cmd.pos = Eigen::Vector3d(-2.5,0.0,-1.3);}
+      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-2.0,0.0,-1.3), elapsed_double, 2.0);}
+      else {cmd.pos = Eigen::Vector3d(-2.0,0.0,-1.3);}
       cmd.vel = Eigen::Vector3d::Zero(); // not-use velocity command
       cmd.acc = Eigen::Vector3d::Zero(); // not-use velocity command
 
