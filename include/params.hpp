@@ -48,7 +48,7 @@ inline constexpr double J[9] = {0.27, 0.00, 0.00,
 inline constexpr double M  = 6.8;
 inline constexpr double G  = 9.80665;
 
-inline constexpr double VIRTUAL_MARGIN    = 2.5; // thrust margin of each thruster [N]
+inline constexpr double VIRTUAL_MARGIN    = 3.0; // thrust margin of each thruster [N]
 inline constexpr double SATURATION_THRUST = M * G / 4.0 + VIRTUAL_MARGIN;
 
 // Allocation parameters
@@ -67,7 +67,7 @@ inline constexpr double DH_ARM_ALPHA[5] = {M_PI/2.0, 0.0, 0.0, M_PI/2.0, 0.0};
 // ===== Workspace constraint =====
 inline constexpr double MAX_STRETCH       = 0.2925; // Maximum distance arm can extend from the base [m]
 inline constexpr double MIN_STRETCH       = 0.1506; // Minimum distance arm can extend from the base [m]
-inline constexpr double ROTOR_DIAMETER    = 0.4;   // propeller diameter [m]
+inline constexpr double ROTOR_DIAMETER    = 0.3;   // propeller diameter [m]
 
 inline constexpr double STRETCH_FAIL_MARGIN    = 0.2; // [m]
 inline constexpr double COLLISION_FAIL_MARGIN  = 0.2; // [m]
@@ -92,6 +92,34 @@ inline constexpr double CENTER_MASS  = 2.6845345;   // center body + load mass [
 inline constexpr double TOTAL_MASS   = CENTER_MASS + 4.0*(LINK_MASS[0]+LINK_MASS[1]+LINK_MASS[2]+LINK_MASS[3]+LINK_MASS[4]); // strider mass (same as M) [kg]
 inline constexpr double LINK_COM_DIST[5] = {-0.040, -0.031, -0.055, -0.012, -0.020};     // link com distance [m]
 
+// ===== MoI estimating parameter =====
+inline constexpr double LINK_INERTIAL_POS[5][3] = {
+  {-0.0628864, -0.00030071,  0.0115046},
+  {-0.0812353,  0.0,         0.00033993},
+  {-0.0545139, -0.00013889,  0.00012511},
+  {-0.0120002,  0.0005559,  -0.000556},
+  { 0.0497922,  0.0,         0.00013454}
+}; // MuJoCo inertial pos of each link frame [m]
+inline constexpr double LINK_INERTIAL_QUAT[5][4] = {
+  {0.432962, 0.567439, 0.525068, 0.46353},
+  {0.501818, 0.498175, 0.498175, 0.501818},
+  {0.503095, 0.499879, 0.497035, 0.499972},
+  {0.270139, 0.652173, 0.271057, 0.654388},
+  {1.0,      0.0,      0.000236013, 0.0}
+}; // MuJoCo inertial quat of each link frame, wxyz order
+inline constexpr double LINK_INERTIA_DIAG[5][3] = {
+  {0.00164276, 0.00160619, 0.000141896},
+  {0.000183,   0.000171008, 2.96325e-05},
+  {4.29713e-05, 3.86412e-05, 7.76758e-06},
+  {2.88701e-05, 2.767e-05,   2.05299e-05},
+  {0.00364513, 0.0019397,    0.00192912}
+}; // MuJoCo principal inertia of each link [kg.m^2]
+inline const Eigen::Matrix3d CENTER_INERTIA = (Eigen::Matrix3d() <<
+  0.00761191, 0.0,        0.00289625,
+  0.0,        0.23720361, 0.0,
+  0.00289625, 0.0,        0.23651448
+).finished(); // BODY + bong + center_mass inertia about body origin; bong_tip_load ignored [kg.m^2]
+
 // ===== MPC parameters  =====
 inline constexpr double ARM_DELAY_TAU    = 0.03; // MuJoCo actuator delay [sec]
 inline const     double ARM_DELAY_ALPHA  = std::exp(-CTRL_DT / ARM_DELAY_TAU); // not a tunable parameter
@@ -101,7 +129,7 @@ inline constexpr double BASE_DELAY_TAU   = 0.05; // MuJoCo actuator delay [sec]
 inline const     double BASE_DELAY_ALPHA = std::exp(-CTRL_DT / BASE_DELAY_TAU); // not a tunable parameter
 inline const     double BASE_DELAY_BETA  = 1.0 - BASE_DELAY_ALPHA;              // not a tunable parameter
 
-inline constexpr double DTHETA_LPF_CUTOFF = 60.0; // d_theta lpf cutoff [Hz]
+inline constexpr double DTHETA_LPF_CUTOFF = 25.0; // d_theta lpf cutoff [Hz]
 inline const     double DTHETA_LPF_ALPHA  = std::exp(-CTRL_DT * 2.0 * M_PI * DTHETA_LPF_CUTOFF); // not a tunable parameter
 inline const     double DTHETA_LPF_BETA   = 1.0 - DTHETA_LPF_ALPHA;                              // not a tunable parameter
 
@@ -135,7 +163,7 @@ inline constexpr float RGBA_PATH[4]  = {0.20f, 0.80f, 0.90f, 0.60f}; // current 
 inline constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired path color
 
 // ===== state noise input (sim->real validation) =====
-inline constexpr bool NOISE_ON = true;
+inline constexpr bool NOISE_ON = false;
 inline constexpr std::uint64_t NOISE_SEED = 42;
 
 inline constexpr double POS_NOISE_SIGMA   = 0.0000; // white noise std,  [m]

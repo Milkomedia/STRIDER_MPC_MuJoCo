@@ -29,6 +29,7 @@ struct State {
   Eigen::Matrix3d R   = Eigen::Matrix3d::Identity();   // current Rotation matrix [SO3]
   Eigen::Vector3d omega = Eigen::Vector3d::Zero();     // current angular velocity [rad/s]
   Eigen::Vector3d alpha = Eigen::Vector3d::Zero();     // current angular acceleration [rad/s^2] (not used, just logging)
+  Eigen::Matrix3d moi = Eigen::Matrix3d::Zero();       // current estimated inertia [kg.m^2]
   Eigen::Vector3d d_hat = Eigen::Vector3d::Zero();     // estimated torque disturbance [N.m]
   Eigen::Vector3d r1  = Eigen::Vector3d::Zero();       // current rotor1 position [m]
   Eigen::Vector3d r2  = Eigen::Vector3d::Zero();       // current rotor2 position [m]
@@ -156,9 +157,9 @@ static inline void circle_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3
 }
 
 static inline void l_traj_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d) {
-  constexpr double lx_ = 1.2;              // width in X [m]
+  constexpr double lx_ = 1.4;              // width in X [m]
   constexpr double ly_ = 0.0;              // width in Y [m]
-  constexpr double T_  = 2.5;             // base period [sec]
+  constexpr double T_  = 2.75;             // base period [sec]
   constexpr double f   = 2.0 * M_PI / T_;  // [rad/s]
 
   double tau = std::fmod(t_sec, 6.0 * T_);
@@ -407,8 +408,10 @@ static inline Eigen::Matrix4d compute_DH(double a, double alpha, double d, doubl
     return T;
   }
 
-static inline void FK(const double q[20], Eigen::Vector3d& bpc, Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
+static inline void FK(const double q[20], Eigen::Vector3d& bpc, Eigen::Matrix3d& moi, Eigen::Vector3d& r1, Eigen::Vector3d& r2, Eigen::Vector3d& r3, Eigen::Vector3d& r4) {
   std::array<Eigen::Vector3d*, 4> bparm = {&r1, &r2, &r3, &r4};
+  std::array<std::array<Eigen::Vector3d, 5>, 4> link_com;
+  std::array<std::array<Eigen::Matrix3d, 5>, 4> link_R;
   Eigen::Vector3d mass_weighted_sum = Eigen::Vector3d::Zero();
   bpc = Eigen::Vector3d::Zero();
 
@@ -418,11 +421,40 @@ static inline void FK(const double q[20], Eigen::Vector3d& bpc, Eigen::Vector3d&
 
     for (int j = 0; j < 5; ++j) {
       T_i *= compute_DH(param::DH_ARM_A[j], param::DH_ARM_ALPHA[j], 0.0, q[5*i+j]);
-      mass_weighted_sum += param::LINK_MASS[j] * (T_i.block<3,1>(0,3) + param::LINK_COM_DIST[j] * T_i.block<3,1>(0,0));
+      link_R[i][j] = T_i.block<3,3>(0,0);
+      link_com[i][j] = T_i.block<3,1>(0,3) + link_R[i][j] * Eigen::Vector3d(param::LINK_INERTIAL_POS[j][0], param::LINK_INERTIAL_POS[j][1], param::LINK_INERTIAL_POS[j][2]);
+      mass_weighted_sum += param::LINK_MASS[j] * link_com[i][j];
     }
     *(bparm[i]) = T_i.block<3,1>(0,3);
   }
   bpc = mass_weighted_sum / param::TOTAL_MASS;
+
+  moi = param::CENTER_INERTIA + param::CENTER_MASS * (bpc.squaredNorm() * Eigen::Matrix3d::Identity() - bpc * bpc.transpose());
+  for (uint8_t i = 0; i < 4; ++i) {
+    for (int j = 0; j < 5; ++j) {
+      double w = param::LINK_INERTIAL_QUAT[j][0];
+      double x = param::LINK_INERTIAL_QUAT[j][1];
+      double y = param::LINK_INERTIAL_QUAT[j][2];
+      double z = param::LINK_INERTIAL_QUAT[j][3];
+      const double q_inv_norm = 1.0 / std::sqrt(w*w + x*x + y*y + z*z);
+      w *= q_inv_norm;
+      x *= q_inv_norm;
+      y *= q_inv_norm;
+      z *= q_inv_norm;
+
+      Eigen::Matrix3d R_inertial;
+      R_inertial << 1.0 - 2.0*(y*y + z*z),       2.0*(x*y - w*z),       2.0*(x*z + w*y),
+                         2.0*(x*y + w*z), 1.0 - 2.0*(x*x + z*z),       2.0*(y*z - w*x),
+                         2.0*(x*z - w*y),       2.0*(y*z + w*x), 1.0 - 2.0*(x*x + y*y);
+
+      Eigen::Matrix3d I_link = Eigen::Matrix3d::Zero();
+      I_link.diagonal() = Eigen::Vector3d(param::LINK_INERTIA_DIAG[j][0], param::LINK_INERTIA_DIAG[j][1], param::LINK_INERTIA_DIAG[j][2]);
+      I_link = link_R[i][j] * R_inertial * I_link * R_inertial.transpose() * link_R[i][j].transpose();
+
+      const Eigen::Vector3d r = link_com[i][j] - bpc;
+      moi += I_link + param::LINK_MASS[j] * (r.squaredNorm() * Eigen::Matrix3d::Identity() - r * r.transpose());
+    }
+  }
 }
 
 static inline double spin_360(double a, double amin, double amax) {
@@ -791,21 +823,21 @@ static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& 
   else {F1234 = (A_d.transpose()*A_d + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A_d.transpose()*Wrench);}
 }
 
-static inline Eigen::Vector3d Forward_Allocate(const Eigen::Vector4d& F1234, const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& cot) {
+static inline Eigen::Matrix<double, 3, 4> A_Matrix(const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& com) {
   Eigen::Matrix<double, 3, 4> A;
-  A(0,0) = -r1(1) + cot(1);
-  A(0,1) = -r2(1) + cot(1);
-  A(0,2) = -r3(1) + cot(1);
-  A(0,3) = -r4(1) + cot(1);
-  A(1,0) =  r1(0) - cot(0);
-  A(1,1) =  r2(0) - cot(0);
-  A(1,2) =  r3(0) - cot(0);
-  A(1,3) =  r4(0) - cot(0);
+  A(0,0) = -r1(1) + com(1);
+  A(0,1) = -r2(1) + com(1);
+  A(0,2) = -r3(1) + com(1);
+  A(0,3) = -r4(1) + com(1);
+  A(1,0) =  r1(0) - com(0);
+  A(1,1) =  r2(0) - com(0);
+  A(1,2) =  r3(0) - com(0);
+  A(1,3) =  r4(0) - com(0);
   A(2,0) = -param::PWM_ZETA;
   A(2,1) =  param::PWM_ZETA;
   A(2,2) = -param::PWM_ZETA;
   A(2,3) =  param::PWM_ZETA;
-  return A * F1234;
+  return A;
 }
 
 namespace NOISE {

@@ -289,8 +289,8 @@ int main() {
 
       // --- position control ---
       if (elapsed_double >= 14.0) {l_traj_pva(elapsed_double+13.05, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.2,0.0,-1.3), elapsed_double, 2.0);}
-      else {cmd.pos = Eigen::Vector3d(-1.2,0.0,-1.3);}
+      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-1.4,0.0,-1.3), elapsed_double, 2.0);}
+      else {cmd.pos = Eigen::Vector3d(-1.4,0.0,-1.3);}
       cmd.vel = Eigen::Vector3d::Zero(); // not-use velocity command
       cmd.acc = Eigen::Vector3d::Zero(); // not-use velocity command
 
@@ -363,7 +363,8 @@ int main() {
         l_mpc_output.u_stage.setZero();
       }
 
-      FK(delayed_s.arm_q, s.r_com, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position & com position
+      FK(delayed_s.arm_q, s.r_com, s.moi, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position, CoM position, and inertia
+      gac_state.J = s.moi;
       { // MPC send
         if (phase == Phase::USE_DTHETA || phase == Phase::USE_ARM || phase == Phase::USE_FULL) {
           Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;
@@ -414,7 +415,7 @@ int main() {
           }
         }
       }
-
+      
       // --- attitude control --- 
       smoothed_d_theta = param::DTHETA_LPF_ALPHA*smoothed_d_theta + param::DTHETA_LPF_BETA*cmd.d_theta;
       const Eigen::Matrix3d Et = expm_hat(-smoothed_d_theta);
@@ -580,18 +581,18 @@ int main() {
         ld.f_thrst_con[3] = static_cast<float>(smoothed_F(3));
 
         {
-          const Eigen::Vector3d s_cot = (s.r1 + s.r2 + s.r3 + s.r4) / 4.0;
-          const Eigen::Vector3d s_d = s_cot - s.r_com;
-          const double saturated_f_total = smoothed_F.sum();
+          const Eigen::Matrix<double, 3, 4> A = A_Matrix(s.r1, s.r2, s.r3, s.r4, s.r_com);
+
+          const Eigen::Vector4d f_mean = 0.25 * smoothed_F.sum() * Eigen::Vector4d::Ones();
+          const Eigen::Vector3d tau_arm = A * f_mean;
+          ld.tau_off[0] = static_cast<float>(tau_arm(0));
+          ld.tau_off[1] = static_cast<float>(tau_arm(1));
           
-          const Eigen::Vector2d tau_off(-saturated_f_total*s_d(1), saturated_f_total*s_d(0));
-          ld.tau_off[0] = static_cast<float>(tau_off(0));
-          ld.tau_off[1] = static_cast<float>(tau_off(1));
-          
-          const Eigen::Vector3d tau_thrust = Forward_Allocate(smoothed_F, s.r1, s.r2, s.r3, s.r4, s_cot);
-          ld.tau_thrust[0] = static_cast<float>(tau_thrust(0));
-          ld.tau_thrust[1] = static_cast<float>(tau_thrust(1));
-          ld.tau_thrust[2] = static_cast<float>(tau_thrust(2));
+          const Eigen::Vector4d f_dev = smoothed_F - f_mean;
+          const Eigen::Vector3d tau_dev = A * f_dev;
+          ld.tau_thrust[0] = static_cast<float>(tau_dev(0));
+          ld.tau_thrust[1] = static_cast<float>(tau_dev(1));
+          ld.tau_thrust[2] = static_cast<float>(tau_dev(2));
 
           ld.r_rotor1[0] = static_cast<float>(s.r1(0));
           ld.r_rotor1[1] = static_cast<float>(s.r1(1));
@@ -601,6 +602,8 @@ int main() {
           ld.r_rotor3[1] = static_cast<float>(s.r3(1));
           ld.r_rotor4[0] = static_cast<float>(s.r4(0));
           ld.r_rotor4[1] = static_cast<float>(s.r4(1));
+
+          const Eigen::Vector3d s_cot = (s.r1 + s.r2 + s.r3 + s.r4) / 4.0;
           ld.r_cot[0] = static_cast<float>(s_cot(0));
           ld.r_cot[1] = static_cast<float>(s_cot(1));
           

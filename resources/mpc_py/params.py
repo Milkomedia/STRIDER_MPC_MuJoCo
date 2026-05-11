@@ -36,7 +36,7 @@ RHO_MIN = 0.1506 + 0.01
 RHO_MAX = 0.2925 - 0.01
 ALPHA_MIN = np.array([-105.0, -195.0,  75.0, -15.0]) * np.pi / 180.0
 ALPHA_MAX = np.array([  15.0,  -75.0, 195.0, 105.0]) * np.pi / 180.0
-R_ROTOR = 0.2 + 0.01
+R_ROTOR = 0.18 + 0.01
 
 # IK & CoM estimate
 A_LINK   = np.array([0.1395, 0.115, 0.110, 0.024, 0.070])             # link length [m]
