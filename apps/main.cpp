@@ -437,7 +437,7 @@ int main() {
 
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
-      Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
+      Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero(); // C2s
       Sequential_Allocation(f_sum, tau_des, cmd.tauz_bar, delayed_s.arm_q, s.r_com, thrust_des, tilt_ang_des);
       if (phase == Phase::GRADIENT_ASCENT) {gradient_ascent.arm_cmd(cmd.r1, cmd.r2, cmd.r3, cmd.r4, s.r1, s.r2, s.r3, s.r4, tilt_ang_des, thrust_des);}
 

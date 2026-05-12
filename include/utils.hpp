@@ -366,10 +366,10 @@ static inline void onearm_IK(const Eigen::Vector3d& pos, const Eigen::Vector3d& 
 static inline void IK(const Eigen::Vector2d& r1, const Eigen::Vector2d& r2, const Eigen::Vector2d& r3, const Eigen::Vector2d& r4, const Eigen::Vector4d& th_tvc, double q[20]) {
   const std::array<Eigen::Vector2d, 4> polar_pos{r1, r2, r3, r4};
   std::array<Eigen::Vector3d, 4> bodyE3arm;
-  const double s1 = std::sin(th_tvc(0)); const double c1 = std::cos(th_tvc(0));
-  const double s2 = std::sin(th_tvc(1)); const double c2 = std::cos(th_tvc(1));
-  const double s3 = std::sin(th_tvc(2)); const double c3 = std::cos(th_tvc(2));
-  const double s4 = std::sin(th_tvc(3)); const double c4 = std::cos(th_tvc(3));
+  const double s1 = th_tvc(0); const double c1 = std::sqrt(1.0-th_tvc(0)*th_tvc(0));
+  const double s2 = th_tvc(1); const double c2 = std::sqrt(1.0-th_tvc(1)*th_tvc(1));
+  const double s3 = th_tvc(2); const double c3 = std::sqrt(1.0-th_tvc(2)*th_tvc(2));
+  const double s4 = th_tvc(3); const double c4 = std::sqrt(1.0-th_tvc(3)*th_tvc(3));
   bodyE3arm[0] = Eigen::Vector3d( s1*M_SQRT1_2,  s1*M_SQRT1_2, -c1);
   bodyE3arm[1] = Eigen::Vector3d( s2*M_SQRT1_2, -s2*M_SQRT1_2, -c2);
   bodyE3arm[2] = Eigen::Vector3d(-s3*M_SQRT1_2, -s3*M_SQRT1_2, -c3);
@@ -720,7 +720,7 @@ static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
   return true;
 }
 
-static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[20], const Eigen::Vector3d& Pc, Eigen::Vector4d& C1_des, Eigen::Vector4d& C2_des) {
+static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Vector3d& tau_d, double& tauz_bar, const double arm_q[20], const Eigen::Vector3d& Pc, Eigen::Vector4d& C1_des, Eigen::Vector4d& C2s_des) {
   // yaw wrench conversion
   tauz_bar = param::SERVO_DELAY_ALPHA*tau_d(2) + param::SERVO_DELAY_BETA*tauz_bar;
   double tauz_r = tau_d(2) - tauz_bar;
@@ -791,11 +791,11 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   A2(3,3) = inv_sqrt2 * (-r_mea(0, 3) - r_mea(1, 3)) * C1_des(3);
   Eigen::Vector4d B2(0.0, 0.0, tauz_t, 0.0);
   Eigen::FullPivLU<Eigen::Matrix4d> lu_2(A2);
-  if (lu_2.isInvertible()) {C2_des = lu_2.solve(B2);}
-  else {C2_des = (A2.transpose()*A2 + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A2.transpose()*B2);}
+  if (lu_2.isInvertible()) {C2s_des = lu_2.solve(B2);}
+  else {C2s_des = (A2.transpose()*A2 + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A2.transpose()*B2);}
 
   // Tilt angle clamp
-  for (uint8_t i = 0; i < 4; ++i) {C2_des(i) = std::clamp(C2_des(i), -0.175, 0.175);}
+  for (uint8_t i = 0; i < 4; ++i) {C2s_des(i) = std::clamp(C2s_des(i), -0.175, 0.175);}
 }
 
 static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& tau_d, const Eigen::Vector3d& r_cot, const Eigen::Vector3d& Pc, Eigen::Vector4d& F1234) {

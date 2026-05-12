@@ -45,11 +45,11 @@ inline constexpr double kIX = 0.3;  /**< Position integral gains */
 inline constexpr double J[9] = {0.27, 0.00, 0.00,
                                 0.00, 0.49, 0.00,
                                 0.00, 0.00, 0.76};
-inline constexpr double M  = 6.8;
+inline constexpr double PAYLOAD_MASS = 0.4;
+inline constexpr double M  = 4.8949497 + PAYLOAD_MASS;
 inline constexpr double G  = 9.80665;
 
-inline constexpr double VIRTUAL_MARGIN    = 3.0; // thrust margin of each thruster [N]
-inline constexpr double SATURATION_THRUST = M * G / 4.0 + VIRTUAL_MARGIN;
+inline constexpr double SATURATION_THRUST = 20.0; // [N]
 
 // Allocation parameters
 inline constexpr double SERVO_DELAY_ALPHA = 0.093158;  // yaw trimming
@@ -88,7 +88,7 @@ inline const     double GOES_2_ZERO_B         = 1.0 - GOES_2_ZERO_A;            
 
 // ===== CoM estimating parameter =====
 inline constexpr double LINK_MASS[5] = {0.374106, 0.13658, 0.0415148, 0.102003, 0.3734}; // link mass [kg]
-inline constexpr double CENTER_MASS  = 2.6845345;   // center body + load mass [kg]
+inline constexpr double CENTER_MASS  = 1.1845345;   // center body + bong + center mass [kg]
 inline constexpr double TOTAL_MASS   = CENTER_MASS + 4.0*(LINK_MASS[0]+LINK_MASS[1]+LINK_MASS[2]+LINK_MASS[3]+LINK_MASS[4]); // strider mass (same as M) [kg]
 inline constexpr double LINK_COM_DIST[5] = {-0.040, -0.031, -0.055, -0.012, -0.020};     // link com distance [m]
 
@@ -141,7 +141,7 @@ inline constexpr std::size_t MPC_NP      = 37; // This value must be same as >> 
 inline constexpr std::chrono::steady_clock::duration MPC_TIMEOUT_DURATUION = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(static_cast<double>(N_STEPS_REQ-1) * MPC_STEP_DT));
 
 // ===== MuJoCo added mass parameters =====
-static constexpr mjtNum BONG_TIP_LOAD_MASS = 0.4;
+static constexpr mjtNum BONG_TIP_LOAD_MASS = PAYLOAD_MASS;
 static constexpr mjtNum BONG_TIP_LOAD_X = 0.4; // [m]
 static constexpr mjtNum BONG_TIP_LOAD_Y = 0.15; // [m]
 static constexpr mjtNum BONG_TIP_LOAD_Z = 0.3; // [m]
