@@ -16,8 +16,8 @@ KW = np.array([15.0, 15.0, 2.5])
 ZETA = 10.0
 
 # IK & CoM estimate
-M_LINK   = np.array([0.374106, 0.13658, 0.0415148, 0.102003, 0.3734]) # each link mass [kg]
-M_CENTER = 1.1845345 + 0.4                                            # center body mass [kg]
+M_LINK   = np.array([0.187053, 0.06829, 0.0207574, 0.0510015, 0.1867]) # each link mass [kg]
+M_CENTER = 3.2397421                                                   # center body mass [kg]
 
 # ---------- use_arm & use_full parameters ----------
 # CoT actuator time constant

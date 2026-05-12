@@ -15,9 +15,9 @@ ALPHA_DOT_MAX  =  1.5 * np.array([1.0, 1.0, 1.0, 1.0]) # [rad/s]
 Q_THETA = 3750.0 * np.array([1.0, 1.0, 10.0]) * 100.0
 
 # thurst deviation cost
-Q_FDEV  = 50.0* np.array([1.0, 1.0, 1.0, 1.0])
+Q_FDEV  = 75.0* np.array([1.0, 1.0, 1.0, 1.0])
 
 # rate cost
 c_a = 1.0  # arm cost (m/s scale)
 c_b = 0.01 # base cost (rad/s scale)
-R_ROTOR = 6.5 * np.array([c_a, c_b, c_a, c_b, c_a, c_b, c_a, c_b]) * 300.0
+R_ROTOR = 6.0 * np.array([c_a, c_b, c_a, c_b, c_a, c_b, c_a, c_b]) * 300.0

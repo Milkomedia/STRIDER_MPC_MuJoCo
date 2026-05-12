@@ -45,7 +45,7 @@ inline constexpr double kIX = 0.3;  /**< Position integral gains */
 inline constexpr double J[9] = {0.27, 0.00, 0.00,
                                 0.00, 0.49, 0.00,
                                 0.00, 0.00, 0.76};
-inline constexpr double PAYLOAD_MASS = 0.4;
+inline constexpr double PAYLOAD_MASS = 1.0;
 inline constexpr double M  = 4.8949497 + PAYLOAD_MASS;
 inline constexpr double G  = 9.80665;
 
@@ -87,8 +87,8 @@ inline const     double GOES_2_ZERO_A         = std::exp(-CTRL_DT / MPC_OFF_TIME
 inline const     double GOES_2_ZERO_B         = 1.0 - GOES_2_ZERO_A;                        // not a tunable parameter
 
 // ===== CoM estimating parameter =====
-inline constexpr double LINK_MASS[5] = {0.374106, 0.13658, 0.0415148, 0.102003, 0.3734}; // link mass [kg]
-inline constexpr double CENTER_MASS  = 1.1845345;   // center body + bong + center mass [kg]
+inline constexpr double LINK_MASS[5] = {0.187053, 0.06829, 0.0207574, 0.0510015, 0.1867}; // link mass [kg]
+inline constexpr double CENTER_MASS  = 3.2397421;   // center body + bong + center mass [kg]
 inline constexpr double TOTAL_MASS   = CENTER_MASS + 4.0*(LINK_MASS[0]+LINK_MASS[1]+LINK_MASS[2]+LINK_MASS[3]+LINK_MASS[4]); // strider mass (same as M) [kg]
 inline constexpr double LINK_COM_DIST[5] = {-0.040, -0.031, -0.055, -0.012, -0.020};     // link com distance [m]
 
