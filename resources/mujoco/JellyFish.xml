@@ -54,9 +54,9 @@
        <geom type="box" size="0.165 0.01 0.01" rgba="0.8 0.2 0.2 1" contype="0" conaffinity="0"/>
 
        <!-- Hidden payload. Runtime-enabled in main.cpp at auto phase start. -->
-       <body name="bong_tip_load" pos="0.165 0 0">
+       <body name="bong_tip_load" pos="0.3 0 -0.125">
         <inertial pos="0 0 0" mass="1e-9" diaginertia="1e-12 1e-12 1e-12"/>
-        <geom name="bong_tip_load_geom" type="sphere" size="0.03" rgba="0.2 0.2 0.8 0" contype="0" conaffinity="0"/>
+        <geom name="bong_tip_load_geom" type="box" size="0.2 0.075 0.15" rgba="0.78 0.58 0.36 0" contype="0" conaffinity="0"/>
         </body>
       </body>
 

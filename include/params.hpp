@@ -115,9 +115,9 @@ inline constexpr double LINK_INERTIA_DIAG[5][3] = {
   {0.00364513, 0.0019397,    0.00192912}
 }; // MuJoCo principal inertia of each link [kg.m^2]
 inline const Eigen::Matrix3d CENTER_INERTIA = (Eigen::Matrix3d() <<
-  0.00761191, 0.0,        0.00289625,
-  0.0,        0.23720361, 0.0,
-  0.00289625, 0.0,        0.23651448
+  0.00761191, 0.0,        0.00124125,
+  0.0,        0.23172556, 0.0,
+  0.00124125, 0.0,        0.23103643
 ).finished(); // BODY + bong + center_mass inertia about body origin; bong_tip_load ignored [kg.m^2]
 
 // ===== MPC parameters  =====
@@ -142,7 +142,15 @@ inline constexpr std::chrono::steady_clock::duration MPC_TIMEOUT_DURATUION = std
 
 // ===== MuJoCo added mass parameters =====
 static constexpr mjtNum BONG_TIP_LOAD_MASS = 0.4;
-static constexpr mjtNum BONG_TIP_LOAD_INERTIA = 1.44 * 1e-4;
+static constexpr mjtNum BONG_TIP_LOAD_X = 0.4; // [m]
+static constexpr mjtNum BONG_TIP_LOAD_Y = 0.15; // [m]
+static constexpr mjtNum BONG_TIP_LOAD_Z = 0.3; // [m]
+
+static constexpr mjtNum BONG_TIP_LOAD_INERTIA[3] = {
+  2.0*BONG_TIP_LOAD_MASS * (BONG_TIP_LOAD_Y * BONG_TIP_LOAD_Y + BONG_TIP_LOAD_Z * BONG_TIP_LOAD_Z) / 12.0,
+  2.0*BONG_TIP_LOAD_MASS * (BONG_TIP_LOAD_X * BONG_TIP_LOAD_X + BONG_TIP_LOAD_Z * BONG_TIP_LOAD_Z) / 12.0,
+  2.0*BONG_TIP_LOAD_MASS * (BONG_TIP_LOAD_X * BONG_TIP_LOAD_X + BONG_TIP_LOAD_Y * BONG_TIP_LOAD_Y) / 12.0
+};
 
 // ===== gradient descent parameters =====
 inline constexpr double ARM_OPT_BETA1    = 2e-2;                   // η ascent rate

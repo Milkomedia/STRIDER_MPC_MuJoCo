@@ -953,12 +953,11 @@ static inline void set_bong_tip_load_enabled(mjModel* m, mjData* d, int body_id,
   if (body_id < 0) {return;}
 
   const mjtNum mass = enabled ? param::BONG_TIP_LOAD_MASS : 1e-9;
-  const mjtNum inertia = enabled ? param::BONG_TIP_LOAD_INERTIA : 1e-12;
 
   m->body_mass[body_id] = mass;
-  m->body_inertia[3 * body_id + 0] = inertia;
-  m->body_inertia[3 * body_id + 1] = inertia;
-  m->body_inertia[3 * body_id + 2] = inertia;
+  m->body_inertia[3 * body_id + 0] = enabled ? param::BONG_TIP_LOAD_INERTIA[0] : 1e-12;
+  m->body_inertia[3 * body_id + 1] = enabled ? param::BONG_TIP_LOAD_INERTIA[1] : 1e-12;
+  m->body_inertia[3 * body_id + 2] = enabled ? param::BONG_TIP_LOAD_INERTIA[2] : 1e-12;
 
   if (geom_id >= 0) {m->geom_rgba[4 * geom_id + 3] = enabled ? 1.0 : 0.0;}
 
