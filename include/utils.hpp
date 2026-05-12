@@ -54,8 +54,8 @@ struct Command {
   Eigen::Vector2d r4 = Eigen::Vector2d::Zero();         // desired rotor4 polar position [m, rad], z-element is not updated
 };
 
-static inline Eigen::Vector3d dob_update(const Eigen::Vector3d& rpy, const Eigen::Vector3d& tau_cmd, Eigen::Matrix<double, 3, 6>& state) {
-  constexpr double fc = 0.5;        // [Hz]
+static inline Eigen::Vector3d dob_update(const Eigen::Vector3d& rpy, const Eigen::Vector3d& tau_cmd, const Eigen::Matrix3d& J, Eigen::Matrix<double, 3, 6>& state) {
+  constexpr double fc = 0.25;        // [Hz]
   constexpr double d_hat_lim = 3.0; // [Nm]
 
   constexpr int X1 = 0;
@@ -71,11 +71,11 @@ static inline Eigen::Vector3d dob_update(const Eigen::Vector3d& rpy, const Eigen
   constexpr double a1 = -2.0 * wc;
   constexpr double a2 = -2.0 * wc2;
   constexpr double a3 = -wc3;
-  constexpr int J_IDX[3] = {0, 4, 8};
 
   const double dt = param::CTRL_DT;
 
-  Eigen::Vector3d d_hat = Eigen::Vector3d::Zero();
+  Eigen::Vector3d x1_vec = Eigen::Vector3d::Zero();
+  Eigen::Vector3d y3_vec = Eigen::Vector3d::Zero();
 
   for (int i = 0; i < 3; ++i) {
     double& x1 = state(i, X1);
@@ -110,12 +110,17 @@ static inline Eigen::Vector3d dob_update(const Eigen::Vector3d& rpy, const Eigen
     y2 = y2_prev + dt * dy2;
     y3 = y3_prev + dt * dy3;
 
-    const double tau_hat = param::J[J_IDX[i]] * wc3 * x1;
-    const double q_tau   = wc3 * y3;
-    const double d_i     = tau_hat - q_tau;
-
-    d_hat(i) = std::clamp(d_i, -d_hat_lim, d_hat_lim);
+    x1_vec(i) = x1;
+    y3_vec(i) = y3;
   }
+
+  const Eigen::Vector3d tau_hat = J * (wc3 * x1_vec);
+  const Eigen::Vector3d q_tau   = wc3 * y3_vec;
+  Eigen::Vector3d d_hat = tau_hat - q_tau;
+
+  d_hat(0) = std::clamp(d_hat(0), -d_hat_lim, d_hat_lim);
+  d_hat(1) = std::clamp(d_hat(1), -d_hat_lim, d_hat_lim);
+  d_hat(2) = std::clamp(d_hat(2), -d_hat_lim, d_hat_lim);
 
   return d_hat;
 }

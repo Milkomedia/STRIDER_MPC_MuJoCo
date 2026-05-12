@@ -433,7 +433,7 @@ int main() {
 
       // --- torque estimated ---
       prev_tau = tau_des + s.d_hat;
-      if (auto_phase_started && elapsed_double >= 15.0) {s.d_hat = dob_update(euler_rpy, tau_des, dob_state);}
+      if (auto_phase_started && elapsed_double >= 15.0) {s.d_hat = dob_update(euler_rpy, tau_des, s.moi, dob_state);}
 
       // --- (Sequential) Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
