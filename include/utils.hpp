@@ -56,7 +56,7 @@ struct Command {
 
 static inline Eigen::Vector3d dob_update(const Eigen::Vector3d& rpy, const Eigen::Vector3d& tau_cmd, const Eigen::Matrix3d& J, Eigen::Matrix<double, 3, 6>& state) {
   constexpr double fc = 0.25;        // [Hz]
-  constexpr double d_hat_lim = 3.0; // [Nm]
+  constexpr double d_hat_lim = 30; // [Nm]
 
   constexpr int X1 = 0;
   constexpr int X2 = 1;
@@ -125,43 +125,7 @@ static inline Eigen::Vector3d dob_update(const Eigen::Vector3d& rpy, const Eigen
   return d_hat;
 }
 
-static inline Eigen::Vector3d fig8_point(double t_sec){
-  // Gerono lemniscate trajectory: x = A sin(wt), y = A sin(wt)cos(wt) = 0.5A sin(2wt)
-  constexpr double x    = 2.0;               // lobe half-width in X [m]
-  constexpr double y    = x / 1.5;           // lobe half-height in Y [m]
-  constexpr double freq = 2.0 * M_PI * 0.16; // [rad/s]
-
-  const double s = std::sin(freq * t_sec);
-  const double c = std::cos(freq * t_sec);
-  return Eigen::Vector3d(x*s, y*s*c, -1.0);
-}
-
-static inline void fig8_point_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d){
-  constexpr double l = 2.0;               // lobe half-width in X [m]
-  constexpr double d = 0.0;               // lobe half-height in Y [m]
-  constexpr double f = 2.0 * M_PI / 3.5;  // [rad/s]
-
-  const double s = std::sin(f * t_sec);
-  const double c = std::cos(f * t_sec);
-
-  p_d = Eigen::Vector3d(l*s, d*s*c, -1.0);
-  v_d = Eigen::Vector3d(l*f*c, d*f*(1.0-2.0*s*s), 0.0);
-  a_d = Eigen::Vector3d(-l*f*f*s, -4.0*d*f*f*s*c, 0.0);
-}
-
-static inline void circle_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d){
-  constexpr double r = 1.5;              // circle radious [m]
-  constexpr double f = 2.0 * M_PI * 0.3; // [rad/s]
-
-  const double s = std::sin(f * t_sec);
-  const double c = std::cos(f * t_sec);
-
-  p_d = Eigen::Vector3d(r*s, r*c, -1.0);
-  v_d = Eigen::Vector3d(r*f*c, -r*f*s, 0.0);
-  a_d = Eigen::Vector3d(-r*f*f*s, -r*f*f*c, 0.0);
-}
-
-static inline void l_traj_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3d& v_d, Eigen::Vector3d& a_d) {
+static inline void traj_gen(double t_sec, Eigen::Vector3d& p_d) {
   constexpr double lx_ = 2.5;              // width in X [m]
   constexpr double ly_ = 0.0;              // width in Y [m]
   constexpr double T_  = 3.0;              // base period [sec]
@@ -176,17 +140,13 @@ static inline void l_traj_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3
     const double s  = std::sin(f * u);
     const double c  = std::cos(f * u);
 
-    p_d = Eigen::Vector3d(-lx_ * c, -ly_ * c, -1.3);
-    v_d = Eigen::Vector3d( lx_ * f * s,  ly_ * f * s, 0.0);
-    a_d = Eigen::Vector3d( lx_ * f * f * c, ly_ * f * f * c, 0.0);
+    p_d = Eigen::Vector3d(-lx_ * c, -ly_ * c, -1.5);
     return;
   }
 
   // 0.5T ~ 3.0T : hold at (+lx, +ly)
   if (tau > 0.5 * T_ && tau <= 3.0 * T_) {
-    p_d = Eigen::Vector3d(lx_, ly_, -1.3);
-    v_d = Eigen::Vector3d::Zero();
-    a_d = Eigen::Vector3d::Zero();
+    p_d = Eigen::Vector3d(lx_, ly_, -1.5);
     return;
   }
 
@@ -196,40 +156,12 @@ static inline void l_traj_pva(double t_sec, Eigen::Vector3d& p_d, Eigen::Vector3
     const double s  = std::sin(f * u);
     const double c  = std::cos(f * u);
 
-    p_d = Eigen::Vector3d(lx_ * c, ly_ * c, -1.3);
-    v_d = Eigen::Vector3d(-lx_ * f * s, -ly_ * f * s, 0.0);
-    a_d = Eigen::Vector3d(-lx_ * f * f * c, -ly_ * f * f * c, 0.0);
+    p_d = Eigen::Vector3d(lx_ * c, ly_ * c, -1.5);
     return;
   }
 
   // 3.5T ~ 6.0T : hold at (-lx, -ly)
-  p_d = Eigen::Vector3d(-lx_, -ly_, -1.3);
-  v_d = Eigen::Vector3d::Zero();
-  a_d = Eigen::Vector3d::Zero();
-}
-
-static inline Eigen::Vector3d goes_to(const Eigen::Vector3d& p_d, const double t, const double t_term){
-  Eigen::Vector3d out = p_d * t / t_term;
-  return out;
-}
-
-static inline Eigen::Vector3d square4_point(double t_sec) {
-  constexpr double T = 4.0;
-  constexpr double L = 1.0;
-
-  std::int64_t k = static_cast<std::int64_t>(std::floor(t_sec / T));
-  int phase = static_cast<int>(k % 4);
-  if (phase < 0) phase += 4;
-
-  double sx = -L, sy = L;
-  switch (phase) {
-    case 0: sx = -L; sy =  L; break;
-    case 1: sx = -L; sy = -L; break;
-    case 2: sx =  L; sy = -L; break;
-    default:sx =  L; sy =  L; break;
-  }
-
-  return Eigen::Vector3d(sx, sy, -2.0);
+  p_d = Eigen::Vector3d(-lx_, -ly_, -1.5);
 }
 
 static inline Eigen::Matrix3d quat_to_R(const Eigen::Quaterniond q) {
@@ -516,205 +448,43 @@ static inline void polar2cart(const Eigen::Vector2d& p1, const Eigen::Vector2d& 
   }
 }
 
-static inline bool make_feasible(std::array<Eigen::Vector2d, 4>& r) {
-  constexpr double sq_min_stretch_fail    = (param::MIN_STRETCH - param::STRETCH_FAIL_MARGIN) * (param::MIN_STRETCH - param::STRETCH_FAIL_MARGIN);
-  constexpr double sq_max_stretch_fail    = (param::MAX_STRETCH + param::STRETCH_FAIL_MARGIN) * (param::MAX_STRETCH + param::STRETCH_FAIL_MARGIN);
-  constexpr double sq_rotor_diameter_fail = (param::ROTOR_DIAMETER - param::COLLISION_FAIL_MARGIN) * (param::ROTOR_DIAMETER - param::COLLISION_FAIL_MARGIN);
-  constexpr double sq_max_stretch         = param::MAX_STRETCH * param::MAX_STRETCH;
-  constexpr double sq_min_stretch         = param::MIN_STRETCH * param::MIN_STRETCH;
-  constexpr double sq_rotor_diameter      = param::ROTOR_DIAMETER * param::ROTOR_DIAMETER;
+static inline bool ws_check(const std::array<Eigen::Vector2d, 4>& r) {
+  constexpr double sq_rotor_diameter = param::D_ROTOR * param::D_ROTOR;
+  constexpr double two_pi = 2.0 * M_PI;
 
-  constexpr int nbr_a[4] = {3, 0, 1, 2}; // nearby rotor a index
-  constexpr int nbr_b[4] = {1, 2, 3, 0}; // nearby rotor b index
+  constexpr int pair_i[4] = {0, 1, 2, 3};
+  constexpr int pair_j[4] = {1, 2, 3, 0};
 
-  constexpr double PI = 3.14159265358979323846;
+  double x[4];
+  double y[4];
 
-  auto wrap_pi = [&](double a) -> double {
-    while (a >  PI) {a -= 2.0 * PI;}
-    while (a < -PI) {a += 2.0 * PI;}
-    return a;
-  };
+  for (uint8_t i = 0; i < 4; ++i) {
+    if (!r[i].allFinite()) return false;
 
-  auto clamp_angle_in_sector = [&](double a, int i) -> double {
-    a = spin_360(a, param::ALPHA_MIN[i], param::ALPHA_MAX[i]);
-    if (a < param::ALPHA_MIN[i]) a = param::ALPHA_MIN[i];
-    if (a > param::ALPHA_MAX[i]) a = param::ALPHA_MAX[i];
-    return a;
-  };
-
-  auto pol_to_cart = [&](double rho, double alpha, int i) -> Eigen::Vector2d {
-    return Eigen::Vector2d(
-      param::B2BASE_X[i] + rho * std::cos(alpha),
-      param::B2BASE_Y[i] + rho * std::sin(alpha)
-    );
-  };
-
-  auto cart_to_pol_from_base = [&](const Eigen::Vector2d& p, int i) -> Eigen::Vector2d {
-    const double dx = p.x() - param::B2BASE_X[i];
-    const double dy = p.y() - param::B2BASE_Y[i];
-    const double rho = std::sqrt(dx * dx + dy * dy);
-    const double alpha = std::atan2(dy, dx);
-    return Eigen::Vector2d(rho, wrap_pi(alpha));
-  };
-
-  for (int it = 0; it < 3; ++it) { // A few iterations to resolve "workspace <-> collision" coupling
-    for (int i = 0; i < 4; ++i) { // per each rotor
-      { // ------------ [ 1. Workspace guard ] ------------
-        double rho   = r[i].x();
-        double alpha = r[i].y();
-
-        // Angle clamp (replacing old sign clamp)
-        alpha = clamp_angle_in_sector(alpha, i);
-
-        // Hard-fail if stretch is too far outside
-        const double sqd_r = rho * rho;
-        if (sqd_r < sq_min_stretch_fail || sqd_r > sq_max_stretch_fail) {
-          std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: stretch too far.\n", it);
-          std::fflush(stderr);
-          return false;
-        }
-
-        if (sqd_r < sq_min_stretch || sqd_r > sq_max_stretch) {
-          const double target = (sqd_r < sq_min_stretch) ? param::MIN_STRETCH : param::MAX_STRETCH;
-          const double scale_factor = target / rho;
-          rho *= scale_factor;
-          std::fprintf(stderr, "[arm-cmd check] iter[%d]: rotor[%d] scaled by %f\n", it, i + 1, scale_factor);
-          std::fflush(stderr);
-        }
-
-        r[i].x() = rho;
-        r[i].y() = alpha;
-      }
-
-      { // ------------ [ 2. Rotor collision guard ] ------------
-        const Eigen::Vector2d p0 = pol_to_cart(r[i].x(), r[i].y(), i);
-        const Eigen::Vector2d pa = pol_to_cart(r[nbr_a[i]].x(), r[nbr_a[i]].y(), nbr_a[i]);
-        const Eigen::Vector2d pb = pol_to_cart(r[nbr_b[i]].x(), r[nbr_b[i]].y(), nbr_b[i]);
-        Eigen::Vector2d p = p0; // new target xy to compute
-
-        const Eigen::Vector2d ap0 = p0 - pa;
-        const Eigen::Vector2d bp0 = p0 - pb;
-        const double sqrd_ap0 = ap0.squaredNorm();
-        const double sqrd_bp0 = bp0.squaredNorm();
-
-        // (1) collision occurred too deep -> fail
-        if (sqrd_ap0 < sq_rotor_diameter_fail || sqrd_bp0 < sq_rotor_diameter_fail) {
-          std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: collision occured too deep.\n", it);
-          std::fflush(stderr);
-          return false;
-        }
-
-        // (2) both already safe -> skip
-        if (sqrd_ap0 >= sq_rotor_diameter && sqrd_bp0 >= sq_rotor_diameter) {
-          continue;
-        }
-
-        // (3) collision occurred -> move target p
-        const bool closeA = (sqrd_ap0 < sq_rotor_diameter);
-        const bool closeB = (sqrd_bp0 < sq_rotor_diameter);
-        if (closeA && closeB) { // both are closer than D -> |p - pa| = D, |p - pb| = D  (two solutions)
-          const Eigen::Vector2d dc = pb - pa;
-          const double d2 = dc.squaredNorm();
-          const double d = std::sqrt(d2);
-
-          const Eigen::Vector2d m = 0.5 * (pa + pb);
-          double h2 = sq_rotor_diameter - 0.25 * d2;
-          if (h2 < 0.0) {
-            std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: negative h2 detected.\n", it);
-            std::fflush(stderr);
-            return false;
-          }
-          const double h = std::sqrt(h2);
-          const Eigen::Vector2d n(-dc.y() / d, dc.x() / d); // unit perpendicular (rotate +90deg)
-
-          // Original code chose one branch only. Keep same style.
-          p = m + n * h;
-        }
-        else { // only one side is closer than D
-          const Eigen::Vector2d Close = closeA ? pa : pb;
-          const Eigen::Vector2d Far   = closeA ? pb : pa;
-          const double r1_keep2 = closeA ? sqrd_bp0 : sqrd_ap0; // keep original distance to the other rotor
-
-          const Eigen::Vector2d dc = Far - Close;
-          const double d2 = dc.squaredNorm();
-          const double d = std::sqrt(d2);
-
-          const double a = (sq_rotor_diameter + d2 - r1_keep2) / (2.0 * d);
-          const double h = std::sqrt(sq_rotor_diameter - a * a);
-
-          const Eigen::Vector2d n(-dc.y() / d, dc.x() / d); // unit perpendicular (rotate +90deg)
-
-          p = Close + a * dc / d + n * h;
-        }
-
-        // Commit as polar
-        Eigen::Vector2d pol = cart_to_pol_from_base(p, i);
-
-        // Re-apply polar workspace constraint after collision projection
-        pol.y() = clamp_angle_in_sector(pol.y(), i);
-
-        const double sqd_r = pol.x() * pol.x();
-        if (sqd_r < sq_min_stretch_fail || sqd_r > sq_max_stretch_fail) {
-          std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: stretch too far after collision projection.\n", it);
-          std::fflush(stderr);
-          return false;
-        }
-
-        if (sqd_r < sq_min_stretch || sqd_r > sq_max_stretch) {
-          const double target = (sqd_r < sq_min_stretch) ? param::MIN_STRETCH : param::MAX_STRETCH;
-          const double scale_factor = target / pol.x();
-          pol.x() *= scale_factor;
-          std::fprintf(stderr, "[arm-cmd check] iter[%d]: rotor[%d] scaled by %f after collision projection\n", it, i + 1, scale_factor);
-          std::fflush(stderr);
-        }
-
-        r[i] = pol;
-
-        { // NaN/Inf guard
-          if (!r[i].allFinite()) {
-            std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[i]=r[%d] NaN/Inf detected.\n", it, i);
-            std::fflush(stderr);
-            return false;
-          }
-          const int ia = nbr_a[i];
-          const int ib = nbr_b[i];
-          if (!r[ia].allFinite()) {
-            std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[ia]=r[%d] NaN/Inf detected.\n", it, ia);
-            std::fflush(stderr);
-            return false;
-          }
-          if (!r[ib].allFinite()) {
-            std::fprintf(stderr, "[arm-cmd check] WARNING-iter[%d]: r[ib]=r[%d] NaN/Inf detected.\n", it, ib);
-            std::fflush(stderr);
-            return false;
-          }
-        }
-
-        std::fprintf(stderr, "[arm-cmd check] iter[%d]: collision removed.\n", it);
-        std::fflush(stderr);
-      }
-    } // rotor 1234
-  } // iter
-
-  // ------------ [ 3. Final pass check (just check) ] ------------
-  for (int i = 0; i < 4; ++i) {
     const double rho   = r[i].x();
-    const double alpha = wrap_pi(r[i].y());
+    const double alpha = r[i].y();
 
-    // Angle-sector check
-    const double alpha_clamped = clamp_angle_in_sector(alpha, i);
-    if (std::abs(wrap_pi(alpha - alpha_clamped)) > 1e-12) {
-      std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: rotor-%d angle out of sector.\n", i);
-      std::fflush(stderr);
-      return false;
-    }
+    // Stretch check
+    if (rho < param::RHO_MIN || rho > param::RHO_MAX){return false;}
 
-    const double n2 = rho * rho;
-    if (n2 < sq_min_stretch || n2 > sq_max_stretch) {
-      std::fprintf(stderr, "[arm-cmd check] WARNING final-pass: arm-%d too much stretch.\n", i);
-      std::fflush(stderr);
-      return false;
-    }
+    // Angle bound check
+    if (alpha < param::ALPHA_MIN[i] || alpha > param::ALPHA_MAX[i]){return false;}
+
+    // Polar to Cartesian once for collision check
+    x[i] = param::B2BASE_X[i] + rho * std::cos(alpha);
+    y[i] = param::B2BASE_Y[i] + rho * std::sin(alpha);
+  }
+
+  // Adjacent rotor collision check
+  for (uint8_t k = 0; k < 4; ++k) {
+    const int i = pair_i[k];
+    const int j = pair_j[k];
+
+    const double dx = x[i] - x[j];
+    const double dy = y[i] - y[j];
+    const double d2 = dx * dx + dy * dy;
+
+    if (d2 < sq_rotor_diameter){return false;}
   }
 
   return true;
@@ -747,18 +517,18 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
 
   // thrust allocation
   Eigen::Matrix4d A1;
-  A1(0,0) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 0) - pcz) * s1 + (pcy - r_mea(1, 0)) * c1;
-  A1(0,1) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1) + pcz) * s2 + (pcy - r_mea(1, 1)) * c2;
-  A1(0,2) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 2) + pcz) * s3 + (pcy - r_mea(1, 2)) * c3;
-  A1(0,3) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 3) - pcz) * s4 + (pcy - r_mea(1, 3)) * c4;
-  A1(1,0) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 0) + pcz) * s1 + (r_mea(0, 0) - pcx) * c1;
-  A1(1,1) = -inv_sqrt2 * (-param::PWM_ZETA - r_mea(2, 1) + pcz) * s2 + (r_mea(0, 1) - pcx) * c2;
-  A1(1,2) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 2) - pcz) * s3 + (r_mea(0, 2) - pcx) * c3;
-  A1(1,3) = -inv_sqrt2 * ( param::PWM_ZETA + r_mea(2, 3) - pcz) * s4 + (r_mea(0, 3) - pcx) * c4;
-  A1(2,0) = -param::PWM_ZETA * c1;
-  A1(2,1) =  param::PWM_ZETA * c2;
-  A1(2,2) = -param::PWM_ZETA * c3;
-  A1(2,3) =  param::PWM_ZETA * c4;
+  A1(0,0) = -inv_sqrt2 * ( param::nominal_PWM_ZETA + r_mea(2, 0) - pcz) * s1 + (pcy - r_mea(1, 0)) * c1;
+  A1(0,1) = -inv_sqrt2 * (-param::nominal_PWM_ZETA - r_mea(2, 1) + pcz) * s2 + (pcy - r_mea(1, 1)) * c2;
+  A1(0,2) = -inv_sqrt2 * (-param::nominal_PWM_ZETA - r_mea(2, 2) + pcz) * s3 + (pcy - r_mea(1, 2)) * c3;
+  A1(0,3) = -inv_sqrt2 * ( param::nominal_PWM_ZETA + r_mea(2, 3) - pcz) * s4 + (pcy - r_mea(1, 3)) * c4;
+  A1(1,0) = -inv_sqrt2 * (-param::nominal_PWM_ZETA - r_mea(2, 0) + pcz) * s1 + (r_mea(0, 0) - pcx) * c1;
+  A1(1,1) = -inv_sqrt2 * (-param::nominal_PWM_ZETA - r_mea(2, 1) + pcz) * s2 + (r_mea(0, 1) - pcx) * c2;
+  A1(1,2) = -inv_sqrt2 * ( param::nominal_PWM_ZETA + r_mea(2, 2) - pcz) * s3 + (r_mea(0, 2) - pcx) * c3;
+  A1(1,3) = -inv_sqrt2 * ( param::nominal_PWM_ZETA + r_mea(2, 3) - pcz) * s4 + (r_mea(0, 3) - pcx) * c4;
+  A1(2,0) = -param::nominal_PWM_ZETA * c1;
+  A1(2,1) =  param::nominal_PWM_ZETA * c2;
+  A1(2,2) = -param::nominal_PWM_ZETA * c3;
+  A1(2,3) =  param::nominal_PWM_ZETA * c4;
   A1(3,0) = -c1;
   A1(3,1) = -c2;
   A1(3,2) = -c3;
@@ -798,50 +568,45 @@ static inline void Sequential_Allocation(const double& thrust_d, const Eigen::Ve
   for (uint8_t i = 0; i < 4; ++i) {C2s_des(i) = std::clamp(C2s_des(i), -0.175, 0.175);}
 }
 
-static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& tau_d, const Eigen::Vector3d& r_cot, const Eigen::Vector3d& Pc, Eigen::Vector4d& F1234) {
-  constexpr double l = 0.48 / 2.0;
-
-  const double dx = r_cot(0) - Pc(0);
-  const double dy = r_cot(1) - Pc(1);
-
-  Eigen::Matrix4d A_d;
-  A_d(0,0) =  l - dy;
-  A_d(0,1) =  l - dy;
-  A_d(0,2) = -l - dy;
-  A_d(0,3) = -l - dy;
-  A_d(1,0) =  l + dx;
-  A_d(1,1) = -l + dx;
-  A_d(1,2) = -l + dx;
-  A_d(1,3) =  l + dx;
-  A_d(2,0) = -param::PWM_ZETA;
-  A_d(2,1) =  param::PWM_ZETA;
-  A_d(2,2) = -param::PWM_ZETA;
-  A_d(2,3) =  param::PWM_ZETA;
-  A_d(3,0) = -1.0;
-  A_d(3,1) = -1.0;
-  A_d(3,2) = -1.0;
-  A_d(3,3) = -1.0;
+static inline void Control_Allocation(const double& F_d, const Eigen::Vector3d& tau_d, const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& Pc, Eigen::Vector4d& F) {
+  Eigen::Matrix4d A;
+  A(0,0) = -r1(1) + Pc(1);
+  A(0,1) = -r2(1) + Pc(1);
+  A(0,2) = -r3(1) + Pc(1);
+  A(0,3) = -r4(1) + Pc(1);
+  A(1,0) =  r1(0) - Pc(0);
+  A(1,1) =  r2(0) - Pc(0);
+  A(1,2) =  r3(0) - Pc(0);
+  A(1,3) =  r4(0) - Pc(0);
+  A(2,0) = -param::nominal_PWM_ZETA;
+  A(2,1) =  param::nominal_PWM_ZETA;
+  A(2,2) = -param::nominal_PWM_ZETA;
+  A(2,3) =  param::nominal_PWM_ZETA;
+  A(3,0) = -1.0;
+  A(3,1) = -1.0;
+  A(3,2) = -1.0;
+  A(3,3) = -1.0;
 
   Eigen::Vector4d Wrench(tau_d(0), tau_d(1), tau_d(2), F_d);
-  Eigen::FullPivLU<Eigen::Matrix4d> lu(A_d);
-  if (lu.isInvertible()) {F1234 = lu.solve(Wrench);}
-  else {F1234 = (A_d.transpose()*A_d + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A_d.transpose()*Wrench);}
+  Eigen::FullPivLU<Eigen::Matrix4d> lu(A);
+  if (lu.isInvertible()) {F = lu.solve(Wrench);}
+  else {F = (A.transpose()*A + 1e-8*Eigen::Matrix4d::Identity()).ldlt().solve(A.transpose()*Wrench);}
 }
 
-static inline Eigen::Matrix<double, 3, 4> A_Matrix(const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& com) {
+static inline Eigen::Matrix<double, 3, 4> matrix_A_tau(const Eigen::Vector3d& r1, const Eigen::Vector3d& r2, const Eigen::Vector3d& r3, const Eigen::Vector3d& r4, const Eigen::Vector3d& Pc) {
   Eigen::Matrix<double, 3, 4> A;
-  A(0,0) = -r1(1) + com(1);
-  A(0,1) = -r2(1) + com(1);
-  A(0,2) = -r3(1) + com(1);
-  A(0,3) = -r4(1) + com(1);
-  A(1,0) =  r1(0) - com(0);
-  A(1,1) =  r2(0) - com(0);
-  A(1,2) =  r3(0) - com(0);
-  A(1,3) =  r4(0) - com(0);
-  A(2,0) = -param::PWM_ZETA;
-  A(2,1) =  param::PWM_ZETA;
-  A(2,2) = -param::PWM_ZETA;
-  A(2,3) =  param::PWM_ZETA;
+  A(0,0) = -r1(1) + Pc(1);
+  A(0,1) = -r2(1) + Pc(1);
+  A(0,2) = -r3(1) + Pc(1);
+  A(0,3) = -r4(1) + Pc(1);
+  A(1,0) =  r1(0) - Pc(0);
+  A(1,1) =  r2(0) - Pc(0);
+  A(1,2) =  r3(0) - Pc(0);
+  A(1,3) =  r4(0) - Pc(0);
+  A(2,0) = -param::nominal_PWM_ZETA;
+  A(2,1) =  param::nominal_PWM_ZETA;
+  A(2,2) = -param::nominal_PWM_ZETA;
+  A(2,3) =  param::nominal_PWM_ZETA;
   return A;
 }
 
@@ -949,20 +714,29 @@ static inline int sensor_adr_check(const mjModel* m, const char* name, int expec
   return m->sensor_adr[sid];
 }
 
-static inline void set_bong_tip_load_enabled(mjModel* m, mjData* d, int body_id, int geom_id, bool enabled) {
+static inline void set_payload_enabled(mjModel* m, mjData* d, int body_id, int geom_id, bool enabled) {
+  constexpr mjtNum mass = param::PAYLOAD_MASS;
+  constexpr mjtNum lx = 0.4; // [m]
+  constexpr mjtNum ly = 0.15; // [m]
+  constexpr mjtNum lz = 0.3; // [m]
+  
+  constexpr mjtNum I[3] = {
+    mass * (ly * ly + lz * lz) / 12.0,
+    mass * (lx * lx + lz * lz) / 12.0,
+    mass * (lx * lx + ly * ly) / 12.0
+  };
+
   if (body_id < 0) {return;}
 
-  const mjtNum mass = enabled ? param::BONG_TIP_LOAD_MASS : 1e-9;
+  const mjtNum mass_kg = enabled ? mass : 1e-9;
 
-  m->body_mass[body_id] = mass;
-  m->body_inertia[3 * body_id + 0] = enabled ? param::BONG_TIP_LOAD_INERTIA[0] : 1e-12;
-  m->body_inertia[3 * body_id + 1] = enabled ? param::BONG_TIP_LOAD_INERTIA[1] : 1e-12;
-  m->body_inertia[3 * body_id + 2] = enabled ? param::BONG_TIP_LOAD_INERTIA[2] : 1e-12;
+  m->body_mass[body_id] = mass_kg;
+  m->body_inertia[3 * body_id + 0] = enabled ? I[0] : 1e-12;
+  m->body_inertia[3 * body_id + 1] = enabled ? I[1] : 1e-12;
+  m->body_inertia[3 * body_id + 2] = enabled ? I[2] : 1e-12;
 
   if (geom_id >= 0) {m->geom_rgba[4 * geom_id + 3] = enabled ? 1.0 : 0.0;}
 
-  // Recompute mjModel derived constants using scratch mjData.
-  // Do not pass live mjData here: mj_setConst works around qpos0 and may disturb d->qpos.
   mjData* d_scratch = mj_makeData(m);
   if (d_scratch != nullptr) {
     mj_setConst(m, d_scratch);

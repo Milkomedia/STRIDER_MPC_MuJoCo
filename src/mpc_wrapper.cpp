@@ -61,8 +61,8 @@ struct acados_wrapper::Impl {
 
   static MPCOutput from_dict(const pybind11::dict& d) {
     MPCOutput out;
-    out.x_stage = d["x_stage"].cast<Eigen::Matrix<double, param::MPC_NX, param::N_STEPS_REQ>>();
-    out.u_stage = d["u_stage"].cast<Eigen::Matrix<double, param::MPC_NU, param::N_STEPS_REQ>>();
+    out.x_stage = d["x_stage"].cast<Eigen::Matrix<double, MPC_NX, param::N_STEPS_REQ>>();
+    out.u_stage = d["u_stage"].cast<Eigen::Matrix<double, MPC_NU, param::N_STEPS_REQ>>();
     out.solve_ms = d["solve_ms"].cast<double>();
     out.state = d["state"].cast<std::uint8_t>();
     return out;

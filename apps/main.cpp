@@ -38,7 +38,7 @@ static inline void mpc_reset_locked(uint32_t& mpc_key) {
 int main() {
   std::signal(SIGINT, sigint_handler); // SIGINT handler(ctrl+C)
 
-  // Load MuJoCo model
+  // ---------------- [ Load MuJoCo model ] ----------------
   std::string xml_path;
   {
     const std::filesystem::path exe = get_executable_path();
@@ -68,32 +68,20 @@ int main() {
   }
 
   std::array<int, 20> arm_act_ids{};
-  for (int arm = 0; arm < 4; ++arm) {
-    for (int joint = 0; joint < 5; ++joint) {
-      const int idx = 5 * arm + joint;
-      const std::string name = "servo_Arm" + std::to_string(arm + 1) + "_joint" + std::to_string(joint + 1);
-      arm_act_ids[idx] = mj_name2id(m, mjOBJ_ACTUATOR, name.c_str());
-    }
-  }
-
-  std::array<int, 20> arm_joint_ids{};
   std::array<int, 20> arm_qpos_adrs{};
   for (int arm = 0; arm < 4; ++arm) {
     for (int joint = 0; joint < 5; ++joint) {
       const int idx = 5 * arm + joint;
-      const std::string name = "Arm" + std::to_string(arm + 1) + "_joint" + std::to_string(joint + 1);
-      arm_joint_ids[idx] = mj_name2id(m, mjOBJ_JOINT, name.c_str());
-      arm_qpos_adrs[idx] = (arm_joint_ids[idx] != -1) ? m->jnt_qposadr[arm_joint_ids[idx]] : -1;
+      const std::string act_name = "servo_Arm" + std::to_string(arm + 1) + "_joint" + std::to_string(joint + 1);
+      arm_act_ids[idx] = mj_name2id(m, mjOBJ_ACTUATOR, act_name.c_str());
+      const std::string enc_name = "Arm" + std::to_string(arm + 1) + "_joint" + std::to_string(joint + 1);
+      arm_qpos_adrs[idx] = m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, enc_name.c_str())];
     }
   }
 
-  int load_act_id = -1;
-  load_act_id = mj_name2id(m, mjOBJ_ACTUATOR, "servo_load_joint");
-  const int load_joint_id = mj_name2id(m, mjOBJ_JOINT, "load_joint");
-  const int load_qpos_adr = (load_joint_id != -1) ? m->jnt_qposadr[load_joint_id] : -1;
-  const int bong_tip_load_body_id = mj_name2id(m, mjOBJ_BODY, "bong_tip_load");
-  const int bong_tip_load_geom_id = mj_name2id(m, mjOBJ_GEOM, "bong_tip_load_geom");
-  set_bong_tip_load_enabled(m, d, bong_tip_load_body_id, bong_tip_load_geom_id, false);
+  const int payload_body_id = mj_name2id(m, mjOBJ_BODY, "payload");
+  const int payload_geom_id = mj_name2id(m, mjOBJ_GEOM, "payload_geom");
+  set_payload_enabled(m, d, payload_body_id, payload_geom_id, false);
 
   // ---------------- [ MPC thread ] ----------------
   std::thread th_mpc([&]() {
@@ -149,11 +137,18 @@ int main() {
     fdcl::command_t* gac_cmd_ptr   = &gac_cmd;
     fdcl::control geometry_ctrl(gac_state_ptr, gac_cmd_ptr);
 
-    // Gyro estimation
-    Eigen::Vector3d prev_tau = Eigen::Vector3d::Zero();
+    // Estimate angular velocity using previous torque wrench
     GyroEKF ekf;
 
-    // --- state definition ---
+    // Backward-difference angular acceleration estimate (controller does not use this)
+    Eigen::Vector3d prev_omega = Eigen::Vector3d::Zero();
+    double prev_elapsed_double = 0.0;
+
+    // Estimate external torque disturbance
+    Eigen::Vector3d prev_tau = Eigen::Vector3d::Zero();
+    Eigen::Matrix<double, 3, 6> dr_state = Eigen::Matrix<double, 3, 6>::Zero();
+
+    // --- state & command definition ---
     Phase   phase = Phase::GAC_ONLY;
     State   s{};
     Command cmd{};
@@ -165,21 +160,17 @@ int main() {
     Eigen::Vector2d smoothed_cmd_r2 = param::r2_init;
     Eigen::Vector2d smoothed_cmd_r3 = param::r3_init;
     Eigen::Vector2d smoothed_cmd_r4 = param::r4_init;
-    Eigen::Vector3d smoothed_d_theta = Eigen::Vector3d::Zero();
-    Eigen::Vector3d prev_omega = Eigen::Vector3d::Zero();
-    double prev_elapsed_double = 0.0;
-
-    Eigen::Matrix<double, 3, 6> dob_state = Eigen::Matrix<double, 3, 6>::Zero();
-
-    // --- com-bias inducing load param ---
-    double servo_load_angle_cmd = 0.0; // 0.5*M_PI; 0.0;
-    double servo_load_angle = 0.0; // 0.5*M_PI; 0.0;
 
     // --- auto-phase start ---
     bool auto_phase_started = false;
-    constexpr Phase AUTO_PHASE = Phase::USE_FULL; // choose GAC_ONLY or USE_ARM or USE_DTHETA or USE_FULL or GRADIENT_ASCENT
+    const double auto_phase_start_time = 15.0;
+    constexpr Phase AUTO_PHASE = Phase::USE_FULL; // choose [GAC_ONLY|USE_ARM|USE_DTHETA|USE_FULL|GRADIENT_ASCENT]
 
-    // --- MRG parameters ---
+    // --- desried position path ---
+    const double dpath_start_time = 18.0;
+    const Eigen::Vector3d initial_pos_d = Eigen::Vector3d(-2.5,0.0,-1.5);
+
+    // --- NMPC parameters ---
     uint32_t mpc_key = 1;
     strider_mpc::MPCOutput l_mpc_output;
     l_mpc_output.x_stage.setZero();
@@ -190,11 +181,11 @@ int main() {
     GRADIENT_ASCENT gradient_ascent;
     gradient_ascent.reset(param::r1_init, param::r2_init, param::r3_init, param::r4_init);
 
-    // --- noise injection ---
+    // --- sensor noise injection ---
     static NOISE::nState noise_state;
     NOISE::reset(noise_state, param::NOISE_SEED, std::chrono::steady_clock::now());
 
-    // --- timedelay ---
+    // --- actuator delay ---
     State delayed_s;
     double delayed_q_d[20] = {0};
     Eigen::Vector4d smoothed_F   = Eigen::Vector4d::Zero();
@@ -211,21 +202,19 @@ int main() {
     const double steps_per_ctrl = param::SIM_HZ / param::CTRL_HZ;
     double substep_accum = 0.0;
 
-    { // Model warm-up
+    { // Model warm-up (1sec)
       double arm_angles[20]; // Initial arm joint angles
       Eigen::Vector4d tvc_angle = Eigen::Vector4d::Zero();
       IK(cmd.r1, cmd.r2, cmd.r3, cmd.r4, tvc_angle, arm_angles);
       for (uint8_t i=0; i<20; ++i) {delayed_q_d[i] = arm_angles[i];}
       {
         std::lock_guard<std::mutex> scene_lk(scene_mtx);
-        // spawn and 3 second do nothing
-        for (int k = 0; k < 3*static_cast<int>(param::SIM_HZ); ++k) {
+        for (int k = 0; k < static_cast<int>(param::SIM_HZ); ++k) {
           for (int i = 0; i < 4; ++i) {
-            if (thrust_act_ids[i] != -1) {d->ctrl[thrust_act_ids[i]] = 0.0;}
-            if (torque_act_ids[i] != -1) {d->ctrl[torque_act_ids[i]] = 0.0;}
+            d->ctrl[thrust_act_ids[i]] = 0.0;
+            d->ctrl[torque_act_ids[i]] = 0.0;
           }
           for (int i = 0; i < 20; ++i) {if (arm_act_ids[i] != -1) {d->ctrl[arm_act_ids[i]] = arm_angles[i];}}
-          if (load_act_id != -1) {d->ctrl[load_act_id] = 0.0;}
           mj_step(m, d);
         }
       }
@@ -236,12 +225,12 @@ int main() {
       const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
       const double elapsed_double = std::chrono::duration<double>(now - t0).count();
 
+      // --- handle controller mode change ---
       Phase requested_phase = static_cast<Phase>(g_phase_cmd.load(std::memory_order_relaxed));
-
-      if (!auto_phase_started && elapsed_double >= 15.05) {
+      if (!auto_phase_started && elapsed_double >= auto_phase_start_time) {
         {
           std::lock_guard<std::mutex> scene_lk(scene_mtx);
-          set_bong_tip_load_enabled(m, d, bong_tip_load_body_id, bong_tip_load_geom_id, true);
+          set_payload_enabled(m, d, payload_body_id, payload_geom_id, true);
         }
         requested_phase = AUTO_PHASE;
         g_phase_cmd.store(static_cast<uint8_t>(AUTO_PHASE), std::memory_order_relaxed);
@@ -268,31 +257,29 @@ int main() {
         s.R = quat_to_R(q);
         s.omega << sd[adr_gyro], -sd[adr_gyro + 1], -sd[adr_gyro + 2];
         for (int i = 0; i < 20; ++i) {s.arm_q[i] = (arm_qpos_adrs[i] != -1) ? d->qpos[arm_qpos_adrs[i]] : 0.0;}
-        servo_load_angle = (load_qpos_adr != -1) ? d->qpos[load_qpos_adr] : 0.0;
       }
+
+      // --- sensor noise injection ---
+      NOISE::apply(noise_state, now, s);
+
+      // --- torque estimate ---
+      const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
+      s.d_hat = dob_update(euler_rpy, prev_tau, s.moi, dr_state);
+
+      // --- angular velocity & acceleration estimate ---
+      Eigen::Vector3d omega_hat = ekf.step(prev_tau+s.d_hat, euler_rpy, delayed_s.omega);
       s.alpha = diff(s.omega, prev_omega, elapsed_double, prev_elapsed_double);
       prev_omega = s.omega; prev_elapsed_double = elapsed_double;
 
-      // --- sensor noise injection ---
-      if (param::NOISE_ON) {NOISE::apply(noise_state, now, s);}
-
-      // --- estimate gyro ---
-      const Eigen::Vector3d euler_rpy = R_to_rpy(delayed_s.R);
-      Eigen::Vector3d omega_hat = ekf.step(prev_tau, euler_rpy, delayed_s.omega);
-
-      // // --- load angle cmd update ---
-      // if (elapsed_double > 15.0) {
-      //   servo_load_angle_cmd -= 1.0/400.0 * 0.5*M_PI / 3.0;
-      //   if (servo_load_angle_cmd <= 0.0) {servo_load_angle_cmd = 0.0;}
-      //   // servo_load_angle_cmd = 0.5*M_PI*std::sin(elapsed_double / M_2_PI)+0.5*M_PI;
-      // }
+      // --- update rotor position, CoM position and MoI ---
+      // Only arm-induced CoM and MoI changes are estimated.
+      FK(delayed_s.arm_q, s.r_com, s.moi, s.r1, s.r2, s.r3, s.r4);
+      gac_state.J = s.moi;
 
       // --- position control ---
-      if (elapsed_double >= 18.0) {l_traj_pva(elapsed_double-18.0, cmd.pos, cmd.vel, cmd.acc);} // option: [fig8_point_pva/circle_pva/l_traj_pva]
-      else if (elapsed_double <= 2.0) {cmd.pos = goes_to(Eigen::Vector3d(-2.5,0.0,-1.3), elapsed_double, 2.0);}
-      else {cmd.pos = Eigen::Vector3d(-2.5,0.0,-1.3);}
-      cmd.vel = Eigen::Vector3d::Zero(); // not-use velocity command
-      cmd.acc = Eigen::Vector3d::Zero(); // not-use velocity command
+      if (elapsed_double >= dpath_start_time) {traj_gen(elapsed_double-dpath_start_time, cmd.pos);}
+      else if (elapsed_double <= 2.0) {cmd.pos = initial_pos_d * elapsed_double/2.0;}
+      else {cmd.pos = initial_pos_d;}
 
       gac_cmd.xd = cmd.pos;
       gac_cmd.xd_dot = cmd.vel;
@@ -306,9 +293,9 @@ int main() {
       const Eigen::Matrix3d R_raw = gac_cmd.Rd;
       const Eigen::Vector3d omega_raw = gac_cmd.Wd;
       const Eigen::Vector3d alpha_raw = gac_cmd.Wd_dot;
-      const double f_sum = -geometry_ctrl.f_total; // (f_total > 0)
+      const double f_sum = -geometry_ctrl.f_total; // (f_sum > 0)
 
-      { // MPC get
+      { // Get optimal solution from MPC
         std::lock_guard<std::mutex> mpc_lk(mpc_mtx);
         if (g_mpc_output.has) {
           const bool epoch_ok = (g_mpc_output.epoch == g_mpc_epoch.load(std::memory_order_relaxed));
@@ -324,53 +311,49 @@ int main() {
       }
 
       bool mpc_applied = false;
-      if (phase == Phase::USE_DTHETA || phase == Phase::USE_ARM || phase == Phase::USE_FULL) { // MPC unpack
-        const bool epoch_ok = (l_mpc_output.epoch == g_mpc_epoch.load(std::memory_order_relaxed));
-        const std::chrono::steady_clock::duration mpc_age = now - l_mpc_output.t;
-        const bool time_ok = (mpc_age >= std::chrono::steady_clock::duration::zero()) && (mpc_age < param::MPC_TIMEOUT_DURATUION);
-        const bool solve_ok = (l_mpc_output.state == 0);
-        
-        if (epoch_ok && time_ok && solve_ok) {
-          // linear interpolation the optimal sol.
-          const double idx_real = std::chrono::duration<double>(mpc_age).count() / param::MPC_STEP_DT;
-          const std::size_t idx0 = static_cast<std::size_t>(std::floor(idx_real));
-          const std::size_t idx1 = idx0 + 1;
-          const double alpha = idx_real - static_cast<double>(idx0);
+      { // unpack optimal solution
+        if (phase == Phase::USE_DTHETA || phase == Phase::USE_ARM || phase == Phase::USE_FULL) { // 3-MPC using cases
+          const bool epoch_ok = (l_mpc_output.epoch == g_mpc_epoch.load(std::memory_order_relaxed));
+          const std::chrono::steady_clock::duration mpc_age = now - l_mpc_output.t;
+          const bool time_ok = (mpc_age >= std::chrono::steady_clock::duration::zero()) && (mpc_age < param::MPC_TIMEOUT_DURATUION);
+          const bool solve_ok = (l_mpc_output.state == 0);
+          
+          if (epoch_ok && time_ok && solve_ok) {
+            // linear interpolation the sol.
+            const double idx_real = std::chrono::duration<double>(mpc_age).count() / param::MPC_STEP_DT;
+            const std::size_t idx0 = static_cast<std::size_t>(std::floor(idx_real));
+            const std::size_t idx1 = idx0 + 1;
+            const double alpha = idx_real - static_cast<double>(idx0);
 
-          const Eigen::Matrix<double, param::MPC_NU, 1> u_interp = (1.0 - alpha) * l_mpc_output.u_stage.col(idx0) + alpha * l_mpc_output.u_stage.col(idx1);
+            const Eigen::Matrix<double, strider_mpc::MPC_NU, 1> u_interp = (1.0 - alpha) * l_mpc_output.u_stage.col(idx0) + alpha * l_mpc_output.u_stage.col(idx1);
 
-          std::array<Eigen::Vector2d, 4> opt_r; // polar opt r_cmd
-          opt_r[0] << u_interp(3),  u_interp(4);
-          opt_r[1] << u_interp(5),  u_interp(6);
-          opt_r[2] << u_interp(7),  u_interp(8);
-          opt_r[3] << u_interp(9),  u_interp(10);
-         const bool is_feasible = make_feasible(opt_r); // check workspace & collision
+            std::array<Eigen::Vector2d, 4> opt_r; // polar opt r_cmd
+            opt_r[0] << u_interp(3),  u_interp(4);
+            opt_r[1] << u_interp(5),  u_interp(6);
+            opt_r[2] << u_interp(7),  u_interp(8);
+            opt_r[3] << u_interp(9),  u_interp(10);
+          const bool is_feasible = ws_check(opt_r);
 
-          if (is_feasible) {
-            cmd.d_theta = u_interp.segment<3>(0);
-            std::array<Eigen::Vector2d, 4> r; // cartesian opt r_cmd
-            polar2cart(opt_r[0], opt_r[1], opt_r[2], opt_r[3], r[0], r[1], r[2], r[3]);
-            cmd.r1 = opt_r[0];
-            cmd.r2 = opt_r[1];
-            cmd.r3 = opt_r[2];
-            cmd.r4 = opt_r[3];
-            mpc_applied = true;
+            if (is_feasible) {
+              cmd.d_theta = u_interp.segment<3>(0);
+              std::array<Eigen::Vector2d, 4> r; // cartesian opt r_cmd
+              polar2cart(opt_r[0], opt_r[1], opt_r[2], opt_r[3], r[0], r[1], r[2], r[3]);
+              cmd.r1 = opt_r[0];
+              cmd.r2 = opt_r[1];
+              cmd.r3 = opt_r[2];
+              cmd.r4 = opt_r[3];
+              mpc_applied = true;
+            }
           }
         }
       }
-      // [GAC flight] or [solve failed timeout] or [cannot make_feasible]
+
       if (!mpc_applied) { 
-        cmd.d_theta *= param::GOES_2_ZERO_A;
-        cmd.r1 = param::GOES_2_ZERO_A*cmd.r1 + param::GOES_2_ZERO_B*param::r1_init;
-        cmd.r2 = param::GOES_2_ZERO_A*cmd.r2 + param::GOES_2_ZERO_B*param::r2_init;
-        cmd.r3 = param::GOES_2_ZERO_A*cmd.r3 + param::GOES_2_ZERO_B*param::r3_init;
-        cmd.r4 = param::GOES_2_ZERO_A*cmd.r4 + param::GOES_2_ZERO_B*param::r4_init; 
+        cmd.d_theta.setZero();
         l_mpc_output.x_stage.setZero();
         l_mpc_output.u_stage.setZero();
       }
 
-      FK(delayed_s.arm_q, s.r_com, s.moi, s.r1, s.r2, s.r3, s.r4); // FK updates rotor position, CoM position, and inertia
-      gac_state.J = s.moi;
       { // MPC send
         if (phase == Phase::USE_DTHETA || phase == Phase::USE_ARM || phase == Phase::USE_FULL) {
           Eigen::Vector2d s_p1, s_p2, s_p3, s_p4;
@@ -423,52 +406,44 @@ int main() {
         }
       }
       
-      // --- attitude control --- 
-      smoothed_d_theta = param::DTHETA_LPF_ALPHA*smoothed_d_theta + param::DTHETA_LPF_BETA*cmd.d_theta;
-      const Eigen::Matrix3d Et = expm_hat(-smoothed_d_theta);
+      // --- attitude control ---
+      const Eigen::Matrix3d Et = expm_hat(-cmd.d_theta);
       const Eigen::Matrix3d Rd = R_raw * Et.transpose();
       const Eigen::Vector3d Wd = Et * omega_raw;
       const Eigen::Vector3d Wd_dot = Et * alpha_raw;
       const Eigen::Vector3d tau_des = geometry_ctrl.attitude_control(Rd, Wd, Wd_dot);
 
-      // --- torque estimated ---
-      prev_tau = tau_des + s.d_hat;
-      if (auto_phase_started && elapsed_double >= 15.0) {s.d_hat = dob_update(euler_rpy, tau_des, s.moi, dob_state);}
-
-      // --- (Sequential) Control Allocation ---
+      // --- Control Allocation ---
       Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
       Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero(); // C2s
-      Sequential_Allocation(f_sum, tau_des, cmd.tauz_bar, delayed_s.arm_q, s.r_com, thrust_des, tilt_ang_des);
+      Control_Allocation(f_sum, tau_des, s.r1, s.r2, s.r3, s.r4, s.r_com, thrust_des); // Conventional Control Allocation
+      // Sequential_Allocation(f_sum, tau_des, cmd.tauz_bar, delayed_s.arm_q, s.r_com, thrust_des, tilt_ang_des); // doi: 10.1109/ACCESS.2025.3574452
+
+      // --- gradient ascent method ---
       if (phase == Phase::GRADIENT_ASCENT) {gradient_ascent.arm_cmd(cmd.r1, cmd.r2, cmd.r3, cmd.r4, s.r1, s.r2, s.r3, s.r4, tilt_ang_des, thrust_des);}
 
-      // // --- (Normal) Control Allocation ---
-      // Eigen::Vector4d thrust_des   = Eigen::Vector4d::Zero(); // (f_1234 > 0)
-      // Control_Allocation(F_des, tau_des, bPcot_cur, s.r_com, thrust_des);
-      // Eigen::Vector4d tilt_ang_des = Eigen::Vector4d::Zero();
-      // thrust_des_log = thrust_des;
+      // --- rotor max.thrust clipping ---
+      Eigen::Vector4d thrust_clamped = Eigen::Vector4d::Zero(); // (f_1234 > 0)
+      for (uint8_t i=0; i<4; ++i) {thrust_clamped(i) = (thrust_des(i) > param::SATURATION_THRUST) ? param::SATURATION_THRUST : thrust_des(i);}
 
-      // --- resolve r_cot_d to q_d  ---
+      // --- update previous torque wrench ---
+      const Eigen::Matrix<double, 3, 4> A_tau = matrix_A_tau(s.r1, s.r2, s.r3, s.r4, s.r_com);
+      prev_tau = A_tau * thrust_des;
+      
+      // --- thrust to rotor pwm ---
+      Eigen::Vector4d pwm;
+      for (int i = 0; i < 4; ++i) {
+        pwm(i) = std::sqrt(std::max(0.0, (thrust_clamped(i) - param::nominal_PWM_B) / param::nominal_PWM_A));
+        pwm(i) = std::clamp(pwm(i), 0.0, 1.0);
+      }
+
+      // --- resolve r_cmd to q_d (apply actuator delay to cmd.r) ---
       double q_d[20] = {0};
       smoothed_cmd_r1(0) = param::ARM_DELAY_ALPHA*smoothed_cmd_r1(0) + param::ARM_DELAY_BETA*cmd.r1(0); smoothed_cmd_r1(1) = param::BASE_DELAY_ALPHA*smoothed_cmd_r1(1) + param::BASE_DELAY_BETA*cmd.r1(1);
       smoothed_cmd_r2(0) = param::ARM_DELAY_ALPHA*smoothed_cmd_r2(0) + param::ARM_DELAY_BETA*cmd.r2(0); smoothed_cmd_r2(1) = param::BASE_DELAY_ALPHA*smoothed_cmd_r2(1) + param::BASE_DELAY_BETA*cmd.r2(1);
       smoothed_cmd_r3(0) = param::ARM_DELAY_ALPHA*smoothed_cmd_r3(0) + param::ARM_DELAY_BETA*cmd.r3(0); smoothed_cmd_r3(1) = param::BASE_DELAY_ALPHA*smoothed_cmd_r3(1) + param::BASE_DELAY_BETA*cmd.r3(1);
       smoothed_cmd_r4(0) = param::ARM_DELAY_ALPHA*smoothed_cmd_r4(0) + param::ARM_DELAY_BETA*cmd.r4(0); smoothed_cmd_r4(1) = param::BASE_DELAY_ALPHA*smoothed_cmd_r4(1) + param::BASE_DELAY_BETA*cmd.r4(1);
       IK(smoothed_cmd_r1, smoothed_cmd_r2, smoothed_cmd_r3, smoothed_cmd_r4, tilt_ang_des, q_d);
-
-      // --- virtual thrust clipping (tightening starts at 10s, finishes at 15s)---
-      double thrust_sat = 1e12;
-      Eigen::Vector4d thrust_clamped = Eigen::Vector4d::Zero(); // (f_1234 > 0)
-      if (elapsed_double >= 15.0)      {thrust_sat = param::SATURATION_THRUST;}
-      else if (elapsed_double >= 10.0) {thrust_sat = param::SATURATION_THRUST + (1.0 - 0.2*param::CTRL_DT) * 5.0;}
-      else                             {thrust_sat = param::SATURATION_THRUST + 5.0;}
-      for (uint8_t i=0; i<4; ++i) {thrust_clamped(i) = (thrust_des(i) > thrust_sat) ? thrust_sat : thrust_des(i);}
-      
-      // --- thrust to pwm ---
-      Eigen::Vector4d pwm;
-      for (int i = 0; i < 4; ++i) {
-        pwm(i) = std::sqrt(std::max(0.0, (thrust_clamped(i) - param::PWM_B) / param::PWM_A));
-        pwm(i) = std::clamp(pwm(i), 0.0, 1.0);
-      }
 
       // ------ (PLANT) ------------------------------------------------------------------------------------
       // --- pwm -> thrust & torque ---
@@ -477,8 +452,8 @@ int main() {
       const Eigen::Vector4d Tau = (param::PWM_ZETA * F.array() * ROTOR_DIR.array()).matrix();
 
       // --- thruster force&torque smoothing [25ms-timeconstant] ---
-      smoothed_F   = 0.9 * smoothed_F   + 0.1 * F;
-      smoothed_Tau = 0.9 * smoothed_Tau + 0.1 * Tau;
+      smoothed_F   = param::ROTOR_DELAY_ALPHA * smoothed_F   + param::ROTOR_DELAY_BETA * F;
+      smoothed_Tau = param::ROTOR_DELAY_ALPHA * smoothed_Tau + param::ROTOR_DELAY_BETA * Tau;
 
       // --- Step simulation at SIM_HZ using ZOH ---
       substep_accum += steps_per_ctrl;
@@ -497,12 +472,11 @@ int main() {
           if (torque_act_ids[i] != -1) {d->ctrl[torque_act_ids[i]] = static_cast<mjtNum>(smoothed_Tau(i));}
         }
         for (int i = 0; i < 20; ++i) {if (arm_act_ids[i] != -1) {d->ctrl[arm_act_ids[i]] = static_cast<mjtNum>(delayed_q_d[i]);}}
-        if (load_act_id != -1) {d->ctrl[load_act_id] = servo_load_angle_cmd;}
 
         for (int s = 0; s < n_sub; ++s) {mj_step(m, d);}
       }
 
-      // time_delay store
+      // --- one-step time_delay store ---
       delayed_s = s;
       for (uint8_t i=0; i<20; ++i) {delayed_q_d[i] = q_d[i];}
 
@@ -588,15 +562,13 @@ int main() {
         ld.f_thrst_con[3] = static_cast<float>(smoothed_F(3));
 
         {
-          const Eigen::Matrix<double, 3, 4> A = A_Matrix(s.r1, s.r2, s.r3, s.r4, s.r_com);
-
           const Eigen::Vector4d f_mean = 0.25 * smoothed_F.sum() * Eigen::Vector4d::Ones();
-          const Eigen::Vector3d tau_arm = A * f_mean;
+          const Eigen::Vector3d tau_arm = A_tau * f_mean;
           ld.tau_off[0] = static_cast<float>(tau_arm(0));
           ld.tau_off[1] = static_cast<float>(tau_arm(1));
           
           const Eigen::Vector4d f_dev = smoothed_F - f_mean;
-          const Eigen::Vector3d tau_dev = A * f_dev;
+          const Eigen::Vector3d tau_dev = A_tau * f_dev;
           ld.tau_thrust[0] = static_cast<float>(tau_dev(0));
           ld.tau_thrust[1] = static_cast<float>(tau_dev(1));
           ld.tau_thrust[2] = static_cast<float>(tau_dev(2));
@@ -684,29 +656,29 @@ int main() {
 
       // draw current position path
       path.emplace_back(tv, pnow);
-      while (!path.empty() && (tv - path.front().first > param::PATH_SEC)) {path.pop_front();}
+      while (!path.empty() && (tv - path.front().first > mj_viewer::PATH_SEC)) {path.pop_front();}
       for (size_t i = 1; i < path.size(); ++i) {
         const auto& a = path[i - 1].second;
         const auto& b = path[i].second;
         double p0[3] = {a.x(), a.y(), a.z()};
         double p1[3] = {b.x(), b.y(), b.z()};
-        mj_viewer::add_capsule_segment(&v.scn, p0, p1, param::SIZE_PATH, param::RGBA_PATH);
+        mj_viewer::add_capsule_segment(&v.scn, p0, p1, mj_viewer::SIZE_PATH, mj_viewer::RGBA_PATH);
       }
 
       // draw desired position path
       dpath.emplace_back(tv, pdes);
-      while (!dpath.empty() && (tv - dpath.front().first > param::PATH_SEC)) {dpath.pop_front();}
+      while (!dpath.empty() && (tv - dpath.front().first > mj_viewer::PATH_SEC)) {dpath.pop_front();}
       for (size_t i = 1; i < dpath.size(); ++i) {
         const auto& a = dpath[i - 1].second;
         const auto& b = dpath[i].second;
         double p0[3] = {a.x(), a.y(), a.z()};
         double p1[3] = {b.x(), b.y(), b.z()};
-        mj_viewer::add_capsule_segment(&v.scn, p0, p1, param::SIZE_PATH, param::RGBA_DPATH);
+        mj_viewer::add_capsule_segment(&v.scn, p0, p1, mj_viewer::SIZE_PATH, mj_viewer::RGBA_DPATH);
       }
 
       // draw current position marker
       double l_pos_des[3] = {pdes.x(), pdes.y(), pdes.z()};
-      mj_viewer::add_sphere_marker(&v.scn, l_pos_des, param::SIZE_DOT, param::RGBA_DOT);
+      mj_viewer::add_sphere_marker(&v.scn, l_pos_des, mj_viewer::SIZE_DOT, mj_viewer::RGBA_DOT);
 
       // Render
       mjrRect viewport = {0, 0, 0, 0};

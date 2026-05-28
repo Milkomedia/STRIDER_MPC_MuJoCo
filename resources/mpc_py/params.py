@@ -1,7 +1,7 @@
 import numpy as np
 
 # MPC horizon
-N  = 32     # number of steps
+N  = 20     # number of steps
 DT = 1.0 / 250.0  # [s] (of each step)
 
 # ---------- model parameters ----------
@@ -27,13 +27,13 @@ TAU_ARM  = 0.05
 R_OFF_X = np.array([ 0.12, -0.12, -0.12,  0.12])/np.sqrt(2)
 R_OFF_Y = np.array([-0.12, -0.12,  0.12,  0.12])/np.sqrt(2)
 
-RHO_MIN = 0.1506 + 0.01
-RHO_MAX = 0.2925 - 0.01
+RHO_MIN = 0.1506
+RHO_MAX = 0.2925
 ALPHA_MIN = np.array([-105.0, -195.0,  75.0, -15.0]) * np.pi / 180.0
 ALPHA_MAX = np.array([  15.0,  -75.0, 195.0, 105.0]) * np.pi / 180.0
-R_ROTOR = 0.19 + 0.01
+R_ROTOR = 0.2
 
-# IK & CoM estimate
+# IK & arm induced CoM estimate
 A_LINK   = np.array([0.1395, 0.115, 0.110, 0.024, 0.070])             # link length [m]
 R_Z = 0.24 - A_LINK[4] - A_LINK[3]                                    # z-distance body<->3-th joint frame [m]
 D_LINK   = np.array([-0.040, -0.031, -0.055, -0.012, -0.020])         # link com distance [m]

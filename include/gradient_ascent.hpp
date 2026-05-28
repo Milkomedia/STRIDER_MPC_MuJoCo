@@ -6,6 +6,15 @@
 #include <array>
 #include <Eigen/Dense>
 
+// ===== gradient ascent parameters =====
+inline constexpr double ARM_OPT_BETA1    = 2e-2;                   // η ascent rate
+inline constexpr double ARM_OPT_BETA2    = 5e-5;                   // C ascent rate
+inline constexpr double ARM_OPT_EPS      = 1e-4;                   // finite difference step
+
+inline constexpr double POWER_GAMMA      = 1.0;                    // loss factor
+inline constexpr double AIR_DENSITY      = 1.225;                  // kg/m³ 
+inline constexpr double PROP_DISK_AREA   = M_PI * 0.1524 * 0.1524; // 12-inch prop radius = 0.1524m 
+
 struct GRADIENT_ASCENT {
   Eigen::Vector2d p1_prev = Eigen::Vector2d::Zero();
   Eigen::Vector2d p2_prev = Eigen::Vector2d::Zero();
@@ -62,7 +71,7 @@ inline double eta(const Eigen::Matrix4d& A1) {
 
   for (int i = 0; i < 4; ++i) {
     if (f(i) > 0) {
-      double power_i = param::POWER_GAMMA * std::sqrt(f(i)*f(i)*f(i) / (2.0 * param::AIR_DENSITY * param::PROP_DISK_AREA));
+      double power_i = POWER_GAMMA * std::sqrt(f(i)*f(i)*f(i) / (2.0 * AIR_DENSITY * PROP_DISK_AREA));
       sum_power += power_i;
     }
   }
@@ -116,17 +125,17 @@ inline void gradients(Eigen::Vector2d& p1, Eigen::Vector2d& p2, Eigen::Vector2d&
   Eigen::Vector2d* p[4] = {&p1, &p2, &p3, &p4};
   for (int i = 0; i < 4; ++i) {
     for (int ax = 0; ax < 2; ++ax) {
-      (*p[i])(ax) += param::ARM_OPT_EPS;
+      (*p[i])(ax) += ARM_OPT_EPS;
 
       Eigen::Matrix4d A1_perturbed = build_A1_matrix(p1, p2, p3, p4, Pc, tilt_des);
 
       const double eta_pert = eta(A1_perturbed);
       const double C_pert   = controllability(A1_perturbed);
 
-      (*p[i])(ax) -= param::ARM_OPT_EPS;
+      (*p[i])(ax) -= ARM_OPT_EPS;
       //  Numerical gradients  ∇η, ∇C  (finite differences)
-      grad_eta_out(i, ax) = (eta_pert - eta_base) / param::ARM_OPT_EPS;
-      grad_C_out(i, ax)   = (C_pert   - C_base)   / param::ARM_OPT_EPS;
+      grad_eta_out(i, ax) = (eta_pert - eta_base) / ARM_OPT_EPS;
+      grad_C_out(i, ax)   = (C_pert   - C_base)   / ARM_OPT_EPS;
     }
   }
 }
@@ -149,17 +158,17 @@ inline void arm_cmd(Eigen::Vector2d& r1_cmd, Eigen::Vector2d& r2_cmd, Eigen::Vec
   const Eigen::Matrix<double, 4, 2> grad_C_orth = grad_C - proj_scalar * grad_eta;
 
   //  θ_{k+1} = θ_k + β₁·∇η + β₂·(∇C − proj_{∇η}∇C)       — eq.(10)
-  p1_prev += param::ARM_OPT_BETA1 * grad_eta.row(0).transpose() + param::ARM_OPT_BETA2 * grad_C_orth.row(0).transpose();
-  p2_prev += param::ARM_OPT_BETA1 * grad_eta.row(1).transpose() + param::ARM_OPT_BETA2 * grad_C_orth.row(1).transpose();
-  p3_prev += param::ARM_OPT_BETA1 * grad_eta.row(2).transpose() + param::ARM_OPT_BETA2 * grad_C_orth.row(2).transpose();
-  p4_prev += param::ARM_OPT_BETA1 * grad_eta.row(3).transpose() + param::ARM_OPT_BETA2 * grad_C_orth.row(3).transpose();
+  p1_prev += ARM_OPT_BETA1 * grad_eta.row(0).transpose() + ARM_OPT_BETA2 * grad_C_orth.row(0).transpose();
+  p2_prev += ARM_OPT_BETA1 * grad_eta.row(1).transpose() + ARM_OPT_BETA2 * grad_C_orth.row(1).transpose();
+  p3_prev += ARM_OPT_BETA1 * grad_eta.row(2).transpose() + ARM_OPT_BETA2 * grad_C_orth.row(2).transpose();
+  p4_prev += ARM_OPT_BETA1 * grad_eta.row(3).transpose() + ARM_OPT_BETA2 * grad_C_orth.row(3).transpose();
 
   // --- convert back to polar & enforce feasibility ---
   const Eigen::Vector3d p1_prev_3d(p1_prev(0), p1_prev(1), 0.0); const Eigen::Vector3d p2_prev_3d(p2_prev(0), p2_prev(1), 0.0); const Eigen::Vector3d p3_prev_3d(p3_prev(0), p3_prev(1), 0.0); const Eigen::Vector3d p4_prev_3d(p4_prev(0), p4_prev(1), 0.0);
   std::array<Eigen::Vector2d, 4> opt_r;
   cart2polar(p1_prev_3d, p2_prev_3d, p3_prev_3d, p4_prev_3d, opt_r[0], opt_r[1], opt_r[2], opt_r[3]);
 
-  if (make_feasible(opt_r)) {
+  if (ws_check(opt_r)) {
     r1_cmd = opt_r[0];
     r2_cmd = opt_r[1];
     r3_cmd = opt_r[2];

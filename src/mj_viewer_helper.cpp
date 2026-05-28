@@ -101,7 +101,7 @@ void viewer_init(ViewerCtx& v, const mjModel* m) {
   if (!glfwInit()) mju_error("Could not initialize GLFW");
 
   glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
-  v.window = glfwCreateWindow(1200, 900, "MuJoCo Viewer", nullptr, nullptr);
+  v.window = glfwCreateWindow(1600, 900, "MuJoCo Viewer", nullptr, nullptr);
   if (!v.window) mju_error("Could not create GLFW window");
   glfwMakeContextCurrent(v.window);
   glfwSwapInterval(1);
@@ -115,6 +115,13 @@ void viewer_init(ViewerCtx& v, const mjModel* m) {
   mjr_makeContext(m, &v.con, mjFONTSCALE_150);
 
   v.cam.type = mjCAMERA_FREE;
+  v.cam.lookat[0] = 0.0;
+  v.cam.lookat[1] = 0.0;
+  v.cam.lookat[2] = 1.1;
+
+  v.cam.distance = 5.0;
+  v.cam.azimuth = 90.0;
+  v.cam.elevation = -30.0;
 
   glfwSetKeyCallback(v.window, cb_key);
 }

@@ -10,11 +10,15 @@
 
 namespace strider_mpc {
 
+inline constexpr std::size_t MPC_NX      = 14; // This value must be same as >> self.use_full_nx << on solver.py
+inline constexpr std::size_t MPC_NU      = 11; // This value must be same as >> self.use_full_nu << on solver.py
+inline constexpr std::size_t MPC_NP      = 37; // This value must be same as >> self.use_full_np << on solver.py
+
 // MPC Input data
 struct MPCInput {
-  Eigen::Matrix<double, param::MPC_NX, 1> x_0;
-  Eigen::Matrix<double, param::MPC_NU, 1> u_0;
-  Eigen::Matrix<double, param::MPC_NP, 1> p;
+  Eigen::Matrix<double, MPC_NX, 1> x_0;
+  Eigen::Matrix<double, MPC_NU, 1> u_0;
+  Eigen::Matrix<double, MPC_NP, 1> p;
   bool use_arm = false;
   bool use_delta = false;
   uint16_t steps_req = param::N_STEPS_REQ;
@@ -26,8 +30,8 @@ struct MPCInput {
 
 // MPC Output data
 struct MPCOutput {
-  Eigen::Matrix<double, param::MPC_NX, param::N_STEPS_REQ> x_stage;
-  Eigen::Matrix<double, param::MPC_NU, param::N_STEPS_REQ> u_stage;
+  Eigen::Matrix<double, MPC_NX, param::N_STEPS_REQ> x_stage;
+  Eigen::Matrix<double, MPC_NU, param::N_STEPS_REQ> u_stage;
   double solve_ms = 0.0;
   std::uint8_t state = 255;
   std::chrono::steady_clock::time_point t;

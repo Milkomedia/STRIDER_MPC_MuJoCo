@@ -8,6 +8,13 @@
 
 namespace mj_viewer {
 
+inline constexpr double PATH_SEC = 10.0;   // history length [sec]
+inline constexpr float SIZE_DOT  = 0.03f;  // size(radious) of dot
+inline constexpr float SIZE_PATH = 0.005f; // size(radious) of path
+inline constexpr float RGBA_DOT[4]   = {1.00f, 0.00f, 0.00f, 0.95f}; // current pos color
+inline constexpr float RGBA_PATH[4]  = {0.20f, 0.80f, 0.90f, 0.60f}; // current path color
+inline constexpr float RGBA_DPATH[4] = {0.60f, 0.60f, 0.60f, 0.60f}; // desired path color
+
 // Viewer context for MuJoCo + GLFW
 struct ViewerCtx {
   mjvOption  opt;
