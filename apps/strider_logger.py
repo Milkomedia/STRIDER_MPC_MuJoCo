@@ -1142,7 +1142,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
     tab1_lay.setSpacing(0)
     self.glw1 = pg.GraphicsLayoutWidget()
     tab1_lay.addWidget(self.glw1, 1)
-    self.tabs.addTab(tab1, "mrg")
+    self.tabs.addTab(tab1, "mpc")
 
     # Tab 2
     tab2 = QtWidgets.QWidget()
@@ -1203,7 +1203,7 @@ class LoggerWindow(QtWidgets.QMainWindow):
     # Pens (explicit colors)
     # -------------------------
     pen_act   = _mk_pen("solid", width=2, color="b")                  # blue solid
-    pen_mrg   = _mk_pen("dash",  width=2, color="r")                  # red dashed
+    pen_mpc   = _mk_pen("dash",  width=2, color="r")                  # red dashed
     pen_raw   = _mk_pen("dot",   width=2, color="k")                  # black dotted
     pen_des   = _mk_pen("dot",   width=2, color="k")                  # black dotted
     pen_total = _mk_pen("solid", width=1, color="k")                  # black solid
@@ -1267,15 +1267,15 @@ class LoggerWindow(QtWidgets.QMainWindow):
     p2c3 = _mk_plot(self.glw1, 1, 2, "yaw [deg]", y_range=(-10., 10.))
 
     self._curves["roll_raw"]  = p2c1.plot(pen=pen_raw, name="raw")
-    self._curves["roll_mrg"]  = p2c1.plot(pen=pen_mrg, name="mrg")
+    self._curves["roll_mpc"]  = p2c1.plot(pen=pen_mpc, name="mpc")
     self._curves["roll_act"]  = p2c1.plot(pen=pen_act, name="act")
 
     self._curves["pitch_raw"] = p2c2.plot(pen=pen_raw, name="raw")
-    self._curves["pitch_mrg"] = p2c2.plot(pen=pen_mrg, name="mrg")
+    self._curves["pitch_mpc"] = p2c2.plot(pen=pen_mpc, name="mpc")
     self._curves["pitch_act"] = p2c2.plot(pen=pen_act, name="act")
 
     self._curves["yaw_raw"]   = p2c3.plot(pen=pen_raw, name="raw")
-    self._curves["yaw_mrg"]   = p2c3.plot(pen=pen_mrg, name="mrg")
+    self._curves["yaw_mpc"]   = p2c3.plot(pen=pen_mpc, name="mpc")
     self._curves["yaw_act"]   = p2c3.plot(pen=pen_act, name="act")
 
     # ========== 1-Row 3: tau ==========
@@ -1378,15 +1378,15 @@ class LoggerWindow(QtWidgets.QMainWindow):
     p2r4c3 = _mk_plot(self.glw2, 3, 2, "yaw [deg]", y_range=(-10., 10.))
 
     self._curves["t2_roll_raw"]  = p2r4c1.plot(pen=pen_raw, name="raw")
-    self._curves["t2_roll_mrg"]  = p2r4c1.plot(pen=pen_mrg, name="mrg")
+    self._curves["t2_roll_mpc"]  = p2r4c1.plot(pen=pen_mpc, name="mpc")
     self._curves["t2_roll_act"]  = p2r4c1.plot(pen=pen_act, name="act")
 
     self._curves["t2_pitch_raw"] = p2r4c2.plot(pen=pen_raw, name="raw")
-    self._curves["t2_pitch_mrg"] = p2r4c2.plot(pen=pen_mrg, name="mrg")
+    self._curves["t2_pitch_mpc"] = p2r4c2.plot(pen=pen_mpc, name="mpc")
     self._curves["t2_pitch_act"] = p2r4c2.plot(pen=pen_act, name="act")
 
     self._curves["t2_yaw_raw"]   = p2r4c3.plot(pen=pen_raw, name="raw")
-    self._curves["t2_yaw_mrg"]   = p2r4c3.plot(pen=pen_mrg, name="mrg")
+    self._curves["t2_yaw_mpc"]   = p2r4c3.plot(pen=pen_mpc, name="mpc")
     self._curves["t2_yaw_act"]   = p2r4c3.plot(pen=pen_act, name="act")
 
 
@@ -1433,15 +1433,15 @@ class LoggerWindow(QtWidgets.QMainWindow):
     p3r1c3 = _mk_plot(self.glw3, 0, 2, "yaw [deg]", y_range=(-10., 10.))
 
     self._curves["t3_roll_raw"]  = p3r1c1.plot(pen=pen_raw, name="raw")
-    self._curves["t3_roll_mrg"]  = p3r1c1.plot(pen=pen_mrg, name="mrg")
+    self._curves["t3_roll_mpc"]  = p3r1c1.plot(pen=pen_mpc, name="mpc")
     self._curves["t3_roll_act"]  = p3r1c1.plot(pen=pen_act, name="act")
 
     self._curves["t3_pitch_raw"] = p3r1c2.plot(pen=pen_raw, name="raw")
-    self._curves["t3_pitch_mrg"] = p3r1c2.plot(pen=pen_mrg, name="mrg")
+    self._curves["t3_pitch_mpc"] = p3r1c2.plot(pen=pen_mpc, name="mpc")
     self._curves["t3_pitch_act"] = p3r1c2.plot(pen=pen_act, name="act")
 
     self._curves["t3_yaw_raw"]   = p3r1c3.plot(pen=pen_raw, name="raw")
-    self._curves["t3_yaw_mrg"]   = p3r1c3.plot(pen=pen_mrg, name="mrg")
+    self._curves["t3_yaw_mpc"]   = p3r1c3.plot(pen=pen_mpc, name="mpc")
     self._curves["t3_yaw_act"]   = p3r1c3.plot(pen=pen_act, name="act")
 
     # ========== 3-Row 2 ==========
@@ -1450,13 +1450,13 @@ class LoggerWindow(QtWidgets.QMainWindow):
     p3r2c3 = _mk_plot(self.glw3, 1, 2, "omega_z [deg/s]", y_range=( -10.0,  10.0))
 
     self._curves["t3_omega_x_raw"] = p3r2c1.plot(pen=pen_raw, name="raw")
-    self._curves["t3_omega_x_mrg"] = p3r2c1.plot(pen=pen_mrg, name="mrg")
+    self._curves["t3_omega_x_mpc"] = p3r2c1.plot(pen=pen_mpc, name="mpc")
     self._curves["t3_omega_x_act"] = p3r2c1.plot(pen=pen_act, name="act")
     self._curves["t3_omega_y_raw"] = p3r2c2.plot(pen=pen_raw, name="raw")
-    self._curves["t3_omega_y_mrg"] = p3r2c2.plot(pen=pen_mrg, name="mrg")
+    self._curves["t3_omega_y_mpc"] = p3r2c2.plot(pen=pen_mpc, name="mpc")
     self._curves["t3_omega_y_act"] = p3r2c2.plot(pen=pen_act, name="act")
     self._curves["t3_omega_z_raw"] = p3r2c3.plot(pen=pen_raw, name="raw")
-    self._curves["t3_omega_z_mrg"] = p3r2c3.plot(pen=pen_mrg, name="mrg")
+    self._curves["t3_omega_z_mpc"] = p3r2c3.plot(pen=pen_mpc, name="mpc")
     self._curves["t3_omega_z_act"] = p3r2c3.plot(pen=pen_act, name="act")
 
     # ========== 3-Row 3 ==========
@@ -1465,13 +1465,13 @@ class LoggerWindow(QtWidgets.QMainWindow):
     p3r3c3 = _mk_plot(self.glw3, 2, 2, "alpha_z [deg/s^2]", y_range=( -20.0,  20.0))
 
     self._curves["t3_alpha_x_raw"] = p3r3c1.plot(pen=pen_raw, name="raw")
-    self._curves["t3_alpha_x_mrg"] = p3r3c1.plot(pen=pen_mrg, name="mrg")
+    self._curves["t3_alpha_x_mpc"] = p3r3c1.plot(pen=pen_mpc, name="mpc")
     self._curves["t3_alpha_x_act"] = p3r3c1.plot(pen=pen_act, name="act")
     self._curves["t3_alpha_y_raw"] = p3r3c2.plot(pen=pen_raw, name="raw")
-    self._curves["t3_alpha_y_mrg"] = p3r3c2.plot(pen=pen_mrg, name="mrg")
+    self._curves["t3_alpha_y_mpc"] = p3r3c2.plot(pen=pen_mpc, name="mpc")
     self._curves["t3_alpha_y_act"] = p3r3c2.plot(pen=pen_act, name="act")
     self._curves["t3_alpha_z_raw"] = p3r3c3.plot(pen=pen_raw, name="raw")
-    self._curves["t3_alpha_z_mrg"] = p3r3c3.plot(pen=pen_mrg, name="mrg")
+    self._curves["t3_alpha_z_mpc"] = p3r3c3.plot(pen=pen_mpc, name="mpc")
     self._curves["t3_alpha_z_act"] = p3r3c3.plot(pen=pen_act, name="act")
 
     # ========== 3-Row 4 ==========
@@ -1793,10 +1793,10 @@ class LoggerWindow(QtWidgets.QMainWindow):
       rpy_d_deg   = ch["rpy_d"][sl, :] * _RAD2DEG
       omega_act = ch["omega"][sl, :] * _RAD2DEG
       omega_raw = ch["omega_d"][sl, :] * _RAD2DEG
-      omega_mrg = ch["omega_raw"][sl, :] * _RAD2DEG
+      omega_mpc = ch["omega_raw"][sl, :] * _RAD2DEG
       alpha_act = ch["alpha"][sl, :] * _RAD2DEG
       alpha_raw = ch["alpha_d"][sl, :] * _RAD2DEG
-      alpha_mrg = ch["alpha_raw"][sl, :] * _RAD2DEG
+      alpha_mpc = ch["alpha_raw"][sl, :] * _RAD2DEG
 
       tau_d      = ch["tau_d"][sl, :]
       tau_z_t    = ch["tau_z_t"][sl]
@@ -1866,15 +1866,15 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
       # --- Row 2: RPY ---
       self._curves["roll_raw"].setData(x,  rpy_raw_deg[:, 0])
-      self._curves["roll_mrg"].setData(x,  rpy_d_deg[:, 0])
+      self._curves["roll_mpc"].setData(x,  rpy_d_deg[:, 0])
       self._curves["roll_act"].setData(x,  rpy_act_deg[:, 0])
 
       self._curves["pitch_raw"].setData(x, rpy_raw_deg[:, 1])
-      self._curves["pitch_mrg"].setData(x, rpy_d_deg[:, 1])
+      self._curves["pitch_mpc"].setData(x, rpy_d_deg[:, 1])
       self._curves["pitch_act"].setData(x, rpy_act_deg[:, 1])
 
       self._curves["yaw_raw"].setData(x,   rpy_raw_deg[:, 2])
-      self._curves["yaw_mrg"].setData(x,   rpy_d_deg[:, 2])
+      self._curves["yaw_mpc"].setData(x,   rpy_d_deg[:, 2])
       self._curves["yaw_act"].setData(x,   rpy_act_deg[:, 2])
 
       # --- Row 3: tau ---
@@ -1991,15 +1991,15 @@ class LoggerWindow(QtWidgets.QMainWindow):
       self._curves["t2_acc_z_des"].setData(x, acc_des[:, 2])
 
       self._curves["t2_roll_raw"].setData(x,  rpy_raw_deg[:, 0])
-      self._curves["t2_roll_mrg"].setData(x,  rpy_d_deg[:, 0])
+      self._curves["t2_roll_mpc"].setData(x,  rpy_d_deg[:, 0])
       self._curves["t2_roll_act"].setData(x,  rpy_act_deg[:, 0])
 
       self._curves["t2_pitch_raw"].setData(x, rpy_raw_deg[:, 1])
-      self._curves["t2_pitch_mrg"].setData(x, rpy_d_deg[:, 1])
+      self._curves["t2_pitch_mpc"].setData(x, rpy_d_deg[:, 1])
       self._curves["t2_pitch_act"].setData(x, rpy_act_deg[:, 1])
 
       self._curves["t2_yaw_raw"].setData(x,   rpy_raw_deg[:, 2])
-      self._curves["t2_yaw_mrg"].setData(x,   rpy_d_deg[:, 2])
+      self._curves["t2_yaw_mpc"].setData(x,   rpy_d_deg[:, 2])
       self._curves["t2_yaw_act"].setData(x,   rpy_act_deg[:, 2])
 
       self._curves["t2_d_hat_x"].setData(x, d_hat[:, 0])
@@ -2068,35 +2068,35 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
       # --- Tab 3 ---
       self._curves["t3_roll_raw"].setData(x,  rpy_raw_deg[:, 0])
-      self._curves["t3_roll_mrg"].setData(x,  rpy_d_deg[:, 0])
+      self._curves["t3_roll_mpc"].setData(x,  rpy_d_deg[:, 0])
       self._curves["t3_roll_act"].setData(x,  rpy_act_deg[:, 0])
 
       self._curves["t3_pitch_raw"].setData(x, rpy_raw_deg[:, 1])
-      self._curves["t3_pitch_mrg"].setData(x, rpy_d_deg[:, 1])
+      self._curves["t3_pitch_mpc"].setData(x, rpy_d_deg[:, 1])
       self._curves["t3_pitch_act"].setData(x, rpy_act_deg[:, 1])
 
       self._curves["t3_yaw_raw"].setData(x,   rpy_raw_deg[:, 2])
-      self._curves["t3_yaw_mrg"].setData(x,   rpy_d_deg[:, 2])
+      self._curves["t3_yaw_mpc"].setData(x,   rpy_d_deg[:, 2])
       self._curves["t3_yaw_act"].setData(x,   rpy_act_deg[:, 2])
 
       self._curves["t3_omega_x_raw"].setData(x, omega_raw[:, 0])
-      self._curves["t3_omega_x_mrg"].setData(x, omega_mrg[:, 0])
+      self._curves["t3_omega_x_mpc"].setData(x, omega_mpc[:, 0])
       self._curves["t3_omega_x_act"].setData(x, omega_act[:, 0])
       self._curves["t3_omega_y_raw"].setData(x, omega_raw[:, 1])
-      self._curves["t3_omega_y_mrg"].setData(x, omega_mrg[:, 1])
+      self._curves["t3_omega_y_mpc"].setData(x, omega_mpc[:, 1])
       self._curves["t3_omega_y_act"].setData(x, omega_act[:, 1])
       self._curves["t3_omega_z_raw"].setData(x, omega_raw[:, 2])
-      self._curves["t3_omega_z_mrg"].setData(x, omega_mrg[:, 2])
+      self._curves["t3_omega_z_mpc"].setData(x, omega_mpc[:, 2])
       self._curves["t3_omega_z_act"].setData(x, omega_act[:, 2])
 
       self._curves["t3_alpha_x_raw"].setData(x, alpha_raw[:, 0])
-      self._curves["t3_alpha_x_mrg"].setData(x, alpha_mrg[:, 0])
+      self._curves["t3_alpha_x_mpc"].setData(x, alpha_mpc[:, 0])
       self._curves["t3_alpha_x_act"].setData(x, alpha_act[:, 0])
       self._curves["t3_alpha_y_raw"].setData(x, alpha_raw[:, 1])
-      self._curves["t3_alpha_y_mrg"].setData(x, alpha_mrg[:, 1])
+      self._curves["t3_alpha_y_mpc"].setData(x, alpha_mpc[:, 1])
       self._curves["t3_alpha_y_act"].setData(x, alpha_act[:, 1])
       self._curves["t3_alpha_z_raw"].setData(x, alpha_raw[:, 2])
-      self._curves["t3_alpha_z_mrg"].setData(x, alpha_mrg[:, 2])
+      self._curves["t3_alpha_z_mpc"].setData(x, alpha_mpc[:, 2])
       self._curves["t3_alpha_z_act"].setData(x, alpha_act[:, 2])
 
       self._curves["t3_tau_x_des"].setData(x, tau_d[:, 0])
